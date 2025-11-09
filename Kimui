@@ -1,0 +1,1200 @@
+--==================================================
+-- KIM UI — ULTRA (No-WindUI) — using x2zu Template
+-- Fix: Dropdown robust wrapper + Fallback GUI + warn/notify
+--==================================================
+
+-- =========================
+-- Load UI Library (x2zu)
+-- =========================
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/x2zu/OPEN-SOURCE-UI-ROBLOX/refs/heads/main/X2ZU%20UI%20ROBLOX%20OPEN%20SOURCE/DummyUi-leak-by-x2zu/fetching-main/Tools/Framework.luau"))()
+
+-- =========================
+-- Main Window
+-- =========================
+local Window = Library:Window({
+    Title = "KIM UI",
+    Desc = "KIM UI — ULTRA",
+    Icon = 105059922903197,
+    Theme = "Dark",
+    Config = { Keybind = Enum.KeyCode.LeftControl, Size = UDim2.new(0,520,0,440) },
+    CloseUIButton = { Enabled=true, Text="KIM UI" }
+})
+
+-- Optional sidebar line (ตกแต่ง)
+do
+    local SidebarLine = Instance.new("Frame")
+    SidebarLine.Name = "KIMUI_SidebarLine"
+    SidebarLine.Size = UDim2.new(0,1,1,0)
+    SidebarLine.Position = UDim2.new(0,140,0,0)
+    SidebarLine.BackgroundColor3 = Color3.fromRGB(60,60,60)
+    SidebarLine.BorderSizePixel = 0
+    SidebarLine.ZIndex = 5
+    SidebarLine.Parent = game:GetService("CoreGui")
+end
+
+-- Tabs (ตามเทมเพลต)
+local SettingsTab = Window:Tab({Title="ตั้งค่า", Icon="wrench"})
+local MainTab     = Window:Tab({Title="เมนูหลัก", Icon="star"})
+local TeleportTab = Window:Tab({Title="เทเลพอร์ต", Icon="navigation"})
+local VisualsTab  = Window:Tab({Title="มองต่างๆ", Icon="eye"})
+local ExtraTab    = Window:Tab({Title="ของเสริม", Icon="tag"})
+local FPSTab      = Window:Tab({Title="FPS", Icon="speedometer"})
+local EventTab    = Window:Tab({Title="เกี่ยวกับอีเว้น", Icon="calendar"})
+
+-- =========================
+-- Services & Locals
+-- =========================
+local Players  = game:GetService("Players")
+local Teams    = game:GetService("Teams")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+-- Floating GUI (ใช้ชื่อชุด KIM UI)
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local FloatingGui = PlayerGui:FindFirstChild("KIMUI_FloatingGui")
+if not FloatingGui then
+    FloatingGui = Instance.new("ScreenGui")
+    FloatingGui.Name = "KIMUI_FloatingGui"
+    FloatingGui.Parent = PlayerGui
+    FloatingGui.ResetOnSpawn = false
+    FloatingGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+end
+
+-- =========================
+-- Helpers
+-- =========================
+local function notify(title, desc, time)
+    Window:Notify({ Title = title or "KIM UI", Desc = desc or "", Time = time or 2 })
+end
+
+local function clamp(n,a,b) return math.max(a, math.min(b, n)) end
+local function now() return os.clock() end
+local function getHRP() local c=LocalPlayer.Character; return c and c:FindFirstChild("HumanoidRootPart") end
+local function getHum() local c=LocalPlayer.Character; return c and c:FindFirstChildOfClass("Humanoid") end
+
+-- math helpers
+local function v2_clampToViewport(p, r)
+    local vp = Camera.ViewportSize
+    local x = clamp(p.X, r, math.max(r, vp.X - r))
+    local y = clamp(p.Y, r, math.max(r, vp.Y - r))
+    return Vector2.new(x,y)
+end
+local function viewportCenter()
+    local vp = Camera.ViewportSize
+    return Vector2.new(vp.X/2, vp.Y/2)
+end
+
+-- =========================
+-- Dropdown Wrapper + Fallback
+-- =========================
+local FallbackRoot = PlayerGui:FindFirstChild("KIMUI_Fallback_Dropdowns") or Instance.new("ScreenGui")
+FallbackRoot.Name = "KIMUI_Fallback_Dropdowns"
+FallbackRoot.ResetOnSpawn = false
+FallbackRoot.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+FallbackRoot.Parent = PlayerGui
+
+local function destroyFallback(title)
+    for _,g in ipairs(FallbackRoot:GetChildren()) do
+        if g:IsA("Frame") and g.Name == ("FB_"..title) then g:Destroy() end
+    end
+end
+
+local function spawnFallbackDropdown(args)
+    -- args: Title, Options, CurrentOption(table or string), MultipleOptions(bool), Callback(table)
+    destroyFallback(args.Title)
+
+    local frame = Instance.new("Frame")
+    frame.Name = "FB_"..args.Title
+    frame.Parent = FallbackRoot
+    frame.Size = UDim2.new(0, 360, 0, 320)
+    frame.AnchorPoint = Vector2.new(0.5,0.5)
+    frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
+    frame.BorderSizePixel = 0
+
+    local stroke = Instance.new("UIStroke", frame)
+    stroke.Color = Color3.fromRGB(255, 80, 80)
+    stroke.Thickness = 2
+    local corner = Instance.new("UICorner", frame)
+    corner.CornerRadius = UDim.new(0,12)
+
+    local header = Instance.new("TextLabel", frame)
+    header.Size = UDim2.new(1, -40, 0, 40)
+    header.Position = UDim2.new(0, 20, 0, 10)
+    header.BackgroundTransparency = 1
+    header.Text = "Dropdown Fallback: "..args.Title
+    header.Font = Enum.Font.GothamBold
+    header.TextScaled = true
+    header.TextColor3 = Color3.fromRGB(255,255,255)
+    header.TextXAlignment = Enum.TextXAlignment.Left
+
+    local close = Instance.new("TextButton", frame)
+    close.Size = UDim2.new(0, 34, 0, 34)
+    close.Position = UDim2.new(1, -44, 0, 10)
+    close.BackgroundColor3 = Color3.fromRGB(60,60,60)
+    close.Text = "✕"
+    close.TextScaled = true
+    close.TextColor3 = Color3.new(1,1,1)
+    Instance.new("UICorner", close).CornerRadius = UDim.new(0,8)
+    close.MouseButton1Click:Connect(function() frame:Destroy() end)
+
+    local multiInfo = Instance.new("TextLabel", frame)
+    multiInfo.Size = UDim2.new(1, -40, 0, 22)
+    multiInfo.Position = UDim2.new(0, 20, 0, 52)
+    multiInfo.BackgroundTransparency = 1
+    multiInfo.Text = args.MultipleOptions and "(Multi-select: คลิกเลือกได้หลายอัน)" or "(Single-select: เลือกได้ 1 อัน)"
+    multiInfo.Font = Enum.Font.Gotham
+    multiInfo.TextScaled = true
+    multiInfo.TextColor3 = Color3.fromRGB(180,180,180)
+    multiInfo.TextXAlignment = Enum.TextXAlignment.Left
+
+    local list = Instance.new("ScrollingFrame", frame)
+    list.Size = UDim2.new(1, -40, 1, -120)
+    list.Position = UDim2.new(0, 20, 0, 80)
+    list.BackgroundTransparency = 0
+    list.BackgroundColor3 = Color3.fromRGB(15,15,15)
+    list.BorderSizePixel = 0
+    list.CanvasSize = UDim2.new(0,0,0,0)
+    list.ScrollBarThickness = 6
+    Instance.new("UICorner", list).CornerRadius = UDim.new(0,8)
+    local layout = Instance.new("UIListLayout", list)
+    layout.Padding = UDim.new(0,6)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    local selectedSet = {}
+    local function isSelected(opt)
+        return selectedSet[opt] == true
+    end
+
+    -- Init selection from CurrentOption
+    if typeof(args.CurrentOption) == "table" then
+        for _,v in ipairs(args.CurrentOption) do selectedSet[v] = true end
+    elseif typeof(args.CurrentOption) == "string" then
+        selectedSet[args.CurrentOption] = true
+    end
+
+    local function pushCallback()
+        local result = {}
+        for _,opt in ipairs(args.Options) do
+            if selectedSet[opt] then table.insert(result, opt) end
+        end
+        if not args.MultipleOptions then
+            -- keep consistent with original usage: table with first item
+            if #result == 0 and #args.Options > 0 then
+                result = { args.Options[1] }
+            elseif #result > 1 then
+                result = { result[1] }
+            end
+        end
+        task.defer(function()
+            local ok,err = pcall(function() args.Callback(result) end)
+            if not ok then warn("[KIM UI] Fallback dropdown callback error:", err) end
+        end)
+    end
+
+    for _,opt in ipairs(args.Options) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, 0, 0, 32)
+        btn.BackgroundColor3 = isSelected(opt) and Color3.fromRGB(60,100,255) or Color3.fromRGB(45,45,45)
+        btn.TextColor3 = Color3.new(1,1,1)
+        btn.TextScaled = true
+        btn.Font = Enum.Font.GothamMedium
+        btn.Text = opt
+        btn.Parent = list
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0,8)
+
+        btn.MouseButton1Click:Connect(function()
+            if args.MultipleOptions then
+                selectedSet[opt] = not selectedSet[opt]
+            else
+                -- single: clear others
+                table.clear(selectedSet)
+                selectedSet[opt] = true
+            end
+            -- update colors
+            for _,c in ipairs(list:GetChildren()) do
+                if c:IsA("TextButton") then
+                    c.BackgroundColor3 = selectedSet[c.Text] and Color3.fromRGB(60,100,255) or Color3.fromRGB(45,45,45)
+                end
+            end
+            pushCallback()
+            if not args.MultipleOptions then
+                -- auto-close for single select
+                task.delay(0.05, function() frame:Destroy() end)
+            end
+        end)
+    end
+
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        list.CanvasSize = UDim2.new(0,0,0, layout.AbsoluteContentSize.Y + 8)
+    end)
+
+    local applyBtn = Instance.new("TextButton", frame)
+    applyBtn.Size = UDim2.new(0, 140, 0, 36)
+    applyBtn.Position = UDim2.new(1, -160, 1, -46)
+    applyBtn.BackgroundColor3 = Color3.fromRGB(0,170,255)
+    applyBtn.TextColor3 = Color3.new(1,1,1)
+    applyBtn.TextScaled = true
+    applyBtn.Text = "Apply"
+    Instance.new("UICorner", applyBtn).CornerRadius = UDim.new(0,10)
+    applyBtn.MouseButton1Click:Connect(function()
+        pushCallback()
+        frame:Destroy()
+    end)
+end
+
+-- Wrapper: ลองหลาย signature ของ lib ก่อน แล้วค่อย fallback
+local function AddDropdown(tab, args)
+    -- normalize
+    local Options = table.clone(args.Options or {})
+    -- 1) ลอง signature หลักที่เราใช้
+    local ok, ret = pcall(function()
+        return tab:Dropdown({
+            Title = args.Title,
+            Options = Options,
+            CurrentOption = args.CurrentOption,
+            MultipleOptions = args.MultipleOptions,
+            Callback = args.Callback
+        })
+    end)
+    if ok and ret ~= nil then return ret end
+
+    -- 2) ลอง signature แบบ (Title, Options, Multiple, Current, Callback)
+    local ok2, ret2 = pcall(function()
+        return tab:Dropdown(args.Title, Options, args.MultipleOptions, args.CurrentOption, args.Callback)
+    end)
+    if ok2 and ret2 ~= nil then return ret2 end
+
+    -- 3) ลอง signature แบบ (Title, Options, Callback)
+    local ok3, ret3 = pcall(function()
+        return tab:Dropdown(args.Title, Options, args.Callback)
+    end)
+    if ok3 and ret3 ~= nil then return ret3 end
+
+    warn(("[KIM UI] Dropdown failed to attach on tab for '%s'. Using fallback GUI."):format(args.Title))
+    notify("Dropdown Error", "ใช้เมนูสำรอง: "..tostring(args.Title), 3)
+    spawnFallbackDropdown(args)
+    return nil
+end
+
+-- =========================
+-- CONFIGS (ตาม KIM UI เดิม)
+-- =========================
+-- Auto Prompt (Players-only)
+local AutoPromptEnabled   = true
+local PlayerPromptRadius  = 30
+local AutoPromptCooldown  = 0.22
+local BoostMaxDistance    = 1000
+local lastPromptFiredAt   = setmetatable({}, {__mode="k"})
+local _op_nextTick = 0
+
+-- Tools Hitbox
+local Tool_HitboxSize, Tool_HitboxToggle = 10, false
+
+-- Player Hitbox + ESP
+local Player_HeadSize, Player_HitboxEnabled = 10, false
+local SelectedTeams, playerStates = {}, {}
+
+-- Aimbot
+local aimbot_enabled, team_lock, fov_value, lock_distance = false, true, 150, 1000
+local show_fov, aim_part_choice, aim_strength = true, "Head", 0.9
+local selectedAimbotTeams, head_offset = {}, Vector3.new(0,0.18,0)
+local current_target, switch_cd, last_switch = nil, 0.12, 0
+local aim_hard_lock, third_person_lock, third_person_lock_power = false, false, 0.9
+
+-- FOV / Drag & Mark
+local fov_locked, fov_pos, fov_dragging = true, nil, false
+local drag_start, fov_pos_start = nil, nil
+
+-- Drawing / GUI for FOV
+local hasDrawing, fovCircleDrawing = pcall(function() return Drawing and Drawing.new and Drawing.new("Circle") end)
+local fovGui, fovFrame, fovStroke, fovDragHit
+
+-- Wall check + Far Assist
+local wall_check_enabled = true
+local farAssist_enabled  = false
+local farAssist_minDist  = 150
+local farAssist_lerp     = 0.30
+local fov_home_pos       = nil
+
+-- Aiming Mark (draggable)
+local aimingMark_enabled = false
+local aimingMark_size    = 28
+local aimingMark_pos     = nil
+local aimingMark_dragging= false
+local aimingMarkGui, aimingMarkBtn
+
+-- =========================
+-- Player Hitbox Core
+-- =========================
+local function getHumFromChar(char) return char and char:FindFirstChildOfClass("Humanoid") end
+local function getHRPFromChar(char) return char and char:FindFirstChild("HumanoidRootPart") end
+local function isAlive(char) local hum=getHumFromChar(char); return hum and hum.Health>0 end
+local function sqrDist(a,b) if not (a and b) then return math.huge end local dx,dy,dz=a.X-b.X, a.Y-b.Y, a.Z-b.Z return dx*dx + dy*dy + dz*dz end
+
+local PH_RADIUS_MAX_LIMIT = 200000
+local PH_INF_DISTANCE = false
+local PH_MAX_RADIUS = 120
+local PH_MAX_RADIUS_SQR = PH_MAX_RADIUS*PH_MAX_RADIUS
+local function PH_recomputeLimit() PH_MAX_RADIUS_SQR = PH_INF_DISTANCE and math.huge or (PH_MAX_RADIUS*PH_MAX_RADIUS) end
+local function PH_setRadius(r) PH_MAX_RADIUS = clamp(math.floor(r),10,PH_RADIUS_MAX_LIMIT); if not PH_INF_DISTANCE then PH_recomputeLimit() end end
+local function PH_setInfinite(state) PH_INF_DISTANCE = state and true or false; PH_recomputeLimit(); task.defer(function() ph_lastEval=0 end) end
+local function PH_getColor(p) return (p and p.Team and p.Team.TeamColor and p.Team.TeamColor.Color) or Color3.new(1,1,1) end
+
+playerStates = playerStates or {}
+local ph_lastEval = 0
+local function PH_clearOne(p)
+    local st = playerStates[p]; if not st then return end
+    if st.highlight then pcall(function() st.highlight:Destroy() end) end
+    if st.esp then pcall(function() st.esp:Destroy() end) end
+    if st.targetL then pcall(function() st.targetL:Destroy() end) end
+    if st.hrp and st.appliedSize then
+        pcall(function()
+            st.hrp.Size = Vector3.new(2,2,1)
+            st.hrp.Transparency = 1
+            st.hrp.Material = Enum.Material.Plastic
+            st.hrp.Color = Color3.new(1,1,1)
+        end)
+    end
+    playerStates[p] = nil
+end
+
+local function PH_createHighlight(character, color)
+    if not character or not character:IsDescendantOf(game) then return end
+    local hl=Instance.new("Highlight"); hl.Adornee=character; hl.FillColor=color; hl.FillTransparency=0.75; hl.OutlineTransparency=1; hl.Parent=character; return hl
+end
+
+local function PH_createBillboard(hrp, p)
+    local bb=Instance.new("BillboardGui"); bb.Adornee=hrp; bb.Size=UDim2.new(0,150,0,80); bb.StudsOffset=Vector3.new(0,3,0); bb.AlwaysOnTop=true; bb.Parent=(p.Character or hrp)
+    local function addLabel(y,txt,col,sz)
+        local l=Instance.new("TextLabel",bb)
+        l.Size=UDim2.new(1,0,0,20); l.Position=UDim2.new(0,0,0,y)
+        l.BackgroundTransparency=1; l.Font=Enum.Font.Bodoni
+        l.TextColor3=col; l.TextStrokeTransparency=0; l.TextStrokeColor3=Color3.fromRGB(20,20,20); l.TextSize=sz or 18; l.Text=txt
+        return l
+    end
+    local nameL=addLabel(0,p.Name,Color3.new(1,1,1),18)
+    local hpL  =addLabel(20,"",Color3.fromRGB(255,100,100),16)
+    local teamL=addLabel(40,"",Color3.fromRGB(150,200,255),14)
+    local targetL = Instance.new("TextLabel", bb)
+    targetL.Size = UDim2.new(1,0,0,24)
+    targetL.Position = UDim2.new(0,0,0, -26)
+    targetL.BackgroundTransparency = 1
+    targetL.Font = Enum.Font.GothamBold
+    targetL.TextColor3 = Color3.fromRGB(255,60,60)
+    targetL.TextStrokeTransparency = 0
+    targetL.TextStrokeColor3 = Color3.fromRGB(20,20,20)
+    targetL.TextSize = 20
+    targetL.Text = ""
+    targetL.Visible = false
+    return bb,nameL,hpL,teamL,targetL
+end
+
+local function PH_applyOne(p, desiredSize)
+    local char=p and p.Character; if not char then return end
+    local hum=getHumFromChar(char); if not hum or hum.Health<=0 then return end
+    if not SelectedTeams[p.Team and p.Team.Name or ""] then return end
+    local hrp=getHRPFromChar(char); if not hrp then return end
+
+    local st=playerStates[p]
+    if not st then st={ hrp=hrp, lastTextAt=0 }; playerStates[p]=st else st.hrp=hrp end
+
+    if (st.appliedSize or -1) ~= desiredSize then
+        pcall(function()
+            hrp.Size=Vector3.new(desiredSize,desiredSize,desiredSize)
+            hrp.Transparency=0.7
+            hrp.Material=Enum.Material.Neon
+            hrp.Color=PH_getColor(p)
+        end)
+        st.appliedSize = desiredSize
+    end
+    if not st.highlight then st.highlight=PH_createHighlight(char, PH_getColor(p)) end
+    if not st.esp or not st.esp.Parent then st.esp,st.name,st.hp,st.team,st.targetL = PH_createBillboard(hrp, p) end
+
+    local t=now()
+    if t-(st.lastTextAt or 0) >= 0.4 then
+        pcall(function()
+            st.hp.Text   = "HP: "..math.floor(hum.Health)
+            st.team.Text = "Team: "..(p.Team and p.Team.Name or "None")
+        end)
+        st.lastTextAt = t
+    end
+
+    local isTarget = current_target and current_target.Parent and p.Character and current_target.Parent == p.Character
+    if st.targetL then pcall(function() st.targetL.Visible = isTarget; if isTarget then st.targetL.Text="TARGET" end end) end
+end
+
+local ph_lastTick = 0
+RunService.Heartbeat:Connect(function()
+    local t=now()
+    if t - ph_lastTick < 0.25 then return end
+    ph_lastTick = t
+
+    if not Player_HitboxEnabled then
+        for pl,_ in pairs(playerStates) do PH_clearOne(pl) end
+        return
+    end
+    local myChar=LocalPlayer.Character; if not myChar then return end
+    local myHRP=getHRPFromChar(myChar); if not myHRP then return end
+    local myPos=myHRP.Position
+
+    local candidates={}
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p~=LocalPlayer and p.Character and isAlive(p.Character) then
+            local hrp=getHRPFromChar(p.Character)
+            if hrp then
+                local d2=sqrDist(myPos, hrp.Position)
+                local okDist = PH_INF_DISTANCE or (d2<=PH_MAX_RADIUS_SQR)
+                if okDist and SelectedTeams[p.Team and p.Team.Name or ""] then
+                    table.insert(candidates, {pl=p, d2=d2})
+                end
+            end
+        end
+    end
+    table.sort(candidates, function(a,b) return a.d2<b.d2 end)
+    local keep={}
+    for i=1, math.min(10,#candidates) do
+        local p=candidates[i].pl; keep[p]=true
+        local hum=getHumFromChar(p.Character)
+        local desired = ((hum and hum.Health or 100) <= 5) and 0.5 or (Player_HeadSize or 10)
+        PH_applyOne(p, desired)
+    end
+    for p,_ in pairs(playerStates) do if not keep[p] then PH_clearOne(p) end end
+end)
+
+-- Bind re-eval to players
+local function PH_bindPlayer(p)
+    local function reeval() ph_lastEval=0 end
+    p:GetPropertyChangedSignal("Team"):Connect(reeval)
+    p.CharacterAppearanceLoaded:Connect(reeval)
+    p.CharacterAdded:Connect(function(char)
+        local hum=getHumFromChar(char)
+        if hum then
+            hum.HealthChanged:Connect(function() ph_lastEval=0 end)
+            hum.Died:Connect(function() PH_clearOne(p); ph_lastEval=0 end)
+        end
+    end)
+end
+for _,p in ipairs(Players:GetPlayers()) do if p~=LocalPlayer then PH_bindPlayer(p) end end
+Players.PlayerAdded:Connect(function(p) if p~=LocalPlayer then PH_bindPlayer(p) end end)
+
+-- =========================
+-- Tools Hitbox
+-- =========================
+local toolHitboxIndex = {}
+local function TH_collectHitboxes(tool)
+    local bucket={}
+    for _,obj in ipairs(tool:GetDescendants()) do
+        if obj:IsA("BasePart") and obj.Name=="Hitbox" then table.insert(bucket, obj) end
+    end
+    toolHitboxIndex[tool] = { parts=bucket, appliedSize=nil }
+end
+local function TH_applySizeTo(tool, size)
+    local rec=toolHitboxIndex[tool]; if not rec then return end
+    if rec.appliedSize and math.abs(rec.appliedSize - size) < 0.001 then return end
+    for _,part in ipairs(rec.parts) do pcall(function() part.Size=Vector3.new(size,size,size); part.Transparency=0.5 end) end
+    rec.appliedSize = size
+end
+local function TH_applyAll(size)
+    if not Tool_HitboxToggle then return end
+    local i=0
+    for tool,_ in pairs(toolHitboxIndex) do
+        i+=1; if i%8==0 then task.wait() end
+        TH_applySizeTo(tool, size)
+    end
+end
+local function TH_indexContainer(container)
+    if not container then return end
+    for _,ch in ipairs(container:GetChildren()) do
+        if ch:IsA("Tool") then
+            TH_collectHitboxes(ch)
+            if Tool_HitboxToggle and Tool_HitboxSize then TH_applySizeTo(ch, Tool_HitboxSize) end
+        end
+    end
+    container.ChildAdded:Connect(function(ch)
+        if ch:IsA("Tool") then task.defer(function()
+            TH_collectHitboxes(ch)
+            if Tool_HitboxToggle and Tool_HitboxSize then TH_applySizeTo(ch, Tool_HitboxSize) end
+        end) end
+    end)
+    container.ChildRemoved:Connect(function(ch) if ch:IsA("Tool") then toolHitboxIndex[ch]=nil end end)
+end
+local function TH_bindAll()
+    table.clear(toolHitboxIndex)
+    local char=LocalPlayer.Character
+    local bp=LocalPlayer:FindFirstChild("Backpack")
+    if char then TH_indexContainer(char) end
+    if bp then TH_indexContainer(bp) end
+    LocalPlayer.CharacterAdded:Connect(function(newChar) TH_indexContainer(newChar) end)
+    LocalPlayer.ChildAdded:Connect(function(ch) if ch:IsA("Backpack") then TH_indexContainer(ch) end end)
+end
+TH_bindAll()
+
+-- Expose KIMUI globals
+_G.__KIMUI_TOOLS_HITBOX_SET_TOGGLE=function(state)
+    Tool_HitboxToggle = state and true or false
+    if Tool_HitboxToggle then TH_applyAll(Tool_HitboxSize or 10)
+    else
+        for _,rec in pairs(toolHitboxIndex) do
+            for _,part in ipairs(rec.parts) do pcall(function() part.Transparency=0.5 end) end
+            rec.appliedSize=nil
+        end
+    end
+end
+_G.__KIMUI_TOOLS_HITBOX_SET_SIZE=function(newSize) Tool_HitboxSize = tonumber(newSize) or Tool_HitboxSize; if Tool_HitboxToggle then TH_applyAll(Tool_HitboxSize) end end
+_G.KIMUI_PLAYER_HITBOX_SET_TOGGLE=function(state) Player_HitboxEnabled = state and true or false; if not Player_HitboxEnabled then for pl,_ in pairs(playerStates) do PH_clearOne(pl) end end end
+_G.__KIMUI_PLAYER_HITBOX_SET_SIZE=function(newSize) Player_HeadSize = tonumber(newSize) or Player_HeadSize; ph_lastEval=0 end
+_G.KIMUI_PLAYER_HITBOX_SET_DISTANCE=function(dist) PH_setRadius(tonumber(dist) or PH_MAX_RADIUS); ph_lastEval=0 end
+_G.KIMUI_PLAYER_HITBOX_INF_TOGGLE=function(state) PH_setInfinite(state); notify("Player Hitbox","INF Distance: "..(PH_INF_DISTANCE and "ON" or "OFF"),1.2) end
+
+-- =========================
+-- Auto Prompt (ProximityPrompt on players)
+-- =========================
+local function boostPrompt(prompt)
+    local old={ HoldDuration=prompt.HoldDuration, MaxActivationDistance=prompt.MaxActivationDistance, RequiresLineOfSight=prompt.RequiresLineOfSight, Enabled=prompt.Enabled }
+    pcall(function()
+        prompt.Enabled=true; prompt.HoldDuration=0; prompt.RequiresLineOfSight=false
+        prompt.MaxActivationDistance=math.max(old.MaxActivationDistance or 8, BoostMaxDistance)
+    end)
+    return old
+end
+local function restorePrompt(prompt, old) pcall(function() if not old then return end prompt.HoldDuration=old.HoldDuration; prompt.MaxActivationDistance=old.MaxActivationDistance; prompt.RequiresLineOfSight=old.RequiresLineOfSight; prompt.Enabled=old.Enabled end) end
+local function firePromptFast(prompt, tries)
+    tries=tries or 12
+    local fp = rawget(_G,"fireproximityprompt") or (getgenv and getgenv().fireproximityprompt) or _G.fireproximityprompt or fireproximityprompt
+    local function manual() prompt:InputHoldBegin(); task.wait(); prompt:InputHoldEnd() end
+    for _=1,tries do local ok=pcall(function() if typeof(fp)=="function" then fp(prompt,1) else manual() end end); if ok then return true end; task.wait(0.01) end
+    return false
+end
+local function tryFirePromptInPlayers()
+    if not AutoPromptEnabled then return end
+    local tNow = now()
+    if tNow < _op_nextTick then return end
+    _op_nextTick = tNow + 0.33
+
+    local hrp = getHRP(); if not hrp then return end
+    local myPos = hrp.Position
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl ~= LocalPlayer and pl.Character then
+            local chr = pl.Character
+            local hrp2 = chr:FindFirstChild("HumanoidRootPart")
+            local dist = hrp2 and (hrp2.Position - myPos).Magnitude or 1e9
+            if dist <= PlayerPromptRadius then
+                for _, d in ipairs(chr:GetDescendants()) do
+                    if d:IsA("ProximityPrompt") and d.Enabled then
+                        local last = lastPromptFiredAt[d] or 0
+                        if tNow - last >= AutoPromptCooldown then
+                            local old = boostPrompt(d)
+                            task.wait()
+                            if firePromptFast(d, 10) then lastPromptFiredAt[d] = tNow end
+                            restorePrompt(d, old)
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+task.spawn(function() while true do pcall(tryFirePromptInPlayers) task.wait(0.05) end end)
+
+-- =========================
+-- FOV + Aiming Mark UI
+-- =========================
+local function getAimCenter()
+    if aimingMark_enabled and aimingMark_pos then return aimingMark_pos end
+    return fov_pos or viewportCenter()
+end
+
+local function ensureFovGui()
+    if not fovGui then
+        fovGui = Instance.new("ScreenGui")
+        fovGui.Name = "KIMUI_FOV"
+        fovGui.ResetOnSpawn = false
+        fovGui.IgnoreGuiInset = true
+        fovGui.DisplayOrder = 9998
+        fovGui.Parent = PlayerGui
+
+        fovFrame = Instance.new("Frame")
+        fovFrame.AnchorPoint = Vector2.new(0.5,0.5)
+        fovFrame.BackgroundTransparency = 1
+        fovFrame.Active = true
+        fovFrame.Parent = fovGui
+
+        fovStroke = Instance.new("UIStroke")
+        fovStroke.Thickness = 1
+        fovStroke.Color = Color3.fromRGB(255,0,0)
+        fovStroke.Parent = fovFrame
+
+        local corner=Instance.new("UICorner")
+        corner.CornerRadius=UDim.new(1,0)
+        corner.Parent=fovFrame
+
+        fovDragHit = Instance.new("TextButton")
+        fovDragHit.BackgroundTransparency=1
+        fovDragHit.Text=""
+        fovDragHit.AutoButtonColor=false
+        fovDragHit.Active=true
+        fovDragHit.Parent=fovFrame
+
+        fovDragHit.InputBegan:Connect(function(input)
+            if aimingMark_enabled then return end
+            if not fov_locked and (input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch) then
+                fov_dragging=true; drag_start=Vector2.new(input.Position.X,input.Position.Y); fov_pos_start=fov_pos
+                input.Changed:Connect(function() if input.UserInputState==Enum.UserInputState.End then fov_dragging=false end end)
+            end
+        end)
+
+        UserInputService.InputChanged:Connect(function(input)
+            if aimingMark_enabled then return end
+            if fov_dragging and (input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch) then
+                local delta = Vector2.new(input.Position.X,input.Position.Y) - drag_start
+                fov_pos = v2_clampToViewport(Vector2.new(fov_pos_start.X + delta.X, fov_pos_start.Y + delta.Y), fov_value)
+            end
+        end)
+    end
+end
+
+local function ensureAimingMarkGui()
+    if aimingMarkGui and aimingMarkGui.Parent then return end
+    aimingMarkGui = Instance.new("ScreenGui")
+    aimingMarkGui.Name = "KIMUI_AimMark"
+    aimingMarkGui.ResetOnSpawn=false
+    aimingMarkGui.IgnoreGuiInset=true
+    aimingMarkGui.DisplayOrder=10000
+    aimingMarkGui.Parent = PlayerGui
+
+    aimingMarkBtn = Instance.new("TextButton")
+    aimingMarkBtn.Name = "AimMark"
+    aimingMarkBtn.BackgroundTransparency = 1
+    aimingMarkBtn.Text = ""
+    aimingMarkBtn.Size = UDim2.fromOffset(aimingMark_size, aimingMark_size)
+    aimingMarkBtn.AnchorPoint = Vector2.new(0.5,0.5)
+    aimingMarkBtn.Parent = aimingMarkGui
+
+    local circle = Instance.new("Frame")
+    circle.Name = "Circle"
+    circle.Size = UDim2.fromScale(1,1)
+    circle.BackgroundTransparency = 1
+    circle.Parent = aimingMarkBtn
+    local uiStroke = Instance.new("UIStroke")
+    uiStroke.Thickness = 2
+    uiStroke.Color = Color3.fromRGB(255,0,0)
+    uiStroke.Parent = circle
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(1,0)
+    uiCorner.Parent = circle
+
+    aimingMark_pos = aimingMark_pos or viewportCenter()
+    aimingMarkBtn.Position = UDim2.fromOffset(aimingMark_pos.X, aimingMark_pos.Y)
+    aimingMarkGui.Enabled = aimingMark_enabled
+
+    aimingMarkBtn.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+            aimingMark_dragging = true
+            drag_start = Vector2.new(i.Position.X, i.Position.Y)
+            fov_pos_start = aimingMark_pos
+            i.Changed:Connect(function()
+                if i.UserInputState==Enum.UserInputState.End then aimingMark_dragging=false end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if aimingMark_dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+            local delta = Vector2.new(i.Position.X,i.Position.Y) - drag_start
+            local newPos = Vector2.new(fov_pos_start.X + delta.X, fov_pos_start.Y + delta.Y)
+            local vp = Camera.ViewportSize
+            newPos = Vector2.new(clamp(newPos.X, 0, vp.X), clamp(newPos.Y, 0, vp.Y))
+            aimingMark_pos = newPos
+            aimingMarkBtn.Position = UDim2.fromOffset(aimingMark_pos.X, aimingMark_pos.Y)
+        end
+    end)
+end
+
+local function updateFovPosRadius(radius)
+    ensureFovGui()
+    ensureAimingMarkGui()
+
+    if not fov_pos then fov_pos = viewportCenter() end
+    if not aimingMark_pos then aimingMark_pos = viewportCenter() end
+
+    local center = getAimCenter()
+    local diam = math.floor(radius*2)
+    fovFrame.Visible = show_fov
+    fovFrame.Size = UDim2.fromOffset(diam, diam)
+    fovFrame.Position = UDim2.fromOffset(center.X, center.Y)
+    fovDragHit.Size = fovFrame.Size; fovDragHit.Position = UDim2.fromOffset(0,0)
+    fovStroke.Color = Color3.fromRGB(255,0,0)
+
+    if hasDrawing and fovCircleDrawing then
+        pcall(function()
+            fovCircleDrawing.Visible=show_fov; fovCircleDrawing.Filled=false; fovCircleDrawing.NumSides=100; fovCircleDrawing.Thickness=1
+            fovCircleDrawing.Radius=radius; fovCircleDrawing.Position=center; fovCircleDrawing.Color=Color3.fromRGB(255,0,0)
+        end)
+    end
+
+    if aimingMarkBtn then
+        aimingMarkGui.Enabled = aimingMark_enabled
+        aimingMarkBtn.Size = UDim2.fromOffset(aimingMark_size, aimingMark_size)
+        aimingMarkBtn.Position = UDim2.fromOffset(aimingMark_pos.X, aimingMark_pos.Y)
+    end
+end
+
+Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+    if not fov_pos then fov_pos=viewportCenter() end
+    if not aimingMark_pos then aimingMark_pos=viewportCenter() end
+    fov_pos=v2_clampToViewport(fov_pos, fov_value)
+    local vp = Camera.ViewportSize
+    aimingMark_pos = Vector2.new(clamp(aimingMark_pos.X, 0, vp.X), clamp(aimingMark_pos.Y, 0, vp.Y))
+    updateFovPosRadius(fov_value)
+end)
+
+-- =========================
+-- Aimbot internals
+-- =========================
+local FOV_MARGIN = 0
+local function onScreenAndInFov(worldPos)
+    local sp,onScr = Camera:WorldToViewportPoint(worldPos)
+    if not onScr then return false end
+    local center = getAimCenter()
+    local dist = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+    return dist <= (fov_value - FOV_MARGIN)
+end
+
+-- LOS
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+rayParams.IgnoreWater = true
+local function hasClearLOS(targetPart)
+    if not (targetPart and targetPart.Parent) then return false end
+    local camPos = Camera.CFrame.Position
+    local targetPos = targetPart.Position + head_offset
+    local dir = (targetPos - camPos)
+    local dist = dir.Magnitude
+    if dist <= 0 then return false end
+    dir = dir.Unit * dist
+    rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+    local result = Workspace:Raycast(camPos, dir, rayParams)
+    if not result then return true end
+    local inst = result.Instance
+    if not inst then return true end
+    return inst:IsDescendantOf(targetPart.Parent)
+end
+
+local function getAimPartFromChar(char)
+    if not char then return end
+    local preferred = char:FindFirstChild(aim_part_choice)
+    if preferred and preferred:IsA("BasePart") then return preferred end
+    return char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso")
+end
+
+local function isEnemy(p)
+    if p==LocalPlayer then return false end
+    if team_lock then local lt,tt=LocalPlayer.Team,p.Team; if lt and tt and lt==tt then return false end end
+    local tname=(p.Team and p.Team.Name) or ""
+    if next(selectedAimbotTeams)~=nil then return selectedAimbotTeams[tname]==true end
+    return true
+end
+
+local function isValidTarget(part)
+    if not part or not part.Parent then return false end
+    local hum=part.Parent:FindFirstChildOfClass("Humanoid"); if not hum or hum.Health<=0 then return false end
+    if not onScreenAndInFov(part.Position + head_offset) then return false end
+    if (part.Position - Camera.CFrame.Position).Magnitude > lock_distance then return false end
+    if wall_check_enabled and not hasClearLOS(part) then return false end
+    return true
+end
+
+local function findBestTarget()
+    local best,bestD=nil,math.huge
+    local center = getAimCenter()
+    for _,pl in ipairs(Players:GetPlayers()) do
+        if isEnemy(pl) and pl.Character then
+            local part=getAimPartFromChar(pl.Character)
+            if part and part:IsA("BasePart") then
+                local sp, onScr = Camera:WorldToViewportPoint(part.Position+head_offset)
+                if onScr then
+                    local d=(Vector2.new(sp.X,sp.Y)-center).Magnitude
+                    if d<bestD and isValidTarget(part) then
+                        bestD=d; best=part
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+local function aimWithOffset(camPos, targetPos)
+    local center = getAimCenter()
+    local vp = Camera.ViewportSize
+    local screenCenter = Vector2.new(vp.X/2, vp.Y/2)
+    local dx = (center.X - screenCenter.X)
+    local dy = (center.Y - screenCenter.Y)
+    local vFov = math.rad(Camera.FieldOfView)
+    local aspect = vp.X / vp.Y
+    local hFov = 2 * math.atan(math.tan(vFov/2) * aspect)
+    local yaw_corr   = -(dx / (vp.X/2)) * (hFov/2)
+    local pitch_corr =  (dy / (vp.Y/2)) * (vFov/2)
+    local base = CFrame.new(camPos, targetPos)
+    return base * CFrame.Angles(pitch_corr, yaw_corr, 0)
+end
+
+local function farAssistStrength(baseStrength, targetPart, dt)
+    if not (farAssist_enabled and targetPart and targetPart.Parent) then return baseStrength end
+    local camPos = Camera.CFrame.Position
+    local targPos = targetPart.Position + head_offset
+    local dist = (targPos - camPos).Magnitude
+    if dist < farAssist_minDist then return baseStrength end
+    local stepBoost = farAssist_lerp * clamp(dt*60, 0, 2)
+    return clamp(baseStrength + stepBoost, 0, 1)
+end
+
+-- main loop
+updateFovPosRadius(fov_value)
+RunService.RenderStepped:Connect(function(dt)
+    updateFovPosRadius(fov_value)
+
+    if not aimbot_enabled then
+        current_target=nil
+        local hum=getHum(); if hum then hum.AutoRotate=true end
+        return
+    end
+
+    if (not current_target) or (not isValidTarget(current_target)) then
+        if now()-last_switch >= switch_cd then current_target=findBestTarget(); last_switch=now() end
+    end
+    if not current_target or not isValidTarget(current_target) then
+        local hum=getHum(); if hum then hum.AutoRotate=true end
+        return
+    end
+
+    local lerpStrength = farAssistStrength(aim_strength, current_target, dt)
+    local targetPos = current_target.Position + head_offset
+    local camPos = Camera.CFrame.Position
+    local desiredCam = aimWithOffset(camPos, targetPos)
+
+    if third_person_lock then
+        local hum, hrp = getHum(), getHRP()
+        if hum and hrp then
+            hum.AutoRotate = false
+            local lookAtOnGround = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)
+            local desiredBody = CFrame.new(hrp.Position, lookAtOnGround)
+            if aim_hard_lock then hrp.CFrame = desiredBody
+            else hrp.CFrame = hrp.CFrame:Lerp(desiredBody, clamp(third_person_lock_power * dt * 60, 0, 1)) end
+        end
+        if aim_hard_lock then Camera.CFrame = desiredCam
+        else Camera.CFrame = Camera.CFrame:Lerp(desiredCam, clamp(lerpStrength * dt * 60, 0, 1)) end
+    else
+        if aim_hard_lock then Camera.CFrame = desiredCam
+        else Camera.CFrame = Camera.CFrame:Lerp(desiredCam, clamp(lerpStrength * dt * 60, 0, 1)) end
+        local hum=getHum(); if hum then hum.AutoRotate=true end
+    end
+end)
+
+-- =========================
+-- UI WIRING (x2zu elements) + WRAPPED DROPDOWN
+-- =========================
+
+-- Main: Auto Prompt + quick toggles
+MainTab:Toggle({
+    Title="Auto Prompt (ใกล้ผู้เล่น)",
+    Desc="กด ProximityPrompt อัตโนมัติในรัศมี",
+    Value=AutoPromptEnabled,
+    Callback=function(s) AutoPromptEnabled=s; notify("Auto Prompt", AutoPromptEnabled and "ON" or "OFF",1.2) end
+})
+MainTab:Textbox({
+    Title="Radius (studs)",
+    Desc="ระยะเช็คผู้เล่น",
+    Placeholder=tostring(PlayerPromptRadius),
+    Callback=function(txt) local n=tonumber(txt); if n and n>1 and n<2000 then PlayerPromptRadius=math.floor(n); notify("Radius","="..PlayerPromptRadius,1) else notify("Radius","กรอก 2-1999",1.5) end end
+})
+MainTab:Textbox({
+    Title="Prompt Cooldown (sec)",
+    Desc="หน่วงระหว่างยิง Prompt",
+    Placeholder=tostring(AutoPromptCooldown),
+    Callback=function(txt) local n=tonumber(txt); if n and n>=0.05 and n<=2 then AutoPromptCooldown=n; notify("Cooldown","="..n.."s",1) else notify("Cooldown","0.05 - 2 เท่านั้น",1.5) end end
+})
+
+-- Tools Hitbox
+ExtraTab:Toggle({
+    Title="Tools Hitbox",
+    Desc="ขยายพาร์ทชื่อ Hitbox ใน Tool",
+    Value=Tool_HitboxToggle,
+    Callback=function(s) _G.__KIMUI_TOOLS_HITBOX_SET_TOGGLE(s); notify("Tools Hitbox", s and "ON" or "OFF",1) end
+})
+ExtraTab:Textbox({
+    Title="Hitbox Size (Tools)",
+    Desc="ขนาดพาร์ท Hitbox",
+    Placeholder=tostring(Tool_HitboxSize),
+    Callback=function(txt) local n=tonumber(txt); if n and n>0 then _G.__KIMUI_TOOLS_HITBOX_SET_SIZE(n); notify("Tools Hitbox","Size="..n,1) else notify("Tools Hitbox","> 0 เท่านั้น",1.2) end end
+})
+
+-- Player Hitbox
+VisualsTab:Toggle({
+    Title="Player Hitbox + ESP",
+    Desc="ขยาย HRP + ป้ายชื่อ + ไฮไลท์",
+    Value=Player_HitboxEnabled,
+    Callback=function(s) _G.KIMUI_PLAYER_HITBOX_SET_TOGGLE(s); notify("Player Hitbox", s and "ON" or "OFF",1) end
+})
+VisualsTab:Textbox({
+    Title="Headbox Size",
+    Desc="ขนาดกล่องหัว (HRP cube)",
+    Placeholder=tostring(Player_HeadSize),
+    Callback=function(txt) local v=tonumber(txt); if v and v>0 then _G.__KIMUI_PLAYER_HITBOX_SET_SIZE(v); notify("Player Hitbox","Size="..v,1) else notify("Player Hitbox","> 0 เท่านั้น",1.2) end end
+})
+VisualsTab:Textbox({
+    Title="Hitbox Distance (studs)",
+    Desc="ระยะตรวจจับผู้เล่น",
+    Placeholder=tostring(PH_MAX_RADIUS),
+    Callback=function(txt) local v=tonumber(txt); if v and v>=10 and v<=PH_RADIUS_MAX_LIMIT then _G.KIMUI_PLAYER_HITBOX_SET_DISTANCE(v); notify("Player Hitbox","Distance="..v,1) else notify("Player Hitbox","10 - "..PH_RADIUS_MAX_LIMIT,1.2) end end
+})
+VisualsTab:Toggle({
+    Title="INF Hitbox Distance",
+    Desc="ไม่จำกัดระยะ",
+    Value=PH_INF_DISTANCE,
+    Callback=function(s) _G.KIMUI_PLAYER_HITBOX_INF_TOGGLE(s) end
+})
+
+-- Team list helper (Teams API safe)
+local function getAllTeamNames()
+    local names = {}
+    local ok = pcall(function()
+        for _,t in ipairs(Teams:GetTeams()) do table.insert(names, t.Name) end
+    end)
+    if not ok or #names == 0 then
+        for _,t in ipairs(Teams:GetChildren()) do
+            if t:IsA("Team") then table.insert(names, t.Name) end
+        end
+    end
+    table.sort(names)
+    return names
+end
+
+-- Team filter (Hitbox) -- via wrapped dropdown
+do
+    local teamNames = getAllTeamNames()
+    if #teamNames == 0 then
+        warn("[KIM UI] No Team instances found. Hitbox team filter will be empty.")
+        notify("Team Filter","ไม่พบ Team ในเซิร์ฟ",3)
+    end
+    -- mark all selected by default
+    for _,n in ipairs(teamNames) do SelectedTeams[n]=true end
+
+    AddDropdown(VisualsTab, {
+        Title="ทีมที่แสดง Hitbox",
+        Options=teamNames,
+        CurrentOption=teamNames, -- initially all selected
+        MultipleOptions=true,
+        Callback=function(opt)
+            -- opt is a table (from lib or fallback)
+            table.clear(SelectedTeams)
+            for _,name in ipairs(opt) do SelectedTeams[name]=true end
+            ph_lastEval=0
+            notify("Team Filter","อัปเดตแล้ว",0.8)
+        end
+    })
+end
+
+-- Aimbot main toggles
+MainTab:Toggle({
+    Title="Enable Aimbot",
+    Desc="เปิด/ปิดระบบเล็ง",
+    Value=aimbot_enabled,
+    Callback=function(s) aimbot_enabled=s; notify("Aimbot", s and "ON" or "OFF",1.0) end
+})
+MainTab:Toggle({
+    Title="Team Lock",
+    Desc="ไม่ล็อกเพื่อนทีมเดียวกัน",
+    Value=team_lock,
+    Callback=function(s) team_lock = s; notify("Team Lock", s and "ON" or "OFF",1.0) end
+})
+MainTab:Toggle({
+    Title="Wall Check (LOS)",
+    Desc="ตรวจเส้นทางมีสิ่งบังคั่น",
+    Value=wall_check_enabled,
+    Callback=function(s) wall_check_enabled = s and true or false; notify("Wall Check", s and "ON" or "OFF",1.0) end
+})
+
+-- Aiming Mark
+MainTab:Toggle({
+    Title="Aiming Mark (จุดลาก)",
+    Desc="ลากจุดเล็งเองได้",
+    Value=aimingMark_enabled,
+    Callback=function(s)
+        aimingMark_enabled=s and true or false
+        ensureAimingMarkGui()
+        aimingMarkGui.Enabled = aimingMark_enabled
+        if aimingMark_enabled and not aimingMark_pos then aimingMark_pos=viewportCenter() end
+        updateFovPosRadius(fov_value)
+        notify("Aiming Mark", s and "ON" or "OFF",1.0)
+    end
+})
+MainTab:Textbox({
+    Title="Aiming Mark Size (px)",
+    Desc="4 - 300 px",
+    Placeholder=tostring(aimingMark_size),
+    Callback=function(txt)
+        local n=tonumber(txt)
+        if n and n>=4 and n<=300 then aimingMark_size=math.floor(n); updateFovPosRadius(fov_value); notify("AimMark","Size="..aimingMark_size,1)
+        else notify("AimMark","ใส่ 4 - 300",1.2) end
+    end
+})
+MainTab:Button({
+    Title="Center Aiming Mark",
+    Desc="จัดจุดเล็งกลับกลางจอ",
+    Callback=function() aimingMark_pos=viewportCenter(); updateFovPosRadius(fov_value); notify("AimMark","Centered",0.8) end
+})
+
+-- Far-range Assist
+SettingsTab:Toggle({
+    Title="Far-Range Assist",
+    Desc="ช่วยเร่งความลื่นเมื่อไกล",
+    Value=farAssist_enabled,
+    Callback=function(s) farAssist_enabled = s and true or false; if farAssist_enabled then fov_home_pos = fov_pos and fov_pos or viewportCenter() end; notify("Far Assist", s and "ON" or "OFF",1) end
+})
+SettingsTab:Textbox({
+    Title="Min Distance (studs)",
+    Desc="เริ่มช่วยเมื่อเกินระยะนี้",
+    Placeholder=tostring(farAssist_minDist),
+    Callback=function(txt) local n=tonumber(txt); if n and n>0 then farAssist_minDist=n else notify("Far Assist","> 0 เท่านั้น",1.2) end end
+})
+SettingsTab:Textbox({
+    Title="Smooth Boost (0 - 1)",
+    Desc="แรงบูสต์ต่อเฟรม",
+    Placeholder=tostring(farAssist_lerp),
+    Callback=function(txt) local n=tonumber(txt); if n and n>=0 and n<=1 then farAssist_lerp=n else notify("Far Assist","0 - 1 เท่านั้น",1.2) end end
+})
+
+-- FOV + aim params
+SettingsTab:Toggle({
+    Title="Show FOV Circle",
+    Desc="โชว์วง FOV",
+    Value=show_fov,
+    Callback=function(s) show_fov=s; updateFovPosRadius(fov_value) end
+})
+SettingsTab:Textbox({
+    Title="FOV Radius (px)",
+    Desc="10 - 2500",
+    Placeholder=tostring(fov_value),
+    Callback=function(txt) local n=tonumber(txt); if n and n>=10 and n<=2500 then fov_value=n; updateFovPosRadius(fov_value) else notify("FOV","10 - 2500 เท่านั้น",1.2) end end
+})
+SettingsTab:Toggle({
+    Title="Lock FOV Position",
+    Desc="ล็อกไม่ให้ลากวง",
+    Value=fov_locked,
+    Callback=function(s) fov_locked=s end
+})
+SettingsTab:Button({
+    Title="Center FOV",
+    Desc="รีเซ็ตวง FOV กลางจอ",
+    Callback=function() fov_pos=nil; updateFovPosRadius(fov_value); notify("FOV","Centered",0.8) end
+})
+SettingsTab:Textbox({
+    Title="Lock Distance (studs)",
+    Desc="ระยะล็อกสูงสุด",
+    Placeholder=tostring(lock_distance),
+    Callback=function(txt) local n=tonumber(txt); if n and n>10 then lock_distance=n else notify("Lock Distance","> 10 เท่านั้น",1.2) end end
+})
+SettingsTab:Textbox({
+    Title="Switch Cooldown (sec)",
+    Desc="ดีเลย์เปลี่ยนเป้า",
+    Placeholder=tostring(switch_cd),
+    Callback=function(txt) local n=tonumber(txt); if n and n>=0 then switch_cd=n else notify("Switch CD",">= 0 เท่านั้น",1.2) end end
+})
+
+-- Aim Part (single select) via wrapped dropdown
+AddDropdown(SettingsTab, {
+    Title="Aim Part",
+    Options={"Head","HumanoidRootPart","UpperTorso"},
+    CurrentOption={"Head"},
+    MultipleOptions=false,
+    Callback=function(opt)
+        local v = opt[1]
+        if v=="Head" or v=="HumanoidRootPart" or v=="UpperTorso" then
+            aim_part_choice=v; notify("Aim Part","="..v,0.8)
+        else
+            aim_part_choice="Head"; notify("Aim Part","Head (fallback)",1.0)
+        end
+    end
+})
+
+SettingsTab:Textbox({
+    Title="Head Offset Y",
+    Desc="เช่น 0.18",
+    Placeholder=tostring(head_offset.Y),
+    Callback=function(txt) local n=tonumber(txt); if n then head_offset=Vector3.new(0,n,0) else notify("Head Offset","ตัวเลขเท่านั้น",1.2) end end
+})
+SettingsTab:Textbox({
+    Title="Aim Strength (0 - 1)",
+    Desc="แรง Lerp เล็ง",
+    Placeholder=tostring(aim_strength),
+    Callback=function(txt) local n=tonumber(txt); if n and n>=0 and n<=1 then aim_strength=n else notify("Aim Strength","0 - 1 เท่านั้น",1.2) end end
+})
+SettingsTab:Toggle({
+    Title="Hard Lock",
+    Desc="หมุนกล้องทันที",
+    Value=aim_hard_lock,
+    Callback=function(s) aim_hard_lock=s end
+})
+SettingsTab:Toggle({
+    Title="Third Person Lock",
+    Desc="หมุนตัวละครตามเป้า",
+    Value=third_person_lock,
+    Callback=function(s) third_person_lock=s end
+})
+SettingsTab:Textbox({
+    Title="Third Person Power (0 - 1)",
+    Desc="แรงหมุนตัว",
+    Placeholder=tostring(third_person_lock_power),
+    Callback=function(txt) local n=tonumber(txt); if n and n>=0 and n<=1 then third_person_lock_power=n else notify("Third Person Power","0 - 1 เท่านั้น",1.2) end end
+})
+
+-- Aimbot team filter (multi) — wrapped dropdown
+do
+    local aimbotTeamNames = getAllTeamNames()
+    AddDropdown(MainTab, {
+        Title="Target Teams (ปล่อยว่าง=ทุกทีมศัตรู)",
+        Options=aimbotTeamNames,
+        CurrentOption={}, -- none by default
+        MultipleOptions=true,
+        Callback=function(opt)
+            table.clear(selectedAimbotTeams)
+            for _,name in ipairs(opt) do selectedAimbotTeams[name]=true end
+            notify("Aim Teams","อัปเดตแล้ว",0.8)
+        end
+    })
+end
+
+-- Quick reset
+ExtraTab:Button({
+    Title="Reset Aim Settings",
+    Desc="รีเซ็ตคอนฟิกเล็งทั้งหมด",
+    Callback=function()
+        aimbot_enabled=false; team_lock=true; fov_value=150; lock_distance=1000
+        show_fov=true; aim_part_choice="Head"; aim_strength=0.9; aim_hard_lock=false; third_person_lock=false; third_person_lock_power=0.9
+        wall_check_enabled=true; farAssist_enabled=false; farAssist_minDist=150; farAssist_lerp=0.30
+        aimingMark_enabled=false; aimingMark_size=28; aimingMark_pos=viewportCenter(); aimingMark_dragging=false
+        fov_locked=true; head_offset=Vector3.new(0,0.18,0); switch_cd=0.12; selectedAimbotTeams={}
+        PH_setInfinite(false); PH_setRadius(120); ph_lastEval=0
+        updateFovPosRadius(fov_value)
+        notify("KIM UI","Reset to defaults",1.2)
+    end
+})
+
+-- Hotkeys (toggle window ด้วย LeftControl ตามเทมเพลตแล้ว)
+UserInputService.InputBegan:Connect(function(input,gp)
+    if gp then return end
+    if input.KeyCode==Enum.KeyCode.F7 then
+        AutoPromptEnabled = not AutoPromptEnabled
+        notify("Auto Prompt", AutoPromptEnabled and "ON" or "OFF",1.2)
+    end
+end)
+
+-- =========================
+-- Final Notify
+-- =========================
+notify("KIM UI — ULTRA","Loaded ✅ | Dropdown fixed + fallback + warnings",4)
