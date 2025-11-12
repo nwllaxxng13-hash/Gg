@@ -1,246 +1,444 @@
--- AutoFarm Tab + Toggle GUI (พร้อม loop ที่เรียกใช้สคริปต์ AutoFarm ที่ให้มา)
--- วางไฟล์นี้ไว้ก่อน/หลังสคริปต์ AutoFarm ที่คุณให้มาได้เลย
+-- =================================================
+-- KIM UI — Auto Farm + Auto Server Hop (Full)
+-- Adds: Auto Farm tab + AutoHop when players <= threshold
+--        Auto-execute on hop (via queue_on_teleport URL or exploit queue)
+-- Usage: Paste into executor after your KIM UI template is loaded.
+-- NOTE: For Auto-Execute after hop, set AUTO_EXECUTE_URL to a raw URL hosting this script.
+-- =================================================
 
--- ===== Config / helpers =====
+-- ====== Dependencies (assumes base KIM UI template variables exist) ======
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local LocalPlayer = Players.LocalPlayer
-
--- ensure global control var exists
-if _G.START == nil then _G.START = false end
-
--- ===== Simple ScreenGui Toggle (Auto Farm Tab) =====
-local function createAutoFarmGui()
-    -- do nothing if already created
-    if game.CoreGui:FindFirstChild("KIM_UI_AutoFarm") then
-        return
-    end
-
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "KIM_UI_AutoFarm"
-    screenGui.ResetOnSpawn = false
-    screenGui.DisplayOrder = 9999
-    screenGui.Parent = game.CoreGui
-
-    local frame = Instance.new("Frame")
-    frame.Name = "AutoFarmFrame"
-    frame.Size = UDim2.new(0, 220, 0, 120)
-    frame.Position = UDim2.new(0, 20, 0, 80)
-    frame.BackgroundTransparency = 0.15
-    frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
-    frame.BorderSizePixel = 0
-    frame.Parent = screenGui
-    frame.ClipsDescendants = true
-
-    local title = Instance.new("TextLabel")
-    title.Name = "Title"
-    title.Size = UDim2.new(1, 0, 0, 28)
-    title.Position = UDim2.new(0, 0, 0, 0)
-    title.BackgroundTransparency = 1
-    title.Font = Enum.Font.GothamBold
-    title.TextSize = 16
-    title.TextColor3 = Color3.fromRGB(255,255,255)
-    title.Text = "KIM UI — Auto Farm"
-    title.Parent = frame
-
-    local toggleLabel = Instance.new("TextLabel")
-    toggleLabel.Name = "ToggleLabel"
-    toggleLabel.Size = UDim2.new(0.6, 0, 0, 30)
-    toggleLabel.Position = UDim2.new(0, 8, 0, 36)
-    toggleLabel.BackgroundTransparency = 1
-    toggleLabel.Font = Enum.Font.Gotham
-    toggleLabel.TextSize = 14
-    toggleLabel.TextColor3 = Color3.fromRGB(220,220,220)
-    toggleLabel.Text = "Auto Farm"
-    toggleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    toggleLabel.Parent = frame
-
-    local toggleBtn = Instance.new("TextButton")
-    toggleBtn.Name = "ToggleBtn"
-    toggleBtn.Size = UDim2.new(0, 80, 0, 30)
-    toggleBtn.Position = UDim2.new(0.6, -4, 0, 34)
-    toggleBtn.BackgroundTransparency = 0
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
-    toggleBtn.BorderSizePixel = 0
-    toggleBtn.Font = Enum.Font.Gotham
-    toggleBtn.TextSize = 14
-    toggleBtn.TextColor3 = Color3.fromRGB(255,255,255)
-    toggleBtn.Text = "OFF"
-    toggleBtn.Parent = frame
-
-    local hint = Instance.new("TextLabel")
-    hint.Name = "Hint"
-    hint.Size = UDim2.new(1, -10, 0, 28)
-    hint.Position = UDim2.new(0, 6, 0, 74)
-    hint.BackgroundTransparency = 1
-    hint.Font = Enum.Font.Gotham
-    hint.TextSize = 12
-    hint.TextColor3 = Color3.fromRGB(180,180,180)
-    hint.Text = "Press to toggle. Script tries to be safe with pcall."
-    hint.TextXAlignment = Enum.TextXAlignment.Left
-    hint.Parent = frame
-
-    -- Dragging support
-    local dragging, dragInput, dragStart, startPos
-    frame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = input.Position
-            startPos = frame.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
-    end)
-    frame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement then
-            dragInput = input
-        end
-    end)
-    game:GetService("UserInputService").InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - dragStart
-            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-
-    -- Toggle logic
-    toggleBtn.MouseButton1Click:Connect(function()
-        _G.START = not _G.START
-        if _G.START then
-            toggleBtn.Text = "ON"
-            toggleBtn.BackgroundColor3 = Color3.fromRGB(20,120,20)
-        else
-            toggleBtn.Text = "OFF"
-            toggleBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
-        end
-    end)
-
-    -- initialize state visuals
-    if _G.START then
-        toggleBtn.Text = "ON"
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(20,120,20)
-    else
-        toggleBtn.Text = "OFF"
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
-    end
-end
-
--- create the GUI
-pcall(function() createAutoFarmGui() end)
-
--- ===== Your AutoFarm logic (cleaned & safe-wrapped) =====
--- Paste your original AutoFarm code here or require it as a module.
--- I'll embed your provided logic inside a safe loop that reacts to _G.START.
-
--- ---- begin embedded AutoFarm logic ----
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
 
-local GameValues = ReplicatedStorage:WaitForChild("GameValues")
-local SlideRemote = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Knit"):WaitForChild("Services"):WaitForChild("BallService"):WaitForChild("RE"):WaitForChild("Slide")
-local ShootRemote = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Knit"):WaitForChild("Services"):WaitForChild("BallService"):WaitForChild("RE"):WaitForChild("Shoot")
-local GoalsFolder = workspace:WaitForChild("Goals")
-local AwayGoal, HomeGoal = GoalsFolder.Away, GoalsFolder.Home
-
-local function IsInGame()
-    return GameValues.State.Value == "Playing"
+-- ensure Window, addWidget, notify, SaveTick exist from template
+if not Window or not addWidget or not notify then
+    warn("[KIM UI AutoFarm] KIM UI functions not found. Make sure to run after the main template.")
 end
 
-local function IsVisitor()
-    -- guard for nil
+-- ====== AutoFarm + Hop Config (defaults) ======
+local AutoFarmEnabled = false
+local AutoJoinIfVisitor = true
+local ShootPower = 60
+local TeleportYOffset = 14
+local TeleportRandomRange = 20
+local TryStealDelay = 0 -- seconds between steal attempts (0 = no wait)
+local UseFastLoop = true -- use Heartbeat for faster loop (true) else RenderStepped
+local HopEnabled = false
+local HopThreshold = 4 -- hop when number of players in server <= this
+local HopCooldown = 10 -- seconds between hop attempts
+local AutoExecuteAfterHop = false
+local AUTO_EXECUTE_URL = "" -- <<--- PUT your raw URL here if you want auto-execute after hop
+local PreferQueueString = false -- if true, attempts to queue the raw script string instead of URL (may be large)
+
+-- UI state
+local LastHopAt = 0
+local IsHopping = false
+
+-- Remotes (guarded)
+local Knit = nil
+pcall(function() Knit = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Knit") end)
+local GameValues = ReplicatedStorage:FindFirstChild("GameValues")
+local SlideRemote, ShootRemote = nil, nil
+local GoalsFolder = Workspace:FindFirstChild("Goals")
+local AwayGoal = GoalsFolder and GoalsFolder:FindFirstChild("Away")
+local HomeGoal = GoalsFolder and GoalsFolder:FindFirstChild("Home")
+
+if Knit and pcall(function() return Knit.Services end) then
+    pcall(function()
+        SlideRemote = Knit.Services.BallService.RE.Slide
+        ShootRemote = Knit.Services.BallService.RE.Shoot
+    end)
+end
+
+-- ====== Utilities ======
+local function safeNotify(t, d, s)
+    pcall(function() if notify then notify(t,d,s) else game.StarterGui:SetCore("SendNotification",{Title=t,Text=d,Duration=s or 2}) end end)
+end
+
+local function isInGame()
+    return GameValues and GameValues.State and GameValues.State.Value == "Playing"
+end
+
+local function isVisitor()
     return LocalPlayer.Team and LocalPlayer.Team.Name == "Visitor"
 end
 
-local function JoinGame()
-    if not IsVisitor() then return end
-    for _, v in ipairs(ReplicatedStorage:WaitForChild("Teams"):GetDescendants()) do
-        if v:IsA("ObjectValue") and v.Value == nil then
-            local args = {string.sub(v.Parent.Name, 1, #v.Parent.Name - 4), v.Name}
-            pcall(function()
-                ReplicatedStorage.Packages.Knit.Services.TeamService.RE.Select:FireServer(unpack(args))
-            end)
+-- pick server to hop to (Roblox public servers API)
+local function findServerToHop(threshold)
+    threshold = tonumber(threshold) or HopThreshold
+    local placeId = tostring(game.PlaceId)
+    local url = ("https://games.roblox.com/v1/games/%s/servers/Public?sortOrder=Asc&limit=100"):format(placeId)
+    local ok, res = pcall(function() return HttpService:JSONDecode(game:HttpGet(url, true)) end)
+    if not ok or not res or not res.data then return nil, "fetch_failed" end
+
+    local curJob = game.JobId
+    local candidate = nil
+    for _, s in ipairs(res.data) do
+        local players = s.playing or s.maxPlayers and s.maxPlayers - (s.maxPlayers - (s.playing or 0)) or s.playing
+        local pcount = tonumber(s.playing) or 0
+        if s.id and s.id ~= curJob then
+            -- pick server with players <= threshold but > 0 (avoid empty server if desired)
+            if pcount <= threshold and pcount > 0 then
+                candidate = s
+                break
+            end
         end
+    end
+
+    -- If nothing matched (<=threshold and >0) then try any server with < maxPlayers
+    if not candidate then
+        for _, s in ipairs(res.data) do
+            if s.id and s.id ~= curJob then
+                local pcount = tonumber(s.playing) or 0
+                local maxp = tonumber(s.maxPlayers) or 0
+                if maxp > 0 and pcount < maxp then
+                    candidate = s
+                    break
+                end
+            end
+        end
+    end
+
+    if candidate then
+        return candidate, nil
+    end
+    return nil, "not_found"
+end
+
+local function hopToServer(server)
+    if not server or not server.id then return false, "invalid_server" end
+    pcall(function() IsHopping = true end)
+    local placeId = game.PlaceId
+    local jobId = server.id
+    safeNotify("AutoHop","Teleporting to new server...",2)
+    -- Teleport
+    local success, err = pcall(function()
+        TeleportService:TeleportToPlaceInstance(placeId, jobId, LocalPlayer)
+    end)
+    if not success then
+        safeNotify("AutoHop","Teleport failed: "..tostring(err),3)
+        pcall(function() IsHopping = false end)
+        return false, err
+    end
+    return true
+end
+
+-- queue_on_teleport helper that tries common variants
+local function queueOnTeleportWithURL(url)
+    if not url or url == "" then return false, "no_url" end
+    local q = nil
+    local payload = ("local s = pcall(function() loadstring(game:HttpGet(%q))() end)"):format(url)
+    -- try syn
+    pcall(function()
+        if syn and syn.queue_on_teleport then
+            syn.queue_on_teleport(payload)
+            q = "syn"
+        elseif queue_on_teleport then
+            queue_on_teleport(payload)
+            q = "queue_on_teleport"
+        elseif fluxus and fluxus.queue_on_teleport then
+            fluxus.queue_on_teleport(payload)
+            q = "fluxus"
+        elseif secure_load and secure_load.queue_on_teleport then
+            secure_load.queue_on_teleport(payload)
+            q = "secure_load"
+        end
+    end)
+    if q then return true, q end
+    return false, "no_queue_func"
+end
+
+-- attempt to queue raw string (may be large) — try common functions
+local function queueOnTeleportWithString(codeString)
+    if not codeString or codeString == "" then return false, "no_code" end
+    local q = nil
+    pcall(function()
+        if syn and syn.queue_on_teleport then
+            syn.queue_on_teleport(codeString)
+            q = "syn"
+        elseif queue_on_teleport then
+            queue_on_teleport(codeString)
+            q = "queue_on_teleport"
+        elseif fluxus and fluxus.queue_on_teleport then
+            fluxus.queue_on_teleport(codeString)
+            q = "fluxus"
+        end
+    end)
+    if q then return true, q end
+    return false, "no_queue_func"
+end
+
+-- Auto-execute setup: prefer URL (AUTO_EXECUTE_URL), else nothing. UI controls will set these.
+local function setupAutoExecute()
+    if not AutoExecuteAfterHop then return false, "disabled" end
+    if AUTO_EXECUTE_URL and AUTO_EXECUTE_URL ~= "" then
+        local ok, info = queueOnTeleportWithURL(AUTO_EXECUTE_URL)
+        if ok then
+            safeNotify("AutoExec","Queued URL for teleport via "..tostring(info),2)
+            return true, "url_queued"
+        else
+            safeNotify("AutoExec","Queue URL failed: "..tostring(info),3)
+            return false, info
+        end
+    else
+        safeNotify("AutoExec","No AUTO_EXECUTE_URL set — cannot auto-exec after hop",4)
+        return false, "no_url"
     end
 end
 
-local function StealBall()
-    if not IsInGame() then return end
-    local LocalCharacter = LocalPlayer.Character
-    local LocalHumanoidRootPart = LocalCharacter and LocalCharacter:FindFirstChild("HumanoidRootPart")
-    local Football = workspace:FindFirstChild("Football")
+-- ====== AutoFarm core functions (steal, shoot, teleport ball) ======
+local function tryJoinTeamIfVisitor()
+    if not AutoJoinIfVisitor then return end
+    if not isVisitor() then return end
+    pcall(function()
+        local TeamsContainer = ReplicatedStorage:FindFirstChild("Teams") or ReplicatedStorage
+        for _, v in ipairs(TeamsContainer:GetDescendants()) do
+            if v:IsA("ObjectValue") and v.Value == nil then
+                local args = {string.sub(v.Parent.Name, 1, #v.Parent.Name - 4), v.Name}
+                pcall(function()
+                    if Knit and Knit.Services and Knit.Services.TeamService and Knit.Services.TeamService.RE and Knit.Services.TeamService.RE.Select then
+                        Knit.Services.TeamService.RE.Select:FireServer(unpack(args))
+                    end
+                end)
+                break
+            end
+        end
+    end)
+end
 
-    if LocalHumanoidRootPart and Football and Football.Char.Value ~= LocalPlayer.Character then
-        LocalHumanoidRootPart.CFrame = Football.CFrame
+local function stealBallAttempt()
+    if not isInGame() then return end
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local Football = Workspace:FindFirstChild("Football")
+    if hrp and Football and Football:FindFirstChild("Char") and Football.Char.Value ~= char then
+        hrp.CFrame = Football.CFrame
     end
-
-    for _, OtherPlayer in ipairs(Players:GetPlayers()) do
-        if OtherPlayer ~= LocalPlayer and OtherPlayer.Team ~= LocalPlayer.Team then
-            local OtherCharacter = OtherPlayer.Character
-            local OtherFootball = OtherCharacter and OtherCharacter:FindFirstChild("Football")
-            local OtherHRP = OtherCharacter and OtherCharacter:FindFirstChild("HumanoidRootPart")
-            
-            if OtherFootball and OtherHRP and LocalHumanoidRootPart then
-                LocalHumanoidRootPart.CFrame = OtherFootball.CFrame
-                pcall(function() SlideRemote:FireServer() end)
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl ~= LocalPlayer and pl.Team ~= LocalPlayer.Team then
+            local ch = pl.Character
+            local of = ch and ch:FindFirstChild("Football")
+            local ohrp = ch and ch:FindFirstChild("HumanoidRootPart")
+            if of and ohrp and hrp then
+                hrp.CFrame = of.CFrame
+                pcall(function() if SlideRemote then SlideRemote:FireServer() end end)
                 break
             end
         end
     end
 end
 
--- Main RenderStepped loop (safe-wrapped)
-coroutine.wrap(function()
-    RunService.RenderStepped:Connect(function()
-        if not _G.START then return end
+local function shootIfHaveBall()
+    local char = LocalPlayer.Character
+    local pb = char and char:FindFirstChild("Football")
+    if pb then
         pcall(function()
-            JoinGame()
-            if IsVisitor() and not IsInGame() then return end
-            StealBall()
-            
-            local LocalCharacter = LocalPlayer.Character
-            local PlayerFootball = LocalCharacter and LocalCharacter:FindFirstChild("Football")
-
-            if PlayerFootball then
-                pcall(function()
-                    ShootRemote:FireServer(60, nil, nil, Vector3.new(-0.6976264715194702, -0.3905344605445862, -0.6006664633750916))
-                end)
-            end
-
-            local Football = workspace:FindFirstChild("Football")
-            if Football and Football.Char.Value ~= LocalPlayer.Character then return end
-
-            if Football and Football:FindFirstChild("BodyVelocity") then
-                Football.BodyVelocity:Destroy()
-            end
-
-            if Football and LocalPlayer.Team then
-                local Goal = LocalPlayer.Team.Name == "Away" and AwayGoal or HomeGoal
-                local BV = Instance.new("BodyVelocity")
-                BV.Velocity = Vector3.new(0, 0, 0)
-                BV.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                BV.Parent = Football
-
-                Football.CFrame = Goal.CFrame * CFrame.new(0, 14, math.random(-20, 20))
-
-                task.delay(0.1, function()
-                    if BV and BV.Parent then
-                        BV:Destroy()
-                    end
-                end)
+            if ShootRemote then
+                ShootRemote:FireServer(ShootPower, nil, nil, Vector3.new(-0.6976264715194702, -0.3905344605445862, -0.6006664633750916))
             end
         end)
-    end)
-end)()
--- ---- end embedded AutoFarm logic ----
-
--- optional: expose a function to toggle from other scripts
-_G.ToggleAutoFarm = function(val)
-    if type(val) == "boolean" then
-        _G.START = val
-    else
-        _G.START = not _G.START
     end
 end
+
+local function teleportBallToGoal()
+    local Football = Workspace:FindFirstChild("Football")
+    if not Football or not Football:FindFirstChild("Char") then return end
+    if Football.Char.Value ~= LocalPlayer.Character then return end
+    if Football:FindFirstChild("BodyVelocity") then
+        pcall(function() Football.BodyVelocity:Destroy() end)
+    end
+    if LocalPlayer.Team and (AwayGoal or HomeGoal) then
+        local Goal = LocalPlayer.Team.Name == "Away" and AwayGoal or HomeGoal
+        if Goal then
+            local BV = Instance.new("BodyVelocity")
+            BV.Velocity = Vector3.new(0,0,0)
+            BV.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            BV.Parent = Football
+            Football.CFrame = Goal.CFrame * CFrame.new(0, TeleportYOffset, math.random(-TeleportRandomRange, TeleportRandomRange))
+            task.delay(0.1, function() if BV and BV.Parent then BV:Destroy() end end)
+        end
+    end
+end
+
+-- ====== AutoHop watcher ======
+local function serverPlayerCount()
+    return #Players:GetPlayers()
+end
+
+local function tryAutoHopNow()
+    if not HopEnabled then return end
+    if IsHopping then return end
+    if tick() - LastHopAt < HopCooldown then return end
+    local curPlayers = serverPlayerCount()
+    if curPlayers <= HopThreshold then
+        LastHopAt = tick()
+        safeNotify("AutoHop","Server low: "..tostring(curPlayers).." <= "..tostring(HopThreshold)..". Searching server...",2)
+        local srv, err = findServerToHop(HopThreshold)
+        if not srv then
+            safeNotify("AutoHop","No target server found ("..tostring(err)..")",2.5)
+            return
+        end
+        -- try queue auto-exec before hopping (best-effort)
+        if AutoExecuteAfterHop then
+            local ok, info = setupAutoExecute()
+            if not ok then safeNotify("AutoExec","Queue failed: "..tostring(info),2.5) end
+        end
+        local ok, teleterr = pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, srv.id, LocalPlayer) end)
+        if not ok then safeNotify("AutoHop","Teleport failed: "..tostring(teleterr),3) end
+    end
+end
+
+-- ====== Main loop (fast) ======
+local AF_conn = nil
+local function startAutoFarmLoop()
+    if AF_conn then return end
+    local loopFn = function(dt)
+        if not AutoFarmEnabled then return end
+        pcall(function()
+            tryJoinTeamIfVisitor()
+            if isVisitor() and not isInGame() then return end
+
+            stealBallAttempt()
+            if TryStealDelay > 0 then task.wait(TryStealDelay) end
+
+            shootIfHaveBall()
+            teleportBallToGoal()
+            -- attempt hop check
+            tryAutoHopNow()
+        end)
+    end
+
+    if UseFastLoop then
+        AF_conn = RunService.Heartbeat:Connect(loopFn)
+    else
+        AF_conn = RunService.RenderStepped:Connect(loopFn)
+    end
+end
+
+local function stopAutoFarmLoop()
+    if AF_conn then
+        AF_conn:Disconnect()
+        AF_conn = nil
+    end
+end
+
+-- Ensure loop started (but respects AutoFarmEnabled)
+startAutoFarmLoop()
+
+-- ====== UI Integration (KIM UI) ======
+local AF_Tab = Window and Window:Tab and Window:Tab({Title="Auto Farm", Icon="navigation"}) or nil
+local AF_Section = AF_Tab and AF_Tab:Section and AF_Tab:Section({Title="Main"}) or nil
+
+if AF_Tab then
+    addWidget(AF_Tab,"Toggle",{Title="Enable Auto Farm",Desc="เปิด/ปิด Auto Farm (Steal -> Shoot -> Teleport)",Value=AutoFarmEnabled,Callback=function(v)
+        AutoFarmEnabled = v and true or false
+        if AutoFarmEnabled then
+            startAutoFarmLoop()
+            safeNotify("Auto Farm","Enabled",1.2)
+        else
+            safeNotify("Auto Farm","Disabled",1.2)
+        end
+        if SaveTick then SaveTick() end
+    end})
+
+    addWidget(AF_Tab,"Toggle",{Title="Use Faster Loop (Heartbeat)",Desc="ใช้ Heartbeat loop เพื่อลูปเร็วขึ้น",Value=UseFastLoop,Callback=function(v)
+        UseFastLoop = v and true or false
+        -- restart loop connection
+        stopAutoFarmLoop()
+        startAutoFarmLoop()
+        if SaveTick then SaveTick() end
+    end})
+
+    addWidget(AF_Tab,"Textbox",{Title="Steal Attempt Delay (s)",Desc="Delay between steal attempts. 0 = fastest",Placeholder=tostring(TryStealDelay),Callback=function(t)
+        local n = tonumber(t)
+        if n and n >= 0 then TryStealDelay = n if SaveTick then SaveTick() end end
+    end})
+
+    addWidget(AF_Tab,"Textbox",{Title="Shoot Power",Desc="ค่าที่ส่งให้ ShootRemote",Placeholder=tostring(ShootPower),Callback=function(t)
+        local n = tonumber(t) if n then ShootPower = n if SaveTick then SaveTick() end end
+    end})
+
+    addWidget(AF_Tab,"Textbox",{Title="Teleport Y Offset",Desc="สูงเหนือประตู (studs)",Placeholder=tostring(TeleportYOffset),Callback=function(t)
+        local n = tonumber(t) if n then TeleportYOffset = n if SaveTick then SaveTick() end end
+    end})
+
+    addWidget(AF_Tab,"Textbox",{Title="Teleport Random Range",Desc="สุ่ม X/Z around goal",Placeholder=tostring(TeleportRandomRange),Callback=function(t)
+        local n = tonumber(t) if n then TeleportRandomRange = n if SaveTick then SaveTick() end end
+    end})
+
+    addWidget(AF_Tab,"Toggle",{Title="Auto-Join Visitor Team",Desc="ถ้าเป็น Visitor จะพยายามเลือกทีมว่าง",Value=AutoJoinIfVisitor,Callback=function(v)
+        AutoJoinIfVisitor = v and true or false
+        if SaveTick then SaveTick() end
+    end})
+
+    -- Hop section
+    addWidget(AF_Tab,"Toggle",{Title="Enable Auto-Hop",Desc="Hop when server players <= threshold",Value=HopEnabled,Callback=function(v)
+        HopEnabled = v and true or false
+        safeNotify("AutoHop", HopEnabled and "ON" or "OFF", 1.2)
+        if SaveTick then SaveTick() end
+    end})
+
+    addWidget(AF_Tab,"Textbox",{Title="Hop Threshold (players)",Desc="Hop when #players <= value",Placeholder=tostring(HopThreshold),Callback=function(t)
+        local n = tonumber(t)
+        if n and n >= 1 then HopThreshold = n if SaveTick then SaveTick() end end
+    end})
+
+    addWidget(AF_Tab,"Textbox",{Title="Hop Cooldown (s)",Desc="Minimum seconds between hops",Placeholder=tostring(HopCooldown),Callback=function(t)
+        local n = tonumber(t)
+        if n and n >= 1 then HopCooldown = n if SaveTick then SaveTick() end end
+    end})
+
+    addWidget(AF_Tab,"Toggle",{Title="Auto-Execute after Hop",Desc="Try queue_on_teleport before hopping (use URL)",Value=AutoExecuteAfterHop,Callback=function(v)
+        AutoExecuteAfterHop = v and true or false
+        if SaveTick then SaveTick() end
+    end})
+
+    addWidget(AF_Tab,"Textbox",{Title="Auto-Execute URL (raw)",Desc="Raw URL to fetch script after teleport (recommended)",Placeholder="",Callback=function(t)
+        AUTO_EXECUTE_URL = t or ""
+        if SaveTick then SaveTick() end
+    end})
+
+    addWidget(AF_Tab,"Button",{Title="Try Queue Auto-Execute Now",Desc="Attempt to queue the provided URL for teleport",Callback=function()
+        if not AUTO_EXECUTE_URL or AUTO_EXECUTE_URL == "" then safeNotify("AutoExec","No AUTO_EXECUTE_URL set",2); return end
+        local ok, info = queueOnTeleportWithURL(AUTO_EXECUTE_URL)
+        if ok then safeNotify("AutoExec","Queued URL using: "..tostring(info),2) else safeNotify("AutoExec","Queue failed: "..tostring(info),3) end
+    end})
+
+    addWidget(AF_Tab,"Button",{Title="Manual: Try Hop Now",Desc="Search server & teleport immediately (if found)",Callback=function()
+        local srv, err = findServerToHop(HopThreshold)
+        if not srv then safeNotify("AutoHop","No server found: "..tostring(err),2.5); return end
+        -- optional auto-exec queue
+        if AutoExecuteAfterHop then
+            local ok, info = setupAutoExecute()
+            if not ok then safeNotify("AutoExec","Queue failed: "..tostring(info),2.5) end
+        end
+        local ok, teleterr = pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, srv.id, LocalPlayer) end)
+        if not ok then safeNotify("AutoHop","Teleport failed: "..tostring(teleterr),3) end
+    end})
+
+    addWidget(AF_Tab,"Button",{Title="Manual: Try Steal Ball Once",Desc="Manual steal",Callback=function()
+        pcall(function() stealBallAttempt(); safeNotify("Auto Farm","Tried steal",1.2) end)
+    end})
+
+    addWidget(AF_Tab,"Button",{Title="Manual: Force Teleport Ball to Goal",Desc="If you have ball, teleport to goal",Callback=function()
+        pcall(function()
+            teleportBallToGoal()
+            safeNotify("Auto Farm","Teleported ball to goal (manual)",1.2)
+        end)
+    end})
+end
+
+-- ====== Expose global controls for external scripts ======
+_G.KIM_UI_AUTO_FARM = _G.KIM_UI_AUTO_FARM or {}
+_G.KIM_UI_AUTO_FARM.get = function() return { enabled = AutoFarmEnabled, hop = HopEnabled } end
+_G.KIM_UI_AUTO_FARM.setEnabled = function(s) AutoFarmEnabled = s and true or false; if AutoFarmEnabled then startAutoFarmLoop() end end
+_G.KIM_UI_AUTO_FARM.setHop = function(s) HopEnabled = s and true or false end
+_G.KIM_UI_AUTO_FARM.queueAutoExec = function(url) AUTO_EXECUTE_URL = url or AUTO_EXECUTE_URL; return queueOnTeleportWithURL(AUTO_EXECUTE_URL) end
+
+safeNotify("KIM UI","Auto Farm + AutoHop loaded",2.5)
