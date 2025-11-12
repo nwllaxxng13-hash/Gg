@@ -1,0 +1,246 @@
+-- AutoFarm Tab + Toggle GUI (พร้อม loop ที่เรียกใช้สคริปต์ AutoFarm ที่ให้มา)
+-- วางไฟล์นี้ไว้ก่อน/หลังสคริปต์ AutoFarm ที่คุณให้มาได้เลย
+
+-- ===== Config / helpers =====
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+-- ensure global control var exists
+if _G.START == nil then _G.START = false end
+
+-- ===== Simple ScreenGui Toggle (Auto Farm Tab) =====
+local function createAutoFarmGui()
+    -- do nothing if already created
+    if game.CoreGui:FindFirstChild("KIM_UI_AutoFarm") then
+        return
+    end
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "KIM_UI_AutoFarm"
+    screenGui.ResetOnSpawn = false
+    screenGui.DisplayOrder = 9999
+    screenGui.Parent = game.CoreGui
+
+    local frame = Instance.new("Frame")
+    frame.Name = "AutoFarmFrame"
+    frame.Size = UDim2.new(0, 220, 0, 120)
+    frame.Position = UDim2.new(0, 20, 0, 80)
+    frame.BackgroundTransparency = 0.15
+    frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+    frame.BorderSizePixel = 0
+    frame.Parent = screenGui
+    frame.ClipsDescendants = true
+
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.Size = UDim2.new(1, 0, 0, 28)
+    title.Position = UDim2.new(0, 0, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 16
+    title.TextColor3 = Color3.fromRGB(255,255,255)
+    title.Text = "KIM UI — Auto Farm"
+    title.Parent = frame
+
+    local toggleLabel = Instance.new("TextLabel")
+    toggleLabel.Name = "ToggleLabel"
+    toggleLabel.Size = UDim2.new(0.6, 0, 0, 30)
+    toggleLabel.Position = UDim2.new(0, 8, 0, 36)
+    toggleLabel.BackgroundTransparency = 1
+    toggleLabel.Font = Enum.Font.Gotham
+    toggleLabel.TextSize = 14
+    toggleLabel.TextColor3 = Color3.fromRGB(220,220,220)
+    toggleLabel.Text = "Auto Farm"
+    toggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    toggleLabel.Parent = frame
+
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Name = "ToggleBtn"
+    toggleBtn.Size = UDim2.new(0, 80, 0, 30)
+    toggleBtn.Position = UDim2.new(0.6, -4, 0, 34)
+    toggleBtn.BackgroundTransparency = 0
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    toggleBtn.BorderSizePixel = 0
+    toggleBtn.Font = Enum.Font.Gotham
+    toggleBtn.TextSize = 14
+    toggleBtn.TextColor3 = Color3.fromRGB(255,255,255)
+    toggleBtn.Text = "OFF"
+    toggleBtn.Parent = frame
+
+    local hint = Instance.new("TextLabel")
+    hint.Name = "Hint"
+    hint.Size = UDim2.new(1, -10, 0, 28)
+    hint.Position = UDim2.new(0, 6, 0, 74)
+    hint.BackgroundTransparency = 1
+    hint.Font = Enum.Font.Gotham
+    hint.TextSize = 12
+    hint.TextColor3 = Color3.fromRGB(180,180,180)
+    hint.Text = "Press to toggle. Script tries to be safe with pcall."
+    hint.TextXAlignment = Enum.TextXAlignment.Left
+    hint.Parent = frame
+
+    -- Dragging support
+    local dragging, dragInput, dragStart, startPos
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            dragInput = input
+        end
+    end)
+    game:GetService("UserInputService").InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+
+    -- Toggle logic
+    toggleBtn.MouseButton1Click:Connect(function()
+        _G.START = not _G.START
+        if _G.START then
+            toggleBtn.Text = "ON"
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(20,120,20)
+        else
+            toggleBtn.Text = "OFF"
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+        end
+    end)
+
+    -- initialize state visuals
+    if _G.START then
+        toggleBtn.Text = "ON"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(20,120,20)
+    else
+        toggleBtn.Text = "OFF"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    end
+end
+
+-- create the GUI
+pcall(function() createAutoFarmGui() end)
+
+-- ===== Your AutoFarm logic (cleaned & safe-wrapped) =====
+-- Paste your original AutoFarm code here or require it as a module.
+-- I'll embed your provided logic inside a safe loop that reacts to _G.START.
+
+-- ---- begin embedded AutoFarm logic ----
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local GameValues = ReplicatedStorage:WaitForChild("GameValues")
+local SlideRemote = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Knit"):WaitForChild("Services"):WaitForChild("BallService"):WaitForChild("RE"):WaitForChild("Slide")
+local ShootRemote = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Knit"):WaitForChild("Services"):WaitForChild("BallService"):WaitForChild("RE"):WaitForChild("Shoot")
+local GoalsFolder = workspace:WaitForChild("Goals")
+local AwayGoal, HomeGoal = GoalsFolder.Away, GoalsFolder.Home
+
+local function IsInGame()
+    return GameValues.State.Value == "Playing"
+end
+
+local function IsVisitor()
+    -- guard for nil
+    return LocalPlayer.Team and LocalPlayer.Team.Name == "Visitor"
+end
+
+local function JoinGame()
+    if not IsVisitor() then return end
+    for _, v in ipairs(ReplicatedStorage:WaitForChild("Teams"):GetDescendants()) do
+        if v:IsA("ObjectValue") and v.Value == nil then
+            local args = {string.sub(v.Parent.Name, 1, #v.Parent.Name - 4), v.Name}
+            pcall(function()
+                ReplicatedStorage.Packages.Knit.Services.TeamService.RE.Select:FireServer(unpack(args))
+            end)
+        end
+    end
+end
+
+local function StealBall()
+    if not IsInGame() then return end
+    local LocalCharacter = LocalPlayer.Character
+    local LocalHumanoidRootPart = LocalCharacter and LocalCharacter:FindFirstChild("HumanoidRootPart")
+    local Football = workspace:FindFirstChild("Football")
+
+    if LocalHumanoidRootPart and Football and Football.Char.Value ~= LocalPlayer.Character then
+        LocalHumanoidRootPart.CFrame = Football.CFrame
+    end
+
+    for _, OtherPlayer in ipairs(Players:GetPlayers()) do
+        if OtherPlayer ~= LocalPlayer and OtherPlayer.Team ~= LocalPlayer.Team then
+            local OtherCharacter = OtherPlayer.Character
+            local OtherFootball = OtherCharacter and OtherCharacter:FindFirstChild("Football")
+            local OtherHRP = OtherCharacter and OtherCharacter:FindFirstChild("HumanoidRootPart")
+            
+            if OtherFootball and OtherHRP and LocalHumanoidRootPart then
+                LocalHumanoidRootPart.CFrame = OtherFootball.CFrame
+                pcall(function() SlideRemote:FireServer() end)
+                break
+            end
+        end
+    end
+end
+
+-- Main RenderStepped loop (safe-wrapped)
+coroutine.wrap(function()
+    RunService.RenderStepped:Connect(function()
+        if not _G.START then return end
+        pcall(function()
+            JoinGame()
+            if IsVisitor() and not IsInGame() then return end
+            StealBall()
+            
+            local LocalCharacter = LocalPlayer.Character
+            local PlayerFootball = LocalCharacter and LocalCharacter:FindFirstChild("Football")
+
+            if PlayerFootball then
+                pcall(function()
+                    ShootRemote:FireServer(60, nil, nil, Vector3.new(-0.6976264715194702, -0.3905344605445862, -0.6006664633750916))
+                end)
+            end
+
+            local Football = workspace:FindFirstChild("Football")
+            if Football and Football.Char.Value ~= LocalPlayer.Character then return end
+
+            if Football and Football:FindFirstChild("BodyVelocity") then
+                Football.BodyVelocity:Destroy()
+            end
+
+            if Football and LocalPlayer.Team then
+                local Goal = LocalPlayer.Team.Name == "Away" and AwayGoal or HomeGoal
+                local BV = Instance.new("BodyVelocity")
+                BV.Velocity = Vector3.new(0, 0, 0)
+                BV.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                BV.Parent = Football
+
+                Football.CFrame = Goal.CFrame * CFrame.new(0, 14, math.random(-20, 20))
+
+                task.delay(0.1, function()
+                    if BV and BV.Parent then
+                        BV:Destroy()
+                    end
+                end)
+            end
+        end)
+    end)
+end)()
+-- ---- end embedded AutoFarm logic ----
+
+-- optional: expose a function to toggle from other scripts
+_G.ToggleAutoFarm = function(val)
+    if type(val) == "boolean" then
+        _G.START = val
+    else
+        _G.START = not _G.START
+    end
+end
