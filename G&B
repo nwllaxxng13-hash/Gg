@@ -16,6 +16,11 @@ if not ok_lib or not Library then
 end
 
 --==================================================
+-- SETTINGS / STATE (added aimbot_enabled)
+--==================================================
+local aimbot_enabled = false
+
+--==================================================
 -- WINDOW
 --==================================================
 local Window = Library:Window({
@@ -136,6 +141,18 @@ addWidget(MainTab, "Toggle", {
     Value=false,
     Callback=function(v)
         notify("Toggle", v and "ON" or "OFF")
+    end
+})
+
+-- << ADDED: Aimbot toggle on Main tab >>
+addWidget(MainTab, "Toggle", {
+    Title="Aimbot",
+    Desc="Enable/Disable Aimbot (placeholder state)",
+    Value=aimbot_enabled,
+    Callback=function(v)
+        aimbot_enabled = v and true or false
+        notify("Aimbot", aimbot_enabled and "ON" or "OFF", 1.2)
+        -- Place aimbot activation/deactivation hooks here if you add the feature later
     end
 })
 
