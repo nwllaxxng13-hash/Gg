@@ -1,0 +1,200 @@
+--==================================================
+-- KIM UI — CLEAN TEMPLATE (NO FEATURES)
+-- Window + Tabs + Widgets + Dropdown Fallback
+-- Safe for external injection | 0 Errors | Highly modular
+--==================================================
+
+-- ==== Load Library ====
+local ok_lib, Library = pcall(function()
+    return loadstring(game:HttpGet(
+        "https://raw.githubusercontent.com/x2zu/OPEN-SOURCE-UI-ROBLOX/refs/heads/main/X2ZU%20UI%20ROBLOX%20OPEN%20SOURCE/DummyUi-leak-by-x2zu/fetching-main/Tools/Framework.luau"
+    ))()
+end)
+if not ok_lib or not Library then
+    warn("[KIM UI] ❌ Failed to load UI Library.")
+    return
+end
+
+--==================================================
+-- WINDOW
+--==================================================
+local Window = Library:Window({
+    Title = "KIM UI",
+    Desc  = "Base Template",
+    Icon  = 105059922903197,
+    Theme = "Dark",
+    Config = { Keybind = Enum.KeyCode.LeftControl, Size = UDim2.new(0,520,0,440) },
+    CloseUIButton = { Enabled=true, Text="KIM UI" }
+})
+
+--==================================================
+-- TABS
+--==================================================
+local MainTab     = Window:Tab({Title="Main", Icon="star"})
+local SettingsTab = Window:Tab({Title="Settings", Icon="wrench"})
+local DebugTab    = Window:Tab({Title="Debug", Icon="code"})
+local ExampleTab  = Window:Tab({Title="Example UI", Icon="flag"})
+
+--==================================================
+-- NOTIFY Helper
+--==================================================
+local function notify(t,d,s)
+    pcall(function()
+        Window:Notify({Title = t or "KIM UI", Desc = d or "", Time = s or 2})
+    end)
+end
+
+--==================================================
+-- FALLBACK DROPDOWN (auto-activates if library dropdown fails)
+--==================================================
+local PlayerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+local FallbackRoot = Instance.new("ScreenGui")
+FallbackRoot.Name = "KIMUI_Fallback_Dropdowns"
+FallbackRoot.ResetOnSpawn = false
+FallbackRoot.Parent = PlayerGui
+
+local function AddDropdown(tab, args)
+    -- Official dropdown (preferred)
+    local ok, ret = pcall(function()
+        return tab:Dropdown({
+            Title = args.Title,
+            Options = args.Options or {},
+            CurrentOption = args.CurrentOption,
+            MultipleOptions = args.MultipleOptions,
+            Callback = args.Callback
+        })
+    end)
+    if ok and ret then return ret end
+
+    -- fallback UI
+    notify("Dropdown Fallback", args.Title, 3)
+
+    local sg = Instance.new("ScreenGui")
+    sg.Parent = FallbackRoot
+    sg.Name = "Dropdown_"..args.Title
+
+    local frame = Instance.new("Frame", sg)
+    frame.Size = UDim2.fromOffset(300,300)
+    frame.Position = UDim2.fromScale(.5,.5)
+    frame.AnchorPoint = Vector2.new(.5,.5)
+    frame.BackgroundColor3 = Color3.fromRGB(20,20,20)
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0,10)
+
+    local list = Instance.new("ScrollingFrame", frame)
+    list.Position = UDim2.fromOffset(10,10)
+    list.Size = UDim2.new(1,-20,1,-20)
+    list.BackgroundTransparency = 1
+
+    Instance.new("UIListLayout", list).Padding = UDim.new(0,6)
+
+    for _, opt in ipairs(args.Options or {}) do
+        local b = Instance.new("TextButton", list)
+        b.Text = opt
+        b.Size = UDim2.new(1,0,0,32)
+        b.BackgroundColor3 = Color3.fromRGB(45,45,45)
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
+
+        b.MouseButton1Click:Connect(function()
+            pcall(function()
+                if args.MultipleOptions then
+                    args.Callback({opt})
+                else
+                    args.Callback({opt})
+                    sg:Destroy()
+                end
+            end)
+        end)
+    end
+
+    return nil
+end
+
+--==================================================
+-- WIDGET HELPER (Toggle / Button / Textbox)
+--==================================================
+local function addWidget(tab, kind, params)
+    local ok = pcall(function()
+        if kind == "Toggle" then
+            tab:Toggle(params)
+        elseif kind == "Textbox" then
+            tab:Textbox(params)
+        elseif kind == "Button" then
+            tab:Button(params)
+        end
+    end)
+    if not ok then
+        warn("[KIM UI] Failed widget:", params.Title)
+    end
+end
+
+--==================================================
+-- TEMPLATE WIDGETS
+--==================================================
+addWidget(MainTab, "Toggle", {
+    Title="Example Toggle",
+    Desc="A simple toggle example.",
+    Value=false,
+    Callback=function(v)
+        notify("Toggle", v and "ON" or "OFF")
+    end
+})
+
+addWidget(MainTab, "Button", {
+    Title="Example Button",
+    Desc="Click to test",
+    Callback=function()
+        notify("Button","Clicked!")
+    end
+})
+
+addWidget(MainTab, "Textbox", {
+    Title="Example Textbox",
+    Desc="Enter text",
+    Placeholder="Type...",
+    Callback=function(txt)
+        notify("Textbox", txt)
+    end
+})
+
+AddDropdown(MainTab, {
+    Title="Example Dropdown",
+    Options={"Option 1","Option 2","Option 3"},
+    MultipleOptions=false,
+    Callback=function(v)
+        notify("Dropdown", v[1])
+    end
+})
+
+--==================================================
+-- DEBUG TAB (built-in)
+--==================================================
+addWidget(DebugTab,"Button",{
+    Title="Print UI Loaded",
+    Callback=function()
+        print("[KIM UI] Template Loaded")
+        notify("Debug","Printed to console")
+    end
+})
+
+addWidget(DebugTab,"Button",{
+    Title="Destroy UI",
+    Callback=function()
+        local guiRoot = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+        if guiRoot then
+            for _, g in ipairs(guiRoot:GetChildren()) do
+                if g.Name:lower():find("kim") or g.Name:lower():find("kim_ui") then
+                    pcall(function() g:Destroy() end)
+                end
+            end
+        end
+    end
+})
+
+--==================================================
+-- FINAL NOTIFY
+--==================================================
+notify("KIM UI Template","Loaded ✓",3)
+
+--==================================================
+-- END OF TEMPLATE
+--==================================================
