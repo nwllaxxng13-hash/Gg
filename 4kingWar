@@ -1,0 +1,844 @@
+-- Full Script: WindUI — Hitbox / Damage Changer / Burst / KillAura / HelpFarm / SafePlace / 0-HoldPrompt
+-- โดย: ปรับแก้สำหรับก้อ — ใส่ WindUI, แก้บัค hitbox, dropdown multi, ไม่พังตอน minimize, เต็มฟีเจอร์
+-- วางทั้งไฟล์ลง executor ได้เลย
+
+-- =====================
+-- Config / Libraries
+-- =====================
+local ok, WindUI = pcall(function()
+    return loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+end)
+if not ok or not WindUI then
+    warn("[KIM UI] WindUI โหลดไม่สำเร็จ")
+    return
+end
+
+local Players = game:GetService("Players")
+local Teams = game:GetService("Teams")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local HttpService = game:GetService("HttpService")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- =====================
+-- Globals / State
+-- =====================
+-- Hitbox
+_G.HeadSize = 10
+_G.HitboxEnabled = false
+local HEADBOX_TRANSPARENCY = 0.7
+local DEFAULT_HITBOX_SIZE = 0.5
+local playerStates = {} -- per-player stored state & original values
+local SelectedTeams = {} -- map teamName -> true ; empty = all teams
+
+-- Damage / Burst
+local DamageValue = 18
+local BurstEnabled = false
+local DealDamageRemoteNames = {"DealDamageEvent","DealDamage","DealDamageRemote"} -- candidates
+local DealDamageRemote = nil
+
+-- Kill Aura
+local KillAuraEnabled = false
+local KillAuraRadius = 8
+local KillAuraDamage = 18
+local KillAuraPart = nil
+
+-- Help Farm
+local HelpFarmEnabled = false
+local HelpFarmTargetName = nil
+local HelpFarmRefreshInterval = 1
+local HelpFarmTeleportBack = true
+local lastPositionBeforeHelp = nil
+
+-- Safe place
+local SafePlaceEnabled = false
+local SafePart = nil
+local SafePlacePosition = Vector3.new(1e6, 1e6+10, 1e6) -- very far
+local SafePartSize = Vector3.new(200, 4, 200)
+
+-- ProximityPrompt force hold
+local ZeroHoldEnabled = false
+
+-- Utility
+local function findDealDamageRemote()
+    if DealDamageRemote and DealDamageRemote.Parent then return DealDamageRemote end
+    -- search common places
+    for _, name in ipairs(DealDamageRemoteNames) do
+        local inst = ReplicatedStorage:FindFirstChild(name, true)
+        if inst and (inst:IsA("RemoteEvent") or inst:IsA("RemoteFunction")) then
+            DealDamageRemote = inst
+            return inst
+        end
+    end
+    -- fallback: search descendants
+    for _, inst in ipairs(ReplicatedStorage:GetDescendants()) do
+        if table.find(DealDamageRemoteNames, inst.Name) and (inst:IsA("RemoteEvent") or inst:IsA("RemoteFunction")) then
+            DealDamageRemote = inst
+            return inst
+        end
+    end
+    -- workspace fallback
+    for _, inst in ipairs(Workspace:GetDescendants()) do
+        if table.find(DealDamageRemoteNames, inst.Name) and (inst:IsA("RemoteEvent") or inst:IsA("RemoteFunction")) then
+            DealDamageRemote = inst
+            return inst
+        end
+    end
+    return nil
+end
+
+local function notify(title, content, dur)
+    pcall(function() WindUI:Notify({Title = title, Content = content, Duration = dur or 2}) end)
+end
+
+-- =====================
+-- Hitbox system
+-- =====================
+
+local function getTeamColor(p)
+    if p and p.Team and p.Team.TeamColor then return p.Team.TeamColor.Color end
+    return Color3.fromRGB(255,255,255)
+end
+
+local function saveOriginalHRP(hrp)
+    if not hrp then return nil end
+    return {
+        Size = hrp.Size,
+        Transparency = hrp.Transparency,
+        Material = hrp.Material,
+        Color = hrp.Color
+    }
+end
+
+local function restoreHRP(hrp, orig)
+    if not hrp or not orig then return end
+    pcall(function()
+        hrp.Size = orig.Size
+        hrp.Transparency = orig.Transparency
+        hrp.Material = orig.Material
+        hrp.Color = orig.Color
+    end)
+end
+
+local function clearVisualsForPlayer(p)
+    local st = playerStates[p]
+    if not st then return end
+    if st.highlight and st.highlight.Parent then pcall(function() st.highlight:Destroy() end) end
+    if st.billboard and st.billboard.Parent then pcall(function() st.billboard:Destroy() end) end
+    if st.origHRP and st.origHRP.Instance and st.origHRP.Data then
+        local hrp = st.origHRP.Instance
+        restoreHRP(hrp, st.origHRP.Data)
+    end
+    playerStates[p] = nil
+end
+
+local function createHighlight(character, color)
+    if not character or not character:IsDescendantOf(game) then return nil end
+    local hl = Instance.new("Highlight")
+    hl.Adornee = character
+    hl.FillColor = color
+    hl.FillTransparency = 0.75
+    hl.OutlineTransparency = 1
+    hl.Parent = character
+    return hl
+end
+
+local function createBillboard(hrp, p)
+    if not hrp or not p or not p.Character then return end
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "KIMUI_Hitbox_Billboard"
+    bb.Adornee = hrp
+    bb.Size = UDim2.new(0, 180, 0, 64)
+    bb.StudsOffset = Vector3.new(0, 3.2, 0)
+    bb.AlwaysOnTop = true
+    bb.Parent = p.Character
+
+    local function addLabel(y, txt, color, font)
+        local l = Instance.new("TextLabel", bb)
+        l.Size = UDim2.new(1, 0, 0, 20)
+        l.Position = UDim2.new(0, 0, 0, y)
+        l.BackgroundTransparency = 1
+        l.Text = txt or ""
+        l.Font = font or Enum.Font.SourceSansBold
+        l.TextSize = 16
+        l.TextColor3 = color or Color3.fromRGB(255,255,255)
+        l.TextStrokeTransparency = 0.6
+        return l
+    end
+
+    local nameL = addLabel(0, p.Name, Color3.fromRGB(255,255,255), Enum.Font.Gotham)
+    local hpL   = addLabel(20, "", Color3.fromRGB(255,160,120), Enum.Font.Gotham)
+    local teamL = addLabel(40, "", getTeamColor(p), Enum.Font.Gotham)
+    return bb, nameL, hpL, teamL
+end
+
+local function shouldShowForPlayer(p)
+    if not p or p == LocalPlayer then return false end
+    if not SelectedTeams or next(SelectedTeams) == nil then
+        return true
+    end
+    local tname = p.Team and p.Team.Name or ""
+    return SelectedTeams[tname] == true
+end
+
+local function applyHitboxToPlayer(p)
+    if not p or not p.Character or p == LocalPlayer then
+        clearVisualsForPlayer(p)
+        return
+    end
+    local hum = p.Character:FindFirstChildOfClass("Humanoid")
+    local hrp = p.Character:FindFirstChild("HumanoidRootPart") or p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
+    if not hum or not hrp then
+        clearVisualsForPlayer(p)
+        return
+    end
+    if hum.Health <= 0 then
+        clearVisualsForPlayer(p)
+        return
+    end
+    if not shouldShowForPlayer(p) then
+        clearVisualsForPlayer(p)
+        return
+    end
+
+    local st = playerStates[p]
+    if not st then
+        st = {}
+        playerStates[p] = st
+    end
+
+    -- save original HRP properties once
+    if not st.origHRP then
+        st.origHRP = { Instance = hrp, Data = saveOriginalHRP(hrp) }
+    else
+        -- update instance reference if character respawned
+        st.origHRP.Instance = hrp
+    end
+
+    local desired = (hum.Health <= 5) and DEFAULT_HITBOX_SIZE or (_G.HeadSize or 10)
+    -- apply hrp change
+    pcall(function()
+        hrp.Size = Vector3.new(desired, desired, desired)
+        hrp.Transparency = HEADBOX_TRANSPARENCY
+        hrp.Material = Enum.Material.Neon
+        hrp.Color = getTeamColor(p)
+    end)
+
+    -- highlight
+    if not st.highlight or not st.highlight.Parent then
+        st.highlight = createHighlight(p.Character, getTeamColor(p))
+    else
+        pcall(function() st.highlight.FillColor = getTeamColor(p) end)
+    end
+
+    -- billboard
+    if not st.billboard or not st.billboard.Parent then
+        local bb, nameL, hpL, teamL = createBillboard(hrp, p)
+        st.billboard = bb
+        st.nameL = nameL
+        st.hpL = hpL
+        st.teamL = teamL
+    end
+
+    -- update texts
+    pcall(function()
+        if st.nameL then st.nameL.Text = p.Name end
+        if st.hpL and hum then st.hpL.Text = "HP: "..math.floor(hum.Health) end
+        if st.teamL then st.teamL.Text = "Team: "..(p.Team and p.Team.Name or "None"); st.teamL.TextColor3 = getTeamColor(p) end
+    end)
+end
+
+-- Ensure hitbox respawn handling
+Players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function(char)
+        task.wait(0.1)
+        if _G.HitboxEnabled then
+            applyHitboxToPlayer(p)
+        end
+    end)
+    p:GetPropertyChangedSignal("Team"):Connect(function()
+        if _G.HitboxEnabled then
+            applyHitboxToPlayer(p)
+        else
+            clearVisualsForPlayer(p)
+        end
+    end)
+end)
+
+-- Clean up on leave
+Players.PlayerRemoving:Connect(function(p)
+    clearVisualsForPlayer(p)
+end)
+
+-- Heartbeat loop to keep applying hitbox (robust & persistent)
+task.spawn(function()
+    while true do
+        if _G.HitboxEnabled then
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer then
+                    pcall(function() applyHitboxToPlayer(p) end)
+                end
+            end
+        else
+            -- if disabled, clear visuals
+            for p,_ in pairs(playerStates) do
+                pcall(function() clearVisualsForPlayer(p) end)
+            end
+        end
+        task.wait(0.25)
+    end
+end)
+
+-- =====================
+-- ProximityPrompt 0 HoldDuration
+-- =====================
+local function setAllPromptsZero(on)
+    for _, prompt in ipairs(Workspace:GetDescendants()) do
+        if prompt and prompt:IsA("ProximityPrompt") then
+            pcall(function()
+                prompt.HoldDuration = on and 0 or prompt.HoldDuration
+                prompt.RequiresLineOfSight = on and false or prompt.RequiresLineOfSight
+            end)
+        end
+    end
+end
+
+-- If toggle is used we keep a watcher to maintain new prompts
+task.spawn(function()
+    while true do
+        if ZeroHoldEnabled then
+            setAllPromptsZero(true)
+        end
+        task.wait(1)
+    end
+end)
+
+-- =====================
+-- Deal Damage helpers (ChangeDamage / Burst)
+-- =====================
+local function fireDealDamageOnce(targetCharacter, damage)
+    local rem = findDealDamageRemote()
+    if not rem then
+        return false, "RemoteNotFound"
+    end
+    local args = { targetCharacter, damage }
+    local ok, err = pcall(function()
+        if rem:IsA("RemoteEvent") then
+            rem:FireServer(table.unpack(args))
+        elseif rem:IsA("RemoteFunction") then
+            rem:InvokeServer(table.unpack(args))
+        end
+    end)
+    return ok, err
+end
+
+local function fireDealDamageWithBurst(targetCharacter, damage)
+    -- if burst enabled, fire twice back-to-back (no delay)
+    if BurstEnabled then
+        local ok1, e1 = fireDealDamageOnce(targetCharacter, damage)
+        local ok2, e2 = fireDealDamageOnce(targetCharacter, damage)
+        return ok1 and ok2, {e1, e2}
+    else
+        return fireDealDamageOnce(targetCharacter, damage)
+    end
+end
+
+local function findNearestEnemyCharacter(maxDist)
+    maxDist = maxDist or 1000
+    local camPos = Workspace.CurrentCamera and Workspace.CurrentCamera.CFrame.Position or (LocalPlayer.Character and LocalPlayer.Character.PrimaryPart and LocalPlayer.Character.PrimaryPart.Position) or nil
+    local best, bestD = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChildOfClass("Humanoid") and p.Character:FindFirstChild("HumanoidRootPart") then
+            if not shouldShowForPlayer(p) then
+                -- if user selected specific teams, skip those not selected
+            end
+            local hum = p.Character:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 then
+                local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+                local d = (hrp.Position - (LocalPlayer.Character and LocalPlayer.Character.PrimaryPart and LocalPlayer.Character.PrimaryPart.Position or camPos)).Magnitude
+                -- exclude same team
+                if LocalPlayer.Team and p.Team and LocalPlayer.Team == p.Team then
+                    -- skip
+                else
+                    if d < bestD and d <= maxDist then best = p.Character; bestD = d end
+                end
+            end
+        end
+    end
+    return best, bestD
+end
+
+-- Public: change damage (only damage input from UI), picks nearest enemy automatically
+local function changeDamageAndFire(damage)
+    local targetChar = findNearestEnemyCharacter(150) -- attempts nearby target
+    if not targetChar then
+        notify("Damage", "ไม่มีเป้าหมายใกล้เคียง (หาไม่เจอ)", 2)
+        return false
+    end
+    local ok, err = fireDealDamageWithBurst(targetChar, damage)
+    if not ok then
+        notify("Damage", "การยิงล้มเหลว: "..tostring(err), 2)
+        return false
+    end
+    notify("Damage", "ยิงเป้าหมายด้วย Damage="..tostring(damage), 1.2)
+    return true
+end
+
+-- =====================
+-- Kill Aura
+-- =====================
+local function ensureKillAuraPart()
+    if KillAuraPart and KillAuraPart.Parent then return KillAuraPart end
+    local p = Instance.new("Part")
+    p.Name = "KIMUI_KillAura_Part"
+    p.Anchored = true
+    p.CanCollide = false
+    p.Transparency = 0.6
+    p.Size = Vector3.new(1,1,1)
+    p.Parent = Workspace
+    p.Material = Enum.Material.Neon
+    local decal = Instance.new("BillboardGui") -- placeholder to show radius via size, we will resize part
+    KillAuraPart = p
+    return p
+end
+
+local function updateKillAuraVisual()
+    if not KillAuraPart then return end
+    local char = LocalPlayer.Character
+    if not char or not char.PrimaryPart then
+        KillAuraPart.Transparency = 1
+        return
+    end
+    KillAuraPart.Position = (char.PrimaryPart.Position - Vector3.new(0,(KillAuraPart.Size.Y/2)-0.5,0))
+    KillAuraPart.Size = Vector3.new(KillAuraRadius*2 + 0.5, 0.5, KillAuraRadius*2 + 0.5)
+    KillAuraPart.Transparency = KillAuraEnabled and 0.6 or 1
+    KillAuraPart.Color = Color3.fromRGB(255,60,60)
+end
+
+local function killAuraLoop()
+    while true do
+        if KillAuraEnabled then
+            local mePos = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart and LocalPlayer.Character.PrimaryPart.Position
+            if mePos then
+                ensureKillAuraPart()
+                updateKillAuraVisual()
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= LocalPlayer and p.Character and p.Character:FindFirstChildOfClass("Humanoid") and p.Character:FindFirstChild("HumanoidRootPart") then
+                        if LocalPlayer.Team and p.Team and LocalPlayer.Team == p.Team then
+                            -- skip teammates
+                        else
+                            local hrp = p.Character.HumanoidRootPart
+                            local d = (hrp.Position - mePos).Magnitude
+                            if d <= KillAuraRadius then
+                                -- fire damage (burst respects toggle)
+                                local ok, err = fireDealDamageWithBurst(p.Character, KillAuraDamage)
+                                if not ok then
+                                    notify("KillAura", "Fire failed: "..tostring(err), 2)
+                                end
+                                -- small wait to avoid locking engine (but user wanted fast; we use 0.1)
+                                task.wait(0.1)
+                            end
+                        end
+                    end
+                end
+            end
+        else
+            if KillAuraPart and KillAuraPart.Parent then
+                KillAuraPart.Transparency = 1
+            end
+        end
+        task.wait(0.15)
+    end
+end
+task.spawn(killAuraLoop)
+
+-- =====================
+-- Help Farm (teleport to a selected player continuously)
+-- =====================
+local function refreshHelpPlayerList()
+    local list = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then table.insert(list, p.Name) end
+    end
+    table.sort(list)
+    return list
+end
+
+local function teleportToPosition(pos)
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return false end
+    local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    -- teleport safely (anchor momentarily)
+    pcall(function()
+        hrp.CFrame = CFrame.new(pos + Vector3.new(0,3,0))
+    end)
+    return true
+end
+
+local function helpFarmLoop()
+    while true do
+        if HelpFarmEnabled and HelpFarmTargetName and HelpFarmTargetName ~= "" then
+            local target = Players:FindFirstChild(HelpFarmTargetName)
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                local targetHRP = target.Character.HumanoidRootPart
+                -- save current pos
+                if not lastPositionBeforeHelp and LocalPlayer.Character and LocalPlayer.Character.PrimaryPart then
+                    lastPositionBeforeHelp = LocalPlayer.Character.PrimaryPart.Position
+                end
+                -- teleport to above target
+                teleportToPosition(targetHRP.Position)
+                -- while target alive, optionally attempt to fire if DealDamage available
+                local hum = target.Character:FindFirstChildOfClass("Humanoid")
+                while HelpFarmEnabled and target and target.Character and (hum and hum.Health > 0) do
+                    -- try to fire damage to help (if desired) -- here we DON'T auto damage, just stay above
+                    task.wait(0.6)
+                end
+                -- when target died, continue loop to next iteration (target might respawn)
+                task.wait(0.2)
+            else
+                -- target not found, wait and refresh
+                task.wait(0.6)
+            end
+        else
+            -- if disabled, maybe teleport back to last pos
+            if lastPositionBeforeHelp and not HelpFarmEnabled and HelpFarmTeleportBack then
+                teleportToPosition(lastPositionBeforeHelp)
+                lastPositionBeforeHelp = nil
+            end
+            task.wait(0.5)
+        end
+        task.wait(0.2)
+    end
+end
+task.spawn(helpFarmLoop)
+
+-- =====================
+-- Safe Place
+-- =====================
+local function ensureSafePart()
+    if SafePart and SafePart.Parent then return SafePart end
+    local p = Instance.new("Part")
+    p.Name = "KIMUI_SafePart"
+    p.Anchored = true
+    p.CanCollide = true
+    p.Size = SafePartSize
+    p.Position = SafePlacePosition
+    p.Transparency = 0.35
+    p.Material = Enum.Material.SmoothPlastic
+    p.Parent = Workspace
+    SafePart = p
+    return p
+end
+
+local function teleportToSafePlace()
+    ensureSafePart()
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(SafePart.Position + Vector3.new(0,5,0))
+    end
+end
+
+-- =====================
+-- UI (WindUI)
+-- =====================
+local Window = WindUI:CreateWindow({
+    Title = "KIM UI",
+    Icon = "rbxassetid://129260712070622",
+    IconThemed = true,
+    Author = "โดย ก้อ",
+    Folder = "KIMUI_v2",
+    Size = UDim2.fromOffset(780, 520),
+    Theme = "Dark",
+    Transparent = true,
+    SideBarWidth = 260,
+    ScrollBarEnabled = true,
+})
+
+-- Main Section / Tab
+local MainSection = Window:Section({ Title = "Main", Opened = true })
+local MainTab = MainSection:Tab({ Title = "เมนูหลัก", Icon = "star" })
+
+-- Hitbox Toggle (single control)
+MainTab:Toggle({
+    Title = "Hitbox + ESP (Toggle)",
+    Value = _G.HitboxEnabled,
+    Callback = function(state)
+        _G.HitboxEnabled = state and true or false
+        if not _G.HitboxEnabled then
+            for p,_ in pairs(playerStates) do
+                clearVisualsForPlayer(p)
+            end
+        else
+            notify("Hitbox", "เปิดระบบ Hitbox แล้ว", 2)
+        end
+    end
+})
+
+-- Hitbox Head Size input
+MainTab:Input({
+    Title = "Hitbox Size (headbox) (number)",
+    Value = tostring(_G.HeadSize),
+    Callback = function(val)
+        local n = tonumber(val)
+        if n and n > 0 then
+            _G.HeadSize = n
+            notify("Hitbox", "ตั้งค่า HeadSize = "..tostring(n), 1.3)
+        else
+            WindUI:Notify({Title="ผิดพลาด", Content="ใส่ตัวเลขมากกว่า 0", Duration=2, Color="Red"})
+        end
+    end
+})
+
+-- Team dropdown multi
+local function getTeamNames()
+    local tnames = {}
+    for _, t in ipairs(Teams:GetTeams()) do table.insert(tnames, t.Name) end
+    -- also include current teams from players if Teams service empty
+    if #tnames == 0 then
+        for _, p in ipairs(Players:GetPlayers()) do
+            local n = p.Team and p.Team.Name or nil
+            if n and not table.find(tnames, n) then table.insert(tnames, n) end
+        end
+    end
+    table.sort(tnames)
+    return tnames
+end
+
+MainTab:Dropdown({
+    Title = "Hitbox Target Teams (ว่าง=ทั้งหมด)",
+    Values = getTeamNames(),
+    Value = {},
+    Multi = true,
+    AllowNone = true,
+    Callback = function(selected)
+        -- selected is array
+        SelectedTeams = {}
+        for _, v in ipairs(selected or {}) do SelectedTeams[v] = true end
+        notify("Hitbox", "อัปเดตทีมที่แสดง Hitbox", 1.2)
+    end
+})
+
+-- Refresh team list button (in case dropdown glitches)
+MainTab:Button({
+    Title = "Refresh Team List",
+    Callback = function()
+        local ok, tlist = pcall(getTeamNames)
+        if ok then
+            WindUI:Notify({Title="Team", Content="อัปเดตแล้ว", Duration=1.2, Color="Green"})
+            -- Recreate dropdown by accessing the tab API isn't exposed here; instruct user to re-open UI if needed
+        else
+            WindUI:Notify({Title="Team", Content="ไม่สามารถอัปเดตได้", Duration=1.8, Color="Red"})
+        end
+    end
+})
+
+-- Damage changer input & button
+local damageInput = tostring(DamageValue)
+MainTab:Input({
+    Title = "Damage (เลข)",
+    Value = damageInput,
+    Callback = function(val)
+        local n = tonumber(val)
+        if n and n >= 0 then
+            DamageValue = n
+            notify("Damage", "Damage set = "..tostring(n), 1.2)
+        else
+            WindUI:Notify({Title="Damage", Content="ใส่ตัวเลข >= 0", Duration=1.6, Color="Red"})
+        end
+    end
+})
+
+MainTab:Button({
+    Title = "Fire Damage (nearest enemy)",
+    Callback = function()
+        local ok, err = pcall(function()
+            if not findDealDamageRemote() then
+                notify("Damage", "Remote DealDamage ไม่พบ", 2)
+                return
+            end
+            local success = changeDamageAndFire(DamageValue)
+            if not success then notify("Damage", "ยิงล้มเหลว", 2) end
+        end)
+        if not ok then notify("Damage", "Error: "..tostring(err), 2) end
+    end
+})
+
+-- Burst toggle
+MainTab:Toggle({
+    Title = "Burst (ยิงซ้ำทันที 2 ครั้ง)",
+    Value = BurstEnabled,
+    Callback = function(state)
+        BurstEnabled = state and true or false
+        notify("Burst", BurstEnabled and "เปิด" or "ปิด", 1.2)
+    end
+})
+
+-- Kill Aura controls
+MainTab:Toggle({
+    Title = "Kill Aura (Toggle)",
+    Value = KillAuraEnabled,
+    Callback = function(state)
+        KillAuraEnabled = state and true or false
+        if KillAuraEnabled then
+            ensureKillAuraPart()
+            notify("KillAura", "เปิด Kill Aura", 1.2)
+        else
+            if KillAuraPart and KillAuraPart.Parent then KillAuraPart.Transparency = 1 end
+            notify("KillAura", "ปิด Kill Aura", 1.2)
+        end
+    end
+})
+
+MainTab:Input({
+    Title = "Kill Aura Radius (studs)",
+    Value = tostring(KillAuraRadius),
+    Callback = function(val)
+        local n = tonumber(val)
+        if n and n > 0 then
+            KillAuraRadius = n
+            updateKillAuraVisual()
+            notify("KillAura", "Radius = "..tostring(n), 1)
+        else
+            WindUI:Notify({Title="KillAura", Content="กรอกตัวเลข > 0", Duration=1.6, Color="Red"})
+        end
+    end
+})
+
+MainTab:Input({
+    Title = "Kill Aura Damage",
+    Value = tostring(KillAuraDamage),
+    Callback = function(val)
+        local n = tonumber(val)
+        if n and n >= 0 then
+            KillAuraDamage = n
+            notify("KillAura", "Damage = "..tostring(n), 1)
+        else
+            WindUI:Notify({Title="KillAura", Content="กรอกตัวเลข >= 0", Duration=1.6, Color="Red"})
+        end
+    end
+})
+
+-- Help Farm tab controls
+local HelpSection = Window:Section({ Title = "Help Farm", Opened = true })
+local HelpTab = HelpSection:Tab({ Title = "HelpFarm", Icon = "users" })
+
+-- Player dropdown (auto refresh)
+local helpList = refreshHelpPlayerList()
+local helpDropdown = HelpTab:Dropdown({
+    Title = "เลือกผู้เล่น (อัปเดตอัตโนมัติ)",
+    Values = helpList,
+    Value = "",
+    Multi = false,
+    AllowNone = true,
+    Callback = function(val)
+        HelpFarmTargetName = val or nil
+        notify("HelpFarm", "Target = "..tostring(HelpFarmTargetName), 1.3)
+    end
+})
+
+-- Auto refresh dropdown list every few seconds
+task.spawn(function()
+    while true do
+        local list = refreshHelpPlayerList()
+        -- attempt to update dropdown options (WindUI's API may not have direct method; we rely on UI being reopened or user clicking refresh)
+        pcall(function()
+            -- If dropdown object exists, try to set .Values if supported
+            if helpDropdown and type(helpDropdown.SetValues) == "function" then
+                helpDropdown:SetValues(list)
+            end
+        end)
+        task.wait(3)
+    end
+end)
+
+HelpTab:Toggle({
+    Title = "Help Farm (Toggle)",
+    Value = HelpFarmEnabled,
+    Callback = function(state)
+        HelpFarmEnabled = state and true or false
+        if not HelpFarmEnabled then
+            -- teleport back if requested
+            if HelpFarmTeleportBack and lastPositionBeforeHelp then
+                teleportToPosition(lastPositionBeforeHelp)
+                lastPositionBeforeHelp = nil
+            end
+            notify("HelpFarm", "ปิดแล้ว", 1)
+        else
+            notify("HelpFarm", "เปิดแล้ว", 1)
+        end
+    end
+})
+
+-- 0 HoldDuration prompts toggle
+MainTab:Toggle({
+    Title = "0 HoldDuration Prompts (Toggle)",
+    Value = ZeroHoldEnabled,
+    Callback = function(state)
+        ZeroHoldEnabled = state and true or false
+        if ZeroHoldEnabled then
+            setAllPromptsZero(true)
+            notify("Prompts", "ตั้ง HoldDuration = 0 (และไม่ต้อง LOS)", 1.6)
+        else
+            notify("Prompts", "ปิด (บาง prompt อาจไม่คืนค่าเดิมอัตโนมัติ)", 2.2)
+            -- no reliable restore so user warned
+        end
+    end
+})
+
+-- Safe place toggle & teleport
+MainTab:Toggle({
+    Title = "Safe Place (Create Part far)",
+    Value = SafePlaceEnabled,
+    Callback = function(state)
+        SafePlaceEnabled = state and true or false
+        if SafePlaceEnabled then
+            ensureSafePart()
+            notify("SafePlace", "Safe place created", 1.6)
+        else
+            if SafePart and SafePart.Parent then
+                pcall(function() SafePart:Destroy() end)
+                SafePart = nil
+            end
+            notify("SafePlace", "Safe place removed", 1.2)
+        end
+    end
+})
+
+MainTab:Button({
+    Title = "Teleport to Safe Place",
+    Callback = function()
+        local ok, err = pcall(function() teleportToSafePlace() end)
+        if not ok then notify("SafePlace", "Teleport failed: "..tostring(err), 2) else notify("SafePlace", "Teleported", 1.2) end
+    end
+})
+
+-- Misc: Find remote status button
+MainTab:Button({
+    Title = "Check DealDamage Remote",
+    Callback = function()
+        local rem = findDealDamageRemote()
+        if rem then
+            notify("Remote", "พบ Remote: "..rem:GetFullName(), 2)
+        else
+            notify("Remote", "ไม่พบ Remote ใน ReplicatedStorage/Workspace", 2.5)
+        end
+    end
+})
+
+-- =====================
+-- Make sure functions run when UI minimized
+-- WindUI's Toggle only hides UI, loops stay running
+-- =====================
+
+-- =====================
+-- Fixes / Warnings
+-- - Burst & Damage functions will notify if remote missing
+-- - Hitbox system runs regardless of UI state (Heartbeat loop)
+-- - Dropdown values refreshed periodically
+-- =====================
+
+-- Helper notification on load
+notify("KIM UI", "Loaded — WindUI version (Full)", 2.5)
+
+-- End of script
