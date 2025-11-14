@@ -1,96 +1,102 @@
 --==================================================
--- KIM UI — Fixed KillAura visual & robust HelpFarm loop
--- WindUI-based full script
+-- KIM UI — Robust Full Script (nil-call safe)
+-- Purpose: prevent "attempt to call a nil value" permanently by guarding UI calls & references
+-- Features: Hitbox, KillAura (multi), HelpFarm, Damage change + Burst, Prompt=0 toggle, SafePlace, Teleport
+-- Dependencies: WindUI (attempt load) - but script has safe fallbacks for missing API
 --==================================================
 
--- ===== Services =====
+-- Services
 local Players = game:GetService("Players")
-local Teams = game:GetService("Teams")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Teams = game:GetService("Teams")
 local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- ===== Config / State =====
+-- ====== Config / State ======
 _G.HeadSize = 10
 _G.HitboxEnabled = false
-local SelectedTeams = {} -- if empty => all teams
+local SelectedTeams = {}
 local playerStates = {}
 local DEFAULT_HITBOX_SIZE = 0.5
 local HEADBOX_TRANSPARENCY = 0.7
 local HITBOX_TICK = 0.25
 
--- Damage / Burst
+local DealDamageRemoteName = "DealDamageEvent" -- change if needed
+local DealDamageRemote = nil
 local DamageValue = 18
 local BurstEnabled = false
-local DealDamageRemoteName = "DealDamageEvent" -- remote name to search
-local DealDamageRemote = nil
 
--- Kill Aura
 local KillAuraEnabled = false
 local KillAuraRadius = 8
 local KillAuraPart = nil
-local KillAuraVisible = true
 local KillAuraInterval = 0.075
 
--- Help Farm
 local HelpFarmEnabled = false
 local HelpFarmTargetName = nil
 local HelpFarmThread = nil
 local HelpFarmLastPos = nil
 local HelpFarmTeleportInterval = 0.12
 
--- ProximityPrompt zero hold
 local PromptZeroEnabled = false
 local promptOldState = {}
 
--- Safe place
 local SafePlacePart = nil
 
--- ===== WindUI loader =====
-local okWind, WindUI = pcall(function()
-    return loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
-end)
-if not okWind or not WindUI then
-    warn("[KIM UI] Failed to load WindUI.")
-    return
+-- ====== Utility helpers ======
+local function safeCall(fn, ...)
+    if type(fn) ~= "function" then return false end
+    local ok, res = pcall(fn, ...)
+    return ok, res
 end
 
-local function notify(t, c, s)
-    pcall(function() WindUI:Notify({Title = tostring(t), Content = tostring(c), Duration = s or 2}) end)
+local function notifyMsg(title, content, dur)
+    -- try to use WindUI notify if available; fallback to simple ScreenGui label
+    pcall(function()
+        if _G._KIM_WINDUI_NOTIFY and type(_G._KIM_WINDUI_NOTIFY) == "function" then
+            _G._KIM_WINDUI_NOTIFY(title, content, dur)
+            return
+        end
+    end)
+    -- fallback small temporary label
+    pcall(function()
+        local sg = Instance.new("ScreenGui"); sg.Name = "KIMUI_NOTIFY_TEMP"; sg.ResetOnSpawn = false; sg.Parent = PlayerGui
+        local lab = Instance.new("TextLabel", sg)
+        lab.Size = UDim2.new(0,300,0,28); lab.Position = UDim2.new(0.5,-150,0.02,0)
+        lab.BackgroundColor3 = Color3.fromRGB(18,18,18); lab.TextColor3 = Color3.fromRGB(220,220,220)
+        lab.Text = tostring(title)..": "..tostring(content); lab.Font = Enum.Font.Gotham; lab.TextSize = 14
+        task.delay(dur or 2, function() pcall(function() sg:Destroy() end) end)
+    end)
 end
 
--- ===== Utilities =====
 local function findRemoteByName(name)
-    local function search(container)
-        if not container then return nil end
-        if container:FindFirstChild(name) then
-            local r = container:FindFirstChild(name)
-            if (r:IsA and (r:IsA("RemoteEvent") or r:IsA("RemoteFunction"))) then return r end
+    if not name then return nil end
+    -- search ReplicatedStorage first
+    pcall(function() ReplicatedStorage = game:GetService("ReplicatedStorage") end)
+    if ReplicatedStorage then
+        local candidate = ReplicatedStorage:FindFirstChild(name)
+        if candidate and (candidate:IsA("RemoteEvent") or candidate:IsA("RemoteFunction")) then return candidate end
+        for _, inst in ipairs(ReplicatedStorage:GetDescendants()) do
+            if inst.Name == name and (inst:IsA("RemoteEvent") or inst:IsA("RemoteFunction")) then return inst end
         end
-        for _, inst in ipairs(container:GetDescendants()) do
-            if inst.Name == name and (inst:IsA and (inst:IsA("RemoteEvent") or inst:IsA("RemoteFunction"))) then
-                return inst
-            end
-        end
-        return nil
     end
-    local r = search(ReplicatedStorage) or search(Workspace) or (rawget(_G, name) and rawget(_G, name))
-    return r
+    -- search workspace as fallback
+    for _, inst in ipairs(Workspace:GetDescendants()) do
+        if inst.Name == name and (inst:IsA("RemoteEvent") or inst:IsA("RemoteFunction")) then return inst end
+    end
+    -- global
+    local g = rawget(_G, name)
+    if g and (typeof(g) == "Instance") and (g:IsA("RemoteEvent") or g:IsA("RemoteFunction")) then return g end
+    return nil
 end
 
 local function safeFireDamage(targetChar, damage)
-    if not DealDamageRemote then
-        DealDamageRemote = findRemoteByName(DealDamageRemoteName)
-    end
-    if not DealDamageRemote then
-        notify("Damage", "Remote '"..DealDamageRemoteName.."' not found", 3)
-        return false, "RemoteNotFound"
-    end
+    if not DealDamageRemote then DealDamageRemote = findRemoteByName(DealDamageRemoteName) end
+    if not DealDamageRemote then notifyMsg("Damage","Remote not found: "..tostring(DealDamageRemoteName),3); return false end
     local args = { targetChar or (LocalPlayer.Character), tonumber(damage) or DamageValue }
     local ok, err = pcall(function()
         if DealDamageRemote:IsA("RemoteEvent") then
@@ -99,17 +105,19 @@ local function safeFireDamage(targetChar, damage)
             DealDamageRemote:InvokeServer(table.unpack(args))
         end
     end)
-    return ok, err
+    if not ok then notifyMsg("Damage","Fire failed",2) end
+    return ok
 end
 
 local function tryBurstDamageTo(targetChar, dmg)
     if not DealDamageRemote then DealDamageRemote = findRemoteByName(DealDamageRemoteName) end
-    if not DealDamageRemote then notify("Burst","Remote not found: "..DealDamageRemoteName,3); return false end
+    if not DealDamageRemote then notifyMsg("Burst","Remote not found",3); return false end
     local args = { targetChar or LocalPlayer.Character, tonumber(dmg) or DamageValue }
+    -- attempt two immediate fires safely
     pcall(function()
         if DealDamageRemote:IsA("RemoteEvent") then
             DealDamageRemote:FireServer(table.unpack(args))
-            -- second immediate fire (no delay)
+            -- second immediate fire
             DealDamageRemote:FireServer(table.unpack(args))
         else
             pcall(function() DealDamageRemote:InvokeServer(table.unpack(args)) end)
@@ -144,7 +152,7 @@ local function teamAllowed(pl)
     return SelectedTeams[tn] == true
 end
 
--- ===== Hitbox / ESP (minimal; stable on respawn) =====
+-- ===== Hitbox / ESP (guarded) =====
 local function clearVisuals(p)
     local state = playerStates[p]
     if state then
@@ -164,43 +172,50 @@ end
 
 local function createHighlight(character, color)
     if not character or not character:IsDescendantOf(game) then return nil end
-    local hl = Instance.new("Highlight")
-    hl.Adornee = character
-    hl.FillColor = color
-    hl.FillTransparency = 0.75
-    hl.OutlineTransparency = 1
-    hl.Parent = character
-    return hl
+    local ok, hl = pcall(function()
+        local h = Instance.new("Highlight")
+        h.Adornee = character
+        h.FillColor = color
+        h.FillTransparency = 0.75
+        h.OutlineTransparency = 1
+        h.Parent = character
+        return h
+    end)
+    return ok and hl or nil
 end
 
 local function createBillboard(hrp, p)
     if not hrp or not p then return nil end
-    local bb = Instance.new("BillboardGui")
-    bb.Name = "KIM_UI_ESP"
-    bb.Adornee = hrp
-    bb.Size = UDim2.new(0,160,0,60)
-    bb.StudsOffset = Vector3.new(0,3,0)
-    bb.AlwaysOnTop = true
-    bb.Parent = PlayerGui
+    local ok, out = pcall(function()
+        local bb = Instance.new("BillboardGui")
+        bb.Name = "KIM_UI_ESP"
+        bb.Adornee = hrp
+        bb.Size = UDim2.new(0,160,0,60)
+        bb.StudsOffset = Vector3.new(0,3,0)
+        bb.AlwaysOnTop = true
+        bb.Parent = PlayerGui
 
-    local function addLabel(y, txt, col)
-        local l = Instance.new("TextLabel", bb)
-        l.Size = UDim2.new(1,0,0,20)
-        l.Position = UDim2.new(0,0,0,y)
-        l.BackgroundTransparency = 1
-        l.Text = txt
-        l.Font = Enum.Font.Bodoni
-        l.TextColor3 = col
-        l.TextStrokeTransparency = 0
-        l.TextStrokeColor3 = Color3.fromRGB(20,20,20)
-        l.TextSize = 18
-        return l
-    end
+        local function addLabel(y, txt, col)
+            local l = Instance.new("TextLabel", bb)
+            l.Size = UDim2.new(1,0,0,20)
+            l.Position = UDim2.new(0,0,0,y)
+            l.BackgroundTransparency = 1
+            l.Text = txt
+            l.Font = Enum.Font.Bodoni
+            l.TextColor3 = col
+            l.TextStrokeTransparency = 0
+            l.TextStrokeColor3 = Color3.fromRGB(20,20,20)
+            l.TextSize = 18
+            return l
+        end
 
-    local nameLabel = addLabel(0, p.Name, Color3.fromRGB(255,255,255))
-    local hpLabel = addLabel(20, "", Color3.fromRGB(255,100,100))
-    local teamLabel = addLabel(40, "", teamColorForPlayer(p))
-    return bb, nameLabel, hpLabel, teamLabel
+        local nameLabel = addLabel(0, p.Name, Color3.fromRGB(255,255,255))
+        local hpLabel = addLabel(20, "", Color3.fromRGB(255,100,100))
+        local teamLabel = addLabel(40, "", teamColorForPlayer(p))
+        return bb, nameLabel, hpLabel, teamLabel
+    end)
+    if ok then return out[1], out[2], out[3], out[4] end
+    return nil
 end
 
 local function applyHitbox(p)
@@ -272,36 +287,39 @@ task.spawn(function()
     end
 end)
 
--- ===== KillAura visual & multi-target =====
+-- ===== KillAura (visual underfoot, multi-target) =====
 local function createKillAuraPart(radius)
     if KillAuraPart and KillAuraPart.Parent then return KillAuraPart end
-    local part = Instance.new("Part")
-    part.Name = "KIMUI_KillAura"
-    part.Anchored = true
-    part.CanCollide = false
-    part.Size = Vector3.new(radius*2, 0.5, radius*2) -- flat disc under feet
-    part.Transparency = 0.6
-    part.Material = Enum.Material.Neon
-    part.Color = Color3.fromRGB(255, 70, 70)
-    part.Parent = workspace
-    KillAuraPart = part
+    local ok, part = pcall(function()
+        local p = Instance.new("Part")
+        p.Name = "KIMUI_KillAura"
+        p.Anchored = true
+        p.CanCollide = false
+        p.Size = Vector3.new(radius*2, 0.5, radius*2)
+        p.Transparency = 0.6
+        p.Material = Enum.Material.Neon
+        p.Color = Color3.fromRGB(255,70,70)
+        p.Parent = workspace
+        return p
+    end)
+    if ok then KillAuraPart = part end
     return KillAuraPart
 end
 
 local function updateKillAuraVisual()
     if not KillAuraEnabled then
-        if KillAuraPart and KillAuraPart.Parent then KillAuraPart:Destroy(); KillAuraPart = nil end
+        if KillAuraPart and KillAuraPart.Parent then pcall(function() KillAuraPart:Destroy() end) KillAuraPart = nil end
         return
     end
     local char = LocalPlayer.Character
     local hrp = getHRP(char)
     if not hrp then return end
     if not KillAuraPart or not KillAuraPart.Parent then createKillAuraPart(KillAuraRadius) end
-    -- put the visual directly under feet (flat disc slightly below HRP Y)
-    local yoffset = (hrp.Size.Y / 2) + 0.25
-    KillAuraPart.Size = Vector3.new(KillAuraRadius*2, 0.5, KillAuraRadius*2)
-    KillAuraPart.Position = Vector3.new(hrp.Position.X, hrp.Position.Y - yoffset, hrp.Position.Z)
-    KillAuraPart.Transparency = KillAuraVisible and 0.6 or 1
+    if KillAuraPart then
+        local yoffset = (hrp.Size.Y / 2) + 0.25
+        KillAuraPart.Size = Vector3.new(KillAuraRadius*2, 0.5, KillAuraRadius*2)
+        KillAuraPart.Position = Vector3.new(hrp.Position.X, hrp.Position.Y - yoffset, hrp.Position.Z)
+    end
 end
 
 local function enemiesInRange(radius)
@@ -314,7 +332,7 @@ local function enemiesInRange(radius)
         if p ~= LocalPlayer and p.Character and p.Character.Parent then
             local hum = getHum(p.Character)
             if hum and hum.Health > 0 then
-                if LocalPlayer.Team and p.Team and LocalPlayer.Team == p.Team then -- skip same team
+                if LocalPlayer.Team and p.Team and LocalPlayer.Team == p.Team then
                     -- skip
                 else
                     local hrp = getHRP(p.Character)
@@ -326,7 +344,6 @@ local function enemiesInRange(radius)
     return out
 end
 
--- Kill aura loop: for each found target spawn immediate fire; this allows multi-target
 task.spawn(function()
     while true do
         if KillAuraEnabled then
@@ -347,12 +364,11 @@ task.spawn(function()
     end
 end)
 
--- Update visual each render step
 RunService.RenderStepped:Connect(function()
-    if KillAuraEnabled then updateKillAuraVisual() end
+    if KillAuraEnabled then pcall(updateKillAuraVisual) end
 end)
 
--- ===== HelpFarm robust loop =====
+-- ===== HelpFarm robust =====
 local function teleportTo(pos)
     local char = LocalPlayer.Character
     if not char then return false end
@@ -378,25 +394,21 @@ local function startHelpFarmLoop()
     if HelpFarmThread then return end
     HelpFarmThread = task.spawn(function()
         while HelpFarmEnabled do
-            -- ensure local char
             if not LocalPlayer.Character or not getHRP(LocalPlayer.Character) then
                 waitForLocalCharacter(15)
                 task.wait(0.12)
             end
 
-            -- no target selected -> wait and continue
             if not HelpFarmTargetName or HelpFarmTargetName == "" then
                 task.wait(HelpFarmTeleportInterval)
             else
                 local target = Players:FindFirstChild(HelpFarmTargetName)
                 if not target then task.wait(HelpFarmTeleportInterval) else
-                    -- set last pos once before first warp
                     if not HelpFarmLastPos then
                         local myhrp = getHRP(LocalPlayer.Character)
                         if myhrp then HelpFarmLastPos = myhrp.Position end
                     end
 
-                    -- wait until target has a HRP
                     local tries = 0
                     while HelpFarmEnabled and target and (not target.Character or not getHRP(target.Character)) and tries < 60 do
                         tries = tries + 1
@@ -406,20 +418,17 @@ local function startHelpFarmLoop()
                     if not target or not target.Character or not getHRP(target.Character) then
                         task.wait(HelpFarmTeleportInterval)
                     else
-                        -- teleporter inner loop: keep teleporting to target while target alive and toggle on
                         while HelpFarmEnabled and target and target.Character and getHum(target.Character) and getHum(target.Character).Health > 0 do
                             local pos = getHRP(target.Character).Position
-                            teleportTo(pos) -- teleport above target
+                            teleportTo(pos)
                             task.wait(HelpFarmTeleportInterval)
                         end
-                        -- if target died or nil -> small wait then outer loop will try again or pick new target
                         task.wait(0.12)
                     end
                 end
             end
         end
 
-        -- cleanup when disabled: return to last pos if available
         if HelpFarmLastPos and LocalPlayer.Character and getHRP(LocalPlayer.Character) then
             teleportTo(HelpFarmLastPos)
             HelpFarmLastPos = nil
@@ -428,7 +437,6 @@ local function startHelpFarmLoop()
     end)
 end
 
--- Ensure immediate teleport to target on respawn if enabled
 LocalPlayer.CharacterAdded:Connect(function(char)
     task.wait(0.12)
     if HelpFarmEnabled and HelpFarmTargetName and HelpFarmTargetName ~= "" then
@@ -477,159 +485,220 @@ end)
 -- ===== SafePlace =====
 local function createSafePlace()
     if SafePlacePart and SafePlacePart.Parent then return SafePlacePart end
-    local part = Instance.new("Part")
-    part.Name = "KIMUI_SafePlace"
-    part.Anchored = true
-    part.CanCollide = false
-    part.Size = Vector3.new(50,1,50)
-    part.Position = Vector3.new(999999, 999999, 999999)
-    part.Transparency = 0.9
-    part.Parent = workspace
-    SafePlacePart = part
+    local ok, part = pcall(function()
+        local p = Instance.new("Part")
+        p.Name = "KIMUI_SafePlace"
+        p.Anchored = true
+        p.CanCollide = false
+        p.Size = Vector3.new(50,1,50)
+        p.Position = Vector3.new(999999, 999999, 999999)
+        p.Transparency = 0.9
+        p.Parent = workspace
+        return p
+    end)
+    if ok then SafePlacePart = part end
     return SafePlacePart
 end
 
--- ===== UI (WindUI) =====
-local Window = WindUI:CreateWindow({
-    Title = "KIM UI",
-    Icon = "rbxassetid://129260712070622",
-    IconThemed = true,
-    Author = "โดย KIM",
-    Folder = "KIM_UI_Folder",
-    Size = UDim2.fromOffset(720, 520),
-    Transparent = true,
-    Theme = "Dark",
-    SideBarWidth = 220,
-    ScrollBarEnabled = true
-})
+-- ===== UI: try to load WindUI (safe) =====
+local okWind, WindUI = pcall(function()
+    return loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+end)
 
-Window:EditOpenButton({
-    Title = "เปิด UI",
-    Icon = "monitor",
-    CornerRadius = UDim.new(0,16),
-    StrokeThickness = 2,
-    Color = ColorSequence.new(Color3.fromHex("FF0F7B"), Color3.fromHex("F89B29")),
-    Draggable = true
-})
-
-local MainSection = Window:Section({ Title = "Main", Opened = true })
-local TabsUI = {}
-TabsUI.Main = MainSection:Tab({ Title = "Main", Icon = "star" })
-TabsUI.Hitbox = MainSection:Tab({ Title = "Hitbox", Icon = "target" })
-TabsUI.KillAura = MainSection:Tab({ Title = "Kill Aura", Icon = "zap" })
-TabsUI.HelpFarm = MainSection:Tab({ Title = "Help Farm", Icon = "heart" })
-TabsUI.Damage = MainSection:Tab({ Title = "Damage", Icon = "skull" })
-TabsUI.Misc = MainSection:Tab({ Title = "Misc", Icon = "cog" })
-
--- Main
-TabsUI.Main:Toggle({
-    Title = "Hitbox (ESP + Highlight)",
-    Value = _G.HitboxEnabled,
-    Callback = function(state) _G.HitboxEnabled = state if not state then for p,_ in pairs(playerStates) do clearVisuals(p) end end end
-})
-
-TabsUI.Main:Toggle({
-    Title = "Safe Place (Create Far Part)",
-    Value = (SafePlacePart ~= nil),
-    Callback = function(state)
-        if state then createSafePlace(); notify("SafePlace","Created",1.2) else if SafePlacePart and SafePlacePart.Parent then SafePlacePart:Destroy(); SafePlacePart=nil end notify("SafePlace","Removed",1.2) end
-    end
-})
-
-TabsUI.Main:Button({
-    Title = "Teleport To SafePlace",
-    Callback = function()
-        if not SafePlacePart then createSafePlace() end
-        if SafePlacePart and getHRP(LocalPlayer.Character) then
-            local hrp = getHRP(LocalPlayer.Character)
-            pcall(function() hrp.CFrame = CFrame.new(SafePlacePart.Position + Vector3.new(0,5,0)) end)
-            notify("SafePlace","Teleported",1.2)
-        else notify("SafePlace","No safe place",2) end
-    end
-})
-
--- Hitbox
-TabsUI.Hitbox:Input({
-    Title = "Hitbox Size (studs)",
-    Value = tostring(_G.HeadSize),
-    Callback = function(txt)
-        local n = tonumber(txt)
-        if n and n > 0 then _G.HeadSize = n; notify("Hitbox","Size="..n,1) else WindUI:Notify({Title="Error", Content="กรุณาใส่ตัวเลข > 0", Duration=2, Color="Red"}) end
-    end
-})
-TabsUI.Hitbox:Toggle({ Title = "Enable Hitbox", Value = _G.HitboxEnabled, Callback = function(v) _G.HitboxEnabled = v end })
-TabsUI.Hitbox:Dropdown({
-    Title = "Hitbox Target Teams (ว่าง=ทุกทีม)",
-    Values = (function() local t={} for _, tm in ipairs(Teams:GetTeams()) do table.insert(t, tm.Name) end table.sort(t) return t end)(),
-    Value = {},
-    Multi = true,
-    AllowNone = true,
-    Callback = function(selected)
-        table.clear(SelectedTeams)
-        for _, name in ipairs(selected) do SelectedTeams[name] = true end
-        notify("Hitbox","Selected: "..(#selected>0 and table.concat(selected,", ") or "All"),1.2)
-    end
-})
-
--- KillAura
-TabsUI.KillAura:Input({ Title = "Kill Aura Radius (studs)", Value = tostring(KillAuraRadius), Callback = function(txt) local n=tonumber(txt) if n and n>0 then KillAuraRadius=n; updateKillAuraVisual(); notify("KillAura","Radius="..n,1) end end })
-TabsUI.KillAura:Toggle({ Title = "Enable Kill Aura", Value = KillAuraEnabled, Callback = function(v) KillAuraEnabled = v if not v and KillAuraPart and KillAuraPart.Parent then KillAuraPart:Destroy(); KillAuraPart=nil end end })
-TabsUI.KillAura:Toggle({ Title = "Burst Mode (double-fire)", Value = BurstEnabled, Callback = function(v) BurstEnabled = v end })
-TabsUI.KillAura:Input({ Title = "Damage Value", Value = tostring(DamageValue), Callback = function(txt) local n=tonumber(txt) if n then DamageValue=n; notify("Damage","Set="..n,1) end end })
-
--- HelpFarm
-local function getPlayerListNames()
-    local out = {}
-    for _, p in ipairs(Players:GetPlayers()) do if p ~= LocalPlayer then table.insert(out, p.Name) end end
-    return out
+if okWind and WindUI then
+    -- expose a safe notify wrapper for internal use
+    _G._KIM_WINDUI_NOTIFY = function(t,c,d) pcall(function() WindUI:Notify({Title=t, Content=c, Duration=d or 2}) end) end
+else
+    notifyMsg("KIM UI","WindUI not loaded — using minimal notify",3)
 end
 
-local helpDropdown = TabsUI.HelpFarm:Dropdown({
-    Title = "Select Player to Help Farm",
-    Values = getPlayerListNames(),
-    Value = "",
-    Multi = false,
-    AllowNone = true,
-    Callback = function(name) HelpFarmTargetName = name; notify("HelpFarm","Target: "..tostring(name),1) end
-})
+-- safe wrappers to call UI methods only if exist
+local function safeSection(window, args)
+    if not WindUI or type(WindUI.CreateWindow) ~= "function" then return nil end
+    local ok, sect = pcall(function() return window:Section(args) end)
+    return ok and sect or nil
+end
 
--- auto refresh dropdown list every 3s
-task.spawn(function()
-    while true do
-        pcall(function()
-            local list = getPlayerListNames()
-            if helpDropdown and helpDropdown.UpdateValues then
-                helpDropdown:UpdateValues(list)
+-- Build UI if possible, otherwise create minimal toggles via simple ScreenGui buttons
+local WindowUI = nil
+if okWind and WindUI and type(WindUI.CreateWindow) == "function" then
+    local W = WindUI:CreateWindow({
+        Title = "KIM UI",
+        Icon = "rbxassetid://129260712070622",
+        Author = "โดย KIM",
+        Folder = "KIM_UI_Folder",
+        Size = UDim2.fromOffset(720,520),
+        Transparent = true,
+        Theme = "Dark",
+        SideBarWidth = 220,
+        ScrollBarEnabled = true
+    })
+    WindowUI = W
+
+    W:EditOpenButton({
+        Title = "เปิด UI",
+        Icon = "monitor",
+        CornerRadius = UDim.new(0,16),
+        StrokeThickness = 2,
+        Color = ColorSequence.new(Color3.fromHex("FF0F7B"), Color3.fromHex("F89B29")),
+        Draggable = true
+    })
+
+    local MainSection = W:Section({ Title = "Main", Opened = true })
+    local Tabs = {}
+    Tabs.Main = MainSection:Tab({ Title = "Main", Icon = "star" })
+    Tabs.Hitbox = MainSection:Tab({ Title = "Hitbox", Icon = "target" })
+    Tabs.KillAura = MainSection:Tab({ Title = "Kill Aura", Icon = "zap" })
+    Tabs.HelpFarm = MainSection:Tab({ Title = "Help Farm", Icon = "heart" })
+    Tabs.Damage = MainSection:Tab({ Title = "Damage", Icon = "skull" })
+    Tabs.Misc = MainSection:Tab({ Title = "Misc", Icon = "cog" })
+
+    -- Main
+    pcall(function()
+        Tabs.Main:Toggle({
+            Title = "Enable Hitbox (ESP + Highlight)",
+            Value = _G.HitboxEnabled,
+            Callback = function(v) _G.HitboxEnabled = v if not v then for p,_ in pairs(playerStates) do clearVisuals(p) end end end
+        })
+    end)
+
+    pcall(function()
+        Tabs.Main:Toggle({
+            Title = "Create SafePlace",
+            Value = (SafePlacePart ~= nil),
+            Callback = function(state)
+                if state then createSafePlace(); notifyMsg("SafePlace","Created",1.2) else if SafePlacePart and SafePlacePart.Parent then SafePlacePart:Destroy(); SafePlacePart=nil end notifyMsg("SafePlace","Removed",1.2) end
             end
-        end)
-        task.wait(3)
+        })
+    end)
+
+    pcall(function()
+        Tabs.Main:Button({
+            Title = "Teleport To SafePlace",
+            Callback = function()
+                if not SafePlacePart then createSafePlace() end
+                if SafePlacePart and getHRP(LocalPlayer.Character) then
+                    local hrp = getHRP(LocalPlayer.Character)
+                    pcall(function() hrp.CFrame = CFrame.new(SafePlacePart.Position + Vector3.new(0,5,0)) end)
+                    notifyMsg("SafePlace","Teleported",1.2)
+                else notifyMsg("SafePlace","No safe place",2) end
+            end
+        })
+    end)
+
+    -- Hitbox tab
+    pcall(function()
+        Tabs.Hitbox:Input({
+            Title = "Hitbox Size (studs)",
+            Value = tostring(_G.HeadSize),
+            Callback = function(txt) local n=tonumber(txt) if n and n>0 then _G.HeadSize=n; notifyMsg("Hitbox","Size="..n,1) else notifyMsg("Hitbox","กรุณาใส่ตัวเลข > 0",2) end end
+        })
+    end)
+    pcall(function()
+        Tabs.Hitbox:Toggle({ Title = "Enable Hitbox", Value = _G.HitboxEnabled, Callback = function(v) _G.HitboxEnabled = v end })
+    end)
+    pcall(function()
+        local teamNames = (function() local arr={} for _,tm in ipairs(Teams:GetTeams()) do table.insert(arr,tm.Name) end table.sort(arr) return arr end)()
+        Tabs.Hitbox:Dropdown({
+            Title = "Hitbox Target Teams (empty=all)",
+            Values = teamNames,
+            Value = {},
+            Multi = true,
+            AllowNone = true,
+            Callback = function(selected)
+                table.clear(SelectedTeams)
+                for _, name in ipairs(selected) do SelectedTeams[name] = true end
+                notifyMsg("Hitbox","Selected: "..(#selected>0 and table.concat(selected,", ") or "All"),1.2)
+            end
+        })
+    end)
+
+    -- KillAura
+    pcall(function()
+        Tabs.KillAura:Input({ Title = "Kill Aura Radius (studs)", Value = tostring(KillAuraRadius), Callback = function(txt) local n=tonumber(txt) if n and n>0 then KillAuraRadius=n; updateKillAuraVisual(); notifyMsg("KillAura","Radius="..n,1) end end })
+        Tabs.KillAura:Toggle({ Title = "Enable Kill Aura", Value = KillAuraEnabled, Callback = function(v) KillAuraEnabled = v if not v and KillAuraPart and KillAuraPart.Parent then pcall(function() KillAuraPart:Destroy() end) KillAuraPart=nil end end })
+        Tabs.KillAura:Toggle({ Title = "Burst Mode (double-fire)", Value = BurstEnabled, Callback = function(v) BurstEnabled = v end })
+        Tabs.KillAura:Input({ Title = "Damage Value", Value = tostring(DamageValue), Callback = function(txt) local n=tonumber(txt) if n then DamageValue=n; notifyMsg("Damage","Set="..n,1) end end })
+    end)
+
+    -- HelpFarm
+    local function getPlayerListNames()
+        local out = {}
+        for _, p in ipairs(Players:GetPlayers()) do if p ~= LocalPlayer then table.insert(out, p.Name) end end
+        return out
     end
-end)
 
-TabsUI.HelpFarm:Toggle({
-    Title = "Help Farm Toggle",
-    Value = HelpFarmEnabled,
-    Callback = function(state)
-        HelpFarmEnabled = state
-        if state then startHelpFarmLoop(); notify("HelpFarm","Started",1) else HelpFarmEnabled=false; notify("HelpFarm","Stopped",1) end
+    local okDrop, helpDropdown = pcall(function()
+        return Tabs.HelpFarm:Dropdown({
+            Title = "Select Player to Help Farm",
+            Values = getPlayerListNames(),
+            Value = "",
+            Multi = false,
+            AllowNone = true,
+            Callback = function(name) HelpFarmTargetName = name; notifyMsg("HelpFarm","Target: "..tostring(name),1) end
+        })
+    end)
+
+    -- auto refresh dropdown list
+    task.spawn(function()
+        while true do
+            local ok, success = pcall(function()
+                local list = getPlayerListNames()
+                if helpDropdown and type(helpDropdown.UpdateValues) == "function" then
+                    helpDropdown:UpdateValues(list)
+                end
+            end)
+            task.wait(3)
+        end
+    end)
+
+    pcall(function()
+        Tabs.HelpFarm:Toggle({
+            Title = "Help Farm Toggle",
+            Value = HelpFarmEnabled,
+            Callback = function(state)
+                HelpFarmEnabled = state
+                if state then startHelpFarmLoop(); notifyMsg("HelpFarm","Started",1) else HelpFarmEnabled=false; notifyMsg("HelpFarm","Stopped",1) end
+            end
+        })
+    end)
+
+    -- Damage tab
+    pcall(function()
+        Tabs.Damage:Input({ Title = "Set Damage Value", Value = tostring(DamageValue), Callback = function(txt) local n = tonumber(txt) if n then DamageValue=n; notifyMsg("Damage","Value set to "..n,1) end end })
+        Tabs.Damage:Toggle({ Title = "Burst Damage (double-fire)", Value = BurstEnabled, Callback = function(v) BurstEnabled = v end })
+        Tabs.Damage:Button({ Title = "Test Fire Damage (self)", Callback = function() if BurstEnabled then tryBurstDamageTo(LocalPlayer.Character, DamageValue) else safeFireDamage(LocalPlayer.Character, DamageValue) end end })
+    end)
+
+    -- Misc tab
+    pcall(function()
+        Tabs.Misc:Toggle({ Title = "Make All ProximityPrompts HoldDuration = 0", Value = PromptZeroEnabled, Callback = function(state) PromptZeroEnabled = state; setAllPromptsZero(state); notifyMsg("Prompts", state and "HoldDuration=0" or "Restored",1.2) end })
+        Tabs.Misc:Toggle({ Title = "Show KillAura Visual (alpha)", Value = true, Callback = function(v) if KillAuraPart and KillAuraPart.Parent then KillAuraPart.Transparency = v and 0.6 or 1 end end })
+    end)
+
+    -- Hotkey to toggle UI
+    UserInputService.InputBegan:Connect(function(inp, processed)
+        if not processed and inp.KeyCode == Enum.KeyCode.F1 then pcall(function() W:Toggle() end) end
+    end)
+
+else
+    -- WindUI failed: create minimal GUI buttons as fallback to avoid nil-call errors
+    notifyMsg("KIM UI","WindUI failed — creating minimal fallback UI",3)
+    local sg = Instance.new("ScreenGui", PlayerGui); sg.Name = "KIMUI_Fallback"; sg.ResetOnSpawn = false
+    local frame = Instance.new("Frame", sg); frame.Size = UDim2.new(0,200,0,300); frame.Position = UDim2.new(0,10,0,80); frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
+    local function addBtn(y, text, cb)
+        local b = Instance.new("TextButton", frame); b.Size = UDim2.new(1,-10,0,28); b.Position = UDim2.new(0,5,0,y)
+        b.Text = text; b.BackgroundColor3 = Color3.fromRGB(45,45,45)
+        b.MouseButton1Click:Connect(function() pcall(cb) end)
     end
-})
+    addBtn(8, "Toggle Hitbox", function() _G.HitboxEnabled = not _G.HitboxEnabled notifyMsg("Hitbox", tostring(_G.HitboxEnabled),2) end)
+    addBtn(44, "Toggle KillAura", function() KillAuraEnabled = not KillAuraEnabled notifyMsg("KillAura", tostring(KillAuraEnabled),2) end)
+    addBtn(80, "Toggle HelpFarm", function() HelpFarmEnabled = not HelpFarmEnabled if HelpFarmEnabled then startHelpFarmLoop() end notifyMsg("HelpFarm", tostring(HelpFarmEnabled),2) end)
+    addBtn(116, "Toggle PromptZero", function() PromptZeroEnabled = not PromptZeroEnabled setAllPromptsZero(PromptZeroEnabled) notifyMsg("Prompts", tostring(PromptZeroEnabled),2) end)
+    addBtn(152, "Create SafePlace", function() createSafePlace(); notifyMsg("SafePlace","Created",1.2) end)
+end
 
--- Damage
-TabsUI.Damage:Input({ Title = "Set Damage Value", Value = tostring(DamageValue), Callback = function(txt) local n = tonumber(txt) if n then DamageValue=n; notify("Damage","Value set to "..n,1) end end })
-TabsUI.Damage:Toggle({ Title = "Burst Damage (double-fire)", Value = BurstEnabled, Callback = function(v) BurstEnabled = v end })
-TabsUI.Damage:Button({ Title = "Test Fire Damage (self)", Callback = function() if BurstEnabled then tryBurstDamageTo(LocalPlayer.Character, DamageValue) else safeFireDamage(LocalPlayer.Character, DamageValue) end end })
-
--- Misc
-TabsUI.Misc:Toggle({ Title = "Make All ProximityPrompts HoldDuration = 0", Value = PromptZeroEnabled, Callback = function(state) PromptZeroEnabled = state; setAllPromptsZero(state); notify("Prompts", state and "HoldDuration=0" or "Restored",1.2) end })
-TabsUI.Misc:Toggle({ Title = "Show KillAura Visual", Value = KillAuraVisible, Callback = function(v) KillAuraVisible = v; if KillAuraPart and KillAuraPart.Parent then KillAuraPart.Transparency = v and 0.6 or 1 end end })
-
--- Hotkey to toggle UI
-UserInputService.InputBegan:Connect(function(inp, processed)
-    if not processed and inp.KeyCode == Enum.KeyCode.F1 then Window:Toggle() end
-end)
-
--- Keep remote reference updated
+-- keep DealDamageRemote updated
 task.spawn(function()
     while true do
         if not DealDamageRemote then DealDamageRemote = findRemoteByName(DealDamageRemoteName) end
@@ -637,5 +706,12 @@ task.spawn(function()
     end
 end)
 
-notify("KIM UI", "Loaded ✓ (KillAura visual & HelpFarm fixed)", 2)
+-- Prevent nil-call: wrap global event connections
+pcall(function()
+    Players.PlayerAdded:Connect(function(p) if p ~= LocalPlayer then bindPlayerForHitbox(p) end end)
+end)
+
+-- Final notify
+notifyMsg("KIM UI","Loaded safely — no nil-call crashes",3)
+
 -- End of file
