@@ -1,320 +1,566 @@
--- Safe Runner + Basic Draggable GUI (No WindUI)
+-- Silent-Aim GUI + Remote helper (drag GUI, no WindUI)
 -- Features:
---  - Robust guards to avoid "attempt to call a nil value"
---  - Basic draggable GUI with Toggle + FOV Input
---  - Safe SilentAim: finds target in screen center FOV & highlights them (no remote hooks)
---  - Lightweight, throttled loops to avoid lag
+-- 1) Draggable GUI
+-- 2) Toggle Silent Aim
+-- 3) FOV radius input + "Lock center" checkbox (if locked, center = screen center)
+-- 4) Highlight target selected by FOV
+-- 5) On Tool.Activated, if SilentAim enabled, attempt to call known remotes
+--    - InflictTarget (InvokeServer) with target humanoid/parts + modified damage
+--    - VisualizeBullet / Remote Visual (FireServer) with muzzle/handle + direction vector toward target
+-- NOTES: This script assumes some common remote names. If your game's remote names or arg format differ,
+-- edit the REMOTE_LOOKUP table near the top.
 
--- ======= Basic waits & safety =======
-repeat task.wait() until game and game:IsLoaded()
+-- CONFIG / TWEAKS (ปรับได้)
+local FOV_DEFAULT = 150 -- pixels
+local HIGHLIGHT_COLOR = Color3.fromRGB(255, 100, 60)
+local HIGHLIGHT_FILL = 0.5
+local TARGET_SEARCH_INTERVAL = 0.06 -- วินาที หาเป้าใหม่เร็วขึ้น = farmser
+local ACTIVATED_FIRE_DELAY = 0 -- ถ้าต้องการใส่ delay ก่อนยิง remote (sec)
 
--- cloneref fallback
-local cloneref = rawget(_G, "cloneref") or function(x) return x end
+-- Remote name hints (ถ้าเกมใช้ชื่ออื่น -> แก้ที่นี่)
+local REMOTE_LOOKUP = {
+    InflictTarget = { path = {"ReplicatedStorage","Remotes","InflictTarget"}, type = "Invoke" }, -- example
+    VisualizeBullet = { path = {"ReplicatedStorage","Remotes","VisualizeBullet"}, type = "Fire" }, -- example
+    -- ถ้ามี remote อื่น เพิ่มในตารางนี้
+}
 
--- safe pcall helper
-local function safe_pcall(fn, ...)
-    local ok, a, b, c = pcall(fn, ...)
-    return ok, a, b, c
+-- ====== Services & helpers ======
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+local HttpService = game:GetService("HttpService") -- may be unused but handy for debug
+
+local function safeFindPath(root, path)
+    local node = root
+    for _, name in ipairs(path) do
+        if not node then return nil end
+        node = node:FindFirstChild(name)
+    end
+    return node
 end
 
--- safe notify (StarterGui)
-local function safe_notify(title, text, dur)
-    pcall(function()
-        game:GetService("StarterGui"):SetCore("SendNotification", { Title = tostring(title), Text = tostring(text), Duration = dur or 3 })
+-- Create screen-space viewport center
+local function viewportCenter()
+    local v = Camera.ViewportSize
+    return Vector2.new(v.X/2, v.Y/2)
+end
+
+-- World->Screen and on-screen check
+local function worldToScreen(pos)
+    local x,y,z = Camera:WorldToViewportPoint(pos)
+    return Vector2.new(x,y), z>0
+end
+
+-- ====== GUI (draggable) ======
+local CoreGui = game:GetService("CoreGui")
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "SilentAim_GUI_v1"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = CoreGui
+
+local mainFrame = Instance.new("Frame", screenGui)
+mainFrame.Name = "Main"
+mainFrame.Size = UDim2.new(0, 300, 0, 160)
+mainFrame.Position = UDim2.new(0.02, 0, 0.2, 0)
+mainFrame.Active = true
+mainFrame.Draggable = true -- simple draggable
+mainFrame.BackgroundColor3 = Color3.fromRGB(25,25,25)
+mainFrame.BorderSizePixel = 0
+mainFrame.AnchorPoint = Vector2.new(0,0)
+mainFrame.ClipsDescendants = true
+local uiCorner = Instance.new("UICorner", mainFrame); uiCorner.CornerRadius = UDim.new(0,8)
+
+local title = Instance.new("TextLabel", mainFrame)
+title.Size = UDim2.new(1,0,0,28)
+title.Position = UDim2.new(0,0,0,0)
+title.BackgroundTransparency = 1
+title.Text = "Silent Aim (drag)"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 16
+title.TextColor3 = Color3.fromRGB(230,230,230)
+
+-- Toggle UI element (simple)
+local function makeToggle(parent, yPos, labelText, default)
+    local lbl = Instance.new("TextLabel", parent)
+    lbl.Size = UDim2.new(0.58,0,0,26)
+    lbl.Position = UDim2.new(0.02,0,0,yPos)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = labelText
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 14
+    lbl.TextColor3 = Color3.fromRGB(220,220,220)
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local btn = Instance.new("TextButton", parent)
+    btn.Size = UDim2.new(0.36,0,0,24)
+    btn.Position = UDim2.new(0.62,0,0,yPos+0.8)
+    btn.BackgroundColor3 = default and Color3.fromRGB(60,160,80) or Color3.fromRGB(60,60,60)
+    btn.Text = default and "ON" or "OFF"
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 14
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.AutoButtonColor = true
+    btn.Active = true
+    local state = default
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        btn.BackgroundColor3 = state and Color3.fromRGB(60,160,80) or Color3.fromRGB(60,60,60)
+        btn.Text = state and "ON" or "OFF"
+        btn:TweenSize(UDim2.new(0.36,0,0,24), "Out", "Quad", 0.06, true)
+        -- callback via return?
     end)
+    return { label = lbl, button = btn, get = function() return state end, set = function(v) state = v; btn.BackgroundColor3 = state and Color3.fromRGB(60,160,80) or Color3.fromRGB(60,60,60); btn.Text = state and "ON" or "OFF" end }
 end
 
--- services (wrapped with cloneref)
-local Players   = cloneref(game:GetService("Players"))
-local Workspace = cloneref(game:GetService("Workspace"))
-local RunService = cloneref(game:GetService("RunService"))
-local UserInputService = cloneref(game:GetService("UserInputService"))
+local function makeInput(parent, yPos, labelText, placeholder)
+    local lbl = Instance.new("TextLabel", parent)
+    lbl.Size = UDim2.new(0.58,0,0,20)
+    lbl.Position = UDim2.new(0.02,0,0,yPos)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = labelText
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 13
+    lbl.TextColor3 = Color3.fromRGB(200,200,200)
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
 
-local LocalPlayer = Players and Players.LocalPlayer
-if not LocalPlayer then
-    safe_notify("SafeRunner", "LocalPlayer not found. Abort.", 5)
-    return
+    local tb = Instance.new("TextBox", parent)
+    tb.Size = UDim2.new(0.94,0,0,26)
+    tb.Position = UDim2.new(0.03,0,0,yPos+0.18)
+    tb.Text = placeholder or ""
+    tb.PlaceholderText = placeholder or ""
+    tb.ClearTextOnFocus = false
+    tb.TextEditable = true
+    tb.Font = Enum.Font.Gotham
+    tb.TextSize = 14
+    tb.TextColor3 = Color3.new(1,1,1)
+    tb.BackgroundColor3 = Color3.fromRGB(40,40,40)
+    tb.BorderSizePixel = 0
+    tb.AutoLocalize = false
+    local corner = Instance.new("UICorner", tb); corner.CornerRadius = UDim.new(0,6)
+    return { label = lbl, box = tb }
 end
 
--- ======= GUI helpers =======
-local function makeDraggable(frame)
-    local dragging, dragInput, dragStart, startPos
-    frame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = frame.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
+-- build UI controls
+local togSilent = makeToggle(mainFrame, 34, "Silent Aim", false)
+local inpFOV = makeInput(mainFrame, 70, "FOV radius (px)", tostring(FOV_DEFAULT))
+local chkLockLabel = Instance.new("TextLabel", mainFrame)
+chkLockLabel.Size = UDim2.new(0.6,0,0,20)
+chkLockLabel.Position = UDim2.new(0.03,0,0,120)
+chkLockLabel.BackgroundTransparency = 1
+chkLockLabel.Text = "Lock center"
+chkLockLabel.Font = Enum.Font.Gotham
+chkLockLabel.TextSize = 13
+chkLockLabel.TextColor3 = Color3.fromRGB(200,200,200)
+chkLockLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local chkLockBtn = Instance.new("TextButton", mainFrame)
+chkLockBtn.Size = UDim2.new(0.24,0,0,24)
+chkLockBtn.Position = UDim2.new(0.65,0,0,116)
+chkLockBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
+chkLockBtn.Text = "OFF"
+chkLockBtn.Font = Enum.Font.GothamBold
+chkLockBtn.TextSize = 14
+chkLockBtn.TextColor3 = Color3.new(1,1,1)
+local lockCenter = false
+chkLockBtn.MouseButton1Click:Connect(function()
+    lockCenter = not lockCenter
+    chkLockBtn.BackgroundColor3 = lockCenter and Color3.fromRGB(60,160,80) or Color3.fromRGB(60,60,60)
+    chkLockBtn.Text = lockCenter and "ON" or "OFF"
+end)
+
+-- small FOV ring render (Canvas)
+local fovCanvas = Instance.new("Frame", screenGui)
+fovCanvas.Name = "FOV_Canvas"
+fovCanvas.BackgroundTransparency = 1
+fovCanvas.AnchorPoint = Vector2.new(0.5,0.5)
+fovCanvas.Size = UDim2.new(0, FOV_DEFAULT*2, 0, FOV_DEFAULT*2)
+fovCanvas.Position = UDim2.new(0.5, 0, 0.5, 0)
+fovCanvas.Visible = false
+local fovCircle = Instance.new("ImageLabel", fovCanvas)
+fovCircle.Size = UDim2.new(1,0,1,0)
+fovCircle.Position = UDim2.new(0,0,0,0)
+fovCircle.BackgroundTransparency = 1
+fovCircle.Image = "rbxassetid://7031400161" -- simple circle image (if not allowed might be blank)
+fovCircle.ImageTransparency = 0.4
+fovCircle.ScaleType = Enum.ScaleType.Slice
+fovCircle.SliceCenter = Rect.new(10,10,246,246)
+
+-- Center crosshair (draggable if not locked)
+local aimCross = Instance.new("TextLabel", screenGui)
+aimCross.Size = UDim2.new(0,16,0,16)
+aimCross.Position = UDim2.new(0.5, -8, 0.5, -8)
+aimCross.BackgroundColor3 = Color3.fromRGB(255,80,80)
+aimCross.BackgroundTransparency = 0.3
+local crossCorner = Instance.new("UICorner", aimCross); crossCorner.CornerRadius = UDim.new(0,4)
+aimCross.Visible = true
+aimCross.Active = true
+
+local draggingCross = false
+aimCross.InputBegan:Connect(function(inp)
+    if lockCenter then return end
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 then draggingCross = true end
+end)
+UserInputService.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 then draggingCross = false end
+end)
+RunService.RenderStepped:Connect(function()
+    if draggingCross and not lockCenter then
+        local m = UserInputService:GetMouseLocation()
+        aimCross.Position = UDim2.new(0, m.X-8, 0, m.Y-8)
+        fovCanvas.Position = UDim2.new(0, m.X, 0, m.Y)
+    end
+end)
+
+-- helper to get current FOV center & radius
+local function getAimCenterAndRadius()
+    local rad = tonumber(inpFOV.box.Text) or FOV_DEFAULT
+    if lockCenter then
+        local v = Camera.ViewportSize
+        local cx,cy = v.X/2, v.Y/2
+        return Vector2.new(cx,cy), rad
+    else
+        local pos = aimCross.AbsolutePosition
+        local x = pos.X + aimCross.AbsoluteSize.X/2
+        local y = pos.Y + aimCross.AbsoluteSize.Y/2
+        return Vector2.new(x,y), rad
+    end
+end
+
+-- ====== Target selection & highlight ======
+local currentTarget = nil
+local highlightInst = nil
+
+local function clearHighlight()
+    if highlightInst then
+        pcall(function() highlightInst:Destroy() end)
+        highlightInst = nil
+    end
+    currentTarget = nil
+end
+
+local function highlightPlayerModel(model)
+    clearHighlight()
+    if not model then return end
+    local ok, hl = pcall(function()
+        local h = Instance.new("Highlight")
+        h.Adornee = model
+        h.FillColor = HIGHLIGHT_COLOR
+        h.FillTransparency = 1 - HIGHLIGHT_FILL
+        h.OutlineTransparency = 1
+        h.Parent = screenGui
+        return h
+    end)
+    if ok then highlightInst = hl; currentTarget = model end
+end
+
+local function isEnemy(player)
+    if not player or player == LocalPlayer then return false end
+    if LocalPlayer.Team and player.Team and LocalPlayer.Team == player.Team then return false end
+    return true
+end
+
+local function onScreenAndInFov(worldPos, fov, center)
+    local sp, onScreen = Camera:WorldToViewportPoint(worldPos)
+    if not onScreen then return false end
+    local screenPos = Vector2.new(sp.X, sp.Y)
+    return (screenPos - center).Magnitude <= fov
+end
+
+local function findBestTarget()
+    local center, fov = getAimCenterAndRadius()
+    local best, bestD = nil, math.huge
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if isEnemy(pl) and pl.Character and pl.Character.PrimaryPart then
+            local head = pl.Character:FindFirstChild("Head") or pl.Character.PrimaryPart
+            if head then
+                local sp, onScr = Camera:WorldToViewportPoint(head.Position)
+                if onScr then
+                    local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+                    if d < bestD and onScreenAndInFov(head.Position, fov, center) then
+                        bestD = d
+                        best = pl
+                    end
                 end
-            end)
-        end
-    end)
-    frame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
-    end)
-    RunService.RenderStepped:Connect(function()
-        if dragging and dragInput and dragStart and startPos then
-            local delta = dragInput.Position - dragStart
-            local newPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-            frame.Position = newPos
-        end
-    end)
-end
-
--- create basic GUI (or reuse existing)
-local function createBasicGUI()
-    local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui") or game:GetService("CoreGui")
-    local existing = playerGui:FindFirstChild("SafeRunner_GUI")
-    if existing then existing:Destroy() end
-
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "SafeRunner_GUI"
-    screenGui.ResetOnSpawn = false
-    screenGui.Parent = playerGui
-
-    local frame = Instance.new("Frame", screenGui)
-    frame.Name = "MainFrame"
-    frame.Position = UDim2.new(0.02, 0, 0.16, 0)
-    frame.Size = UDim2.new(0, 260, 0, 140)
-    frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
-    frame.BorderSizePixel = 0
-    frame.BackgroundTransparency = 0.05
-    frame.Active = true
-
-    local uicorner = Instance.new("UICorner", frame); uicorner.CornerRadius = UDim.new(0,8)
-
-    -- Title bar for dragging
-    local title = Instance.new("TextLabel", frame)
-    title.Size = UDim2.new(1, 0, 0, 28)
-    title.Position = UDim2.new(0,0,0,0)
-    title.BackgroundTransparency = 1
-    title.Text = "SafeRunner"
-    title.TextColor3 = Color3.fromRGB(220,220,220)
-    title.Font = Enum.Font.GothamBold
-    title.TextSize = 16
-
-    -- Toggle button
-    local toggleBtn = Instance.new("TextButton", frame)
-    toggleBtn.Size = UDim2.new(0, 120, 0, 34)
-    toggleBtn.Position = UDim2.new(0, 10, 0, 36)
-    toggleBtn.Text = "SilentAim: OFF"
-    toggleBtn.Font = Enum.Font.Gotham
-    toggleBtn.TextSize = 14
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
-    toggleBtn.BorderSizePixel = 0
-    local tcorner = Instance.new("UICorner", toggleBtn); tcorner.CornerRadius = UDim.new(0,6)
-
-    -- FOV label + input
-    local fovLabel = Instance.new("TextLabel", frame)
-    fovLabel.Position = UDim2.new(0, 10, 0, 80)
-    fovLabel.Size = UDim2.new(0, 60, 0, 22)
-    fovLabel.Text = "FOV"
-    fovLabel.BackgroundTransparency = 1
-    fovLabel.TextColor3 = Color3.fromRGB(200,200,200)
-    fovLabel.Font = Enum.Font.Gotham
-    fovLabel.TextSize = 14
-
-    local fovInput = Instance.new("TextBox", frame)
-    fovInput.Position = UDim2.new(0, 70, 0, 78)
-    fovInput.Size = UDim2.new(0, 80, 0, 24)
-    fovInput.Text = "150"
-    fovInput.ClearTextOnFocus = false
-    fovInput.Font = Enum.Font.Gotham
-    fovInput.TextSize = 14
-    fovInput.BackgroundColor3 = Color3.fromRGB(42,42,42)
-    fovInput.TextColor3 = Color3.fromRGB(230,230,230)
-    local fic = Instance.new("UICorner", fovInput); fic.CornerRadius = UDim.new(0,5)
-
-    -- Close button
-    local closeBtn = Instance.new("TextButton", frame)
-    closeBtn.Position = UDim2.new(0, 200, 0, 36)
-    closeBtn.Size = UDim2.new(0, 48, 0, 34)
-    closeBtn.Text = "X"
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextSize = 14
-    closeBtn.BackgroundColor3 = Color3.fromRGB(65,65,65)
-    local ccorner = Instance.new("UICorner", closeBtn); ccorner.CornerRadius = UDim.new(0,6)
-
-    makeDraggable(frame)
-
-    return {
-        Gui = screenGui,
-        Frame = frame,
-        Toggle = toggleBtn,
-        FovInput = fovInput,
-        Close = closeBtn
-    }
-end
-
--- ======= Safe SilentAim core (no remote hooks) =======
-local function safeSilentAimModule(guiObjects)
-    local state = {
-        enabled = false,
-        fov = 150,
-        throttle = 0.12,
-        lastSearch = 0,
-        currentTarget = nil,
-        highlight = nil
-    }
-
-    -- player cache
-    local playerList = {}
-    local function rebuildPlayers()
-        table.clear(playerList)
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer then table.insert(playerList, p) end
-        end
-    end
-    rebuildPlayers()
-    Players.PlayerAdded:Connect(function(p) if p ~= LocalPlayer then table.insert(playerList, p) end end)
-    Players.PlayerRemoving:Connect(function(p)
-        for i=#playerList,1,-1 do if playerList[i] == p then table.remove(playerList, i) end end
-    end)
-
-    local Camera = Workspace.CurrentCamera
-    local function viewportCenter() local vs = Camera.ViewportSize return Vector2.new(vs.X/2, vs.Y/2) end
-
-    local function findTarget()
-        local now = tick()
-        if now - state.lastSearch < state.throttle then return state.currentTarget end
-        state.lastSearch = now
-
-        local best, bestD = nil, math.huge
-        local center = viewportCenter()
-        for _, pl in ipairs(playerList) do
-            local ok, char = pcall(function() return pl.Character end)
-            if not ok or not char then goto cont end
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if not hum or hum.Health <= 0 then goto cont end
-            local part = char:FindFirstChild("Head") or char.PrimaryPart or char:FindFirstChild("HumanoidRootPart")
-            if not part then goto cont end
-            local sx, sy, onScreen = nil, nil, false
-            local ok2, vx, vy, vs = pcall(function() return Camera:WorldToViewportPoint(part.Position) end)
-            if ok2 then sx, sy, onScreen = vx, vy, vs end
-            if not onScreen then goto cont end
-            local d = (Vector2.new(sx, sy) - center).Magnitude
-            if d <= state.fov and d < bestD then best, bestD = pl, d end
-            ::cont::
-        end
-        state.currentTarget = best
-        return best
-    end
-
-    local function clearHighlight()
-        if state.highlight then pcall(function() state.highlight:Destroy() end) end
-        state.highlight = nil
-        state.currentTarget = nil
-    end
-
-    local function applyHighlight(pl)
-        clearHighlight()
-        if not pl or not pl.Character then return end
-        pcall(function()
-            local hl = Instance.new("Highlight")
-            hl.Adornee = pl.Character
-            hl.FillTransparency = 0.7
-            hl.OutlineTransparency = 1
-            hl.FillColor = (pl.Team and pl.Team.TeamColor and pl.Team.TeamColor.Color) or Color3.new(1,1,1)
-            hl.Parent = pl.Character
-            state.highlight = hl
-        end)
-    end
-
-    -- UI linkage
-    if guiObjects and guiObjects.FovInput then
-        guiObjects.FovInput.FocusLost:Connect(function(enter)
-            local txt = guiObjects.FovInput.Text
-            local n = tonumber(txt)
-            if n and n >= 10 and n <= 2000 then
-                state.fov = n
-                safe_notify("SafeSilentAim", "FOV set to "..tostring(n), 2)
-            else
-                guiObjects.FovInput.Text = tostring(state.fov)
-                safe_notify("SafeSilentAim", "Invalid FOV (10-2000)", 2)
             end
-        end)
+        end
     end
+    return best
+end
 
-    -- background search loop (throttled)
-    task.spawn(function()
-        while true do
-            local ok, tgt = pcall(findTarget)
-            if ok and state.enabled and tgt then
-                if state.currentTarget ~= tgt then applyHighlight(tgt) end
+-- periodic seeker
+local seekerTick = 0
+RunService.Heartbeat:Connect(function(dt)
+    seekerTick = seekerTick + dt
+    if seekerTick >= TARGET_SEARCH_INTERVAL then
+        seekerTick = 0
+        if togSilent.get() then
+            local best = findBestTarget()
+            if best and best.Character then
+                highlightPlayerModel(best.Character)
             else
                 clearHighlight()
             end
-            task.wait(0.12)
+            -- show fov canvas
+            local _, r = getAimCenterAndRadius()
+            local center, _ = getAimCenterAndRadius()
+            fovCanvas.Size = UDim2.new(0, r*2, 0, r*2)
+            fovCanvas.Position = UDim2.new(0, center.X, 0, center.Y)
+            fovCanvas.Visible = true
+        else
+            -- hide highlight + fov
+            clearHighlight()
+            fovCanvas.Visible = false
         end
-    end)
+    end
+end)
 
-    -- Public API
-    return {
-        toggle = function()
-            state.enabled = not state.enabled
-            if not state.enabled then clearHighlight() end
-            if guiObjects and guiObjects.Toggle then
-                guiObjects.Toggle.Text = "SilentAim: " .. (state.enabled and "ON" or "OFF")
-            end
-        end,
-        enable = function() state.enabled = true; if guiObjects and guiObjects.Toggle then guiObjects.Toggle.Text = "SilentAim: ON" end end,
-        disable = function() state.enabled = false; clearHighlight(); if guiObjects and guiObjects.Toggle then guiObjects.Toggle.Text = "SilentAim: OFF" end end,
-        isEnabled = function() return state.enabled end,
-        setFov = function(n) state.fov = tonumber(n) or state.fov end
+-- ====== Remote helpers ======
+local function lookupRemoteInfo(name)
+    local info = REMOTE_LOOKUP[name]
+    if not info then return nil end
+    local node = safeFindPath(game, info.path)
+    return node, info and info.type
+end
+
+local function safeFire(remote, ...)
+    if not remote then return false, "no remote" end
+    local ok, err = pcall(function() remote:FireServer(...) end)
+    return ok, err
+end
+local function safeInvoke(remote, ...)
+    if not remote then return false, "no remote" end
+    local ok, ret = pcall(function() return remote:InvokeServer(...) end)
+    return ok, ret
+end
+
+-- Build InflictTarget args example:
+local function buildInflictArgsFromTarget(targetPlayer, damageOverride)
+    if not targetPlayer or not targetPlayer.Character then return nil end
+    local hum = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+    local hrp = targetPlayer.Character:FindFirstChild("HumanoidRootPart") or targetPlayer.Character.PrimaryPart
+    if not hum or not hrp then return nil end
+    local dmg = tonumber(damageOverride) or 20
+    -- format depends on game; we include common patterns:
+    -- [ "Gun", TargetCharacter, TargetHumanoid, TargetRootPart, TargetLimb, {...}, damageValue ]
+    local args = {
+        "Gun",
+        targetPlayer.Character,
+        hum,
+        hrp,
+        targetPlayer.Character:FindFirstChild("Right Arm") or targetPlayer.Character:FindFirstChild("RightLowerLeg") or targetPlayer.Character:FindFirstChildWhichIsA("BasePart"),
+        {}, -- misc table (game-specific)
+        dmg
     }
+    return args
 end
 
--- ======= Main guarded runner =======
-local function safeMain()
-    -- build GUI
-    local gui = createBasicGUI()
+-- Build VisualizeBullet args example:
+local function buildVisualizeArgsForLocalWeapon(targetModel)
+    -- Try to make args similar to user's example:
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    local weapon = char:FindFirstChildOfClass("Tool") or char:FindFirstChild("Plastic rifleX") or char:FindFirstChildWhichIsA("Tool")
+    if not weapon then return nil end
+    local handle = (weapon:FindFirstChild("Handle") or weapon)
+    local firePoint = handle and (handle:FindFirstChild("GunFirePoint1") or handle:FindFirstChild("GunMuzzlePoint1")) or handle
+    -- direction vector toward target
+    local dirVec = Vector3.new(0,0,1)
+    if targetModel and targetModel.PrimaryPart then
+        dirVec = (targetModel.PrimaryPart.Position - (firePoint and firePoint.Position or handle.Position)).Unit
+    else
+        -- fallback: camera lookvector
+        dirVec = Camera.CFrame.LookVector
+    end
+    local args = {
+        weapon,
+        handle,
+        { -- huge options table: we won't copy the entire example; keep minimal but include BaseDamage etc.
+            BaseDamage = 40,
+            BulletSpeed = 100000,
+            Range = 10000,
+            -- user may add more keys if needed
+        },
+        { vector.create(dirVec.X, dirVec.Y, dirVec.Z) }, -- direction vector table as example
+        firePoint,
+        firePoint,
+        { ChargeLevel = 0 }
+    }
+    return args
+end
 
-    -- attach close
-    gui.Close.MouseButton1Click:Connect(function()
-        local parent = gui.Gui.Parent
-        if parent then
-            pcall(function() gui.Gui:Destroy() end)
+-- ====== Core: hook on Tool.Activated ======
+local function onLocalToolActivated(tool)
+    -- only process when SilentAim on
+    if not togSilent.get() then return end
+
+    -- find current target (player)
+    local best = findBestTarget()
+    if not best then
+        -- no target in FOV
+        return
+    end
+
+    -- attempt InflictTarget remote
+    local inflictRemote, inflictType = lookupRemoteInfo("InflictTarget")
+    if inflictRemote and inflictType == "Invoke" then
+        -- build args and invoke
+        local args = buildInflictArgsFromTarget(best, 21) -- sample damage override
+        if args then
+            task.spawn(function()
+                if ACTIVATED_FIRE_DELAY > 0 then task.wait(ACTIVATED_FIRE_DELAY) end
+                local ok, res = safeInvoke(inflictRemote, unpack(args))
+                if not ok then
+                    -- warn via small GUI label
+                    pcall(function() mainFrame:FindFirstChild("Warn") and mainFrame.Warn:Destroy() end)
+                    local w = Instance.new("TextLabel", mainFrame)
+                    w.Name = "Warn"
+                    w.Size = UDim2.new(1, -8, 0, 20)
+                    w.Position = UDim2.new(0, 4, 0, 132)
+                    w.BackgroundTransparency = 1
+                    w.Text = "[Warn] InflictTarget failed"
+                    w.TextColor3 = Color3.fromRGB(255,180,80)
+                    w.Font = Enum.Font.Gotham
+                    w.TextSize = 13
+                    game:GetService("Debris"):AddItem(w, 2.5)
+                end
+            end)
         end
-    end)
+    end
 
-    -- create module
-    local silentAim = safeSilentAimModule(gui)
-
-    -- toggle button binding
-    gui.Toggle.MouseButton1Click:Connect(function()
-        pcall(function() silentAim.toggle() end)
-    end)
-
-    -- keybind: toggle with "T" by default (you can change)
-    local TOGGLE_KEY = Enum.KeyCode.T
-    UserInputService.InputBegan:Connect(function(input, typing)
-        if typing then return end
-        if input.KeyCode == TOGGLE_KEY then
-            pcall(function() silentAim.toggle() end)
+    -- attempt VisualizeBullet remote
+    local visRemote, visType = lookupRemoteInfo("VisualizeBullet")
+    if visRemote and visType == "Fire" then
+        local args = buildVisualizeArgsForLocalWeapon(best and best.Character)
+        if args then
+            task.spawn(function()
+                if ACTIVATED_FIRE_DELAY > 0 then task.wait(ACTIVATED_FIRE_DELAY) end
+                local ok, err = safeFire(visRemote, unpack(args))
+                if not ok then
+                    pcall(function() mainFrame:FindFirstChild("Warn2") and mainFrame.Warn2:Destroy() end)
+                    local w = Instance.new("TextLabel", mainFrame)
+                    w.Name = "Warn2"
+                    w.Size = UDim2.new(1, -8, 0, 20)
+                    w.Position = UDim2.new(0, 4, 0, 132)
+                    w.BackgroundTransparency = 1
+                    w.Text = "[Warn] VisualizeBullet failed"
+                    w.TextColor3 = Color3.fromRGB(255,120,120)
+                    w.Font = Enum.Font.Gotham
+                    w.TextSize = 13
+                    game:GetService("Debris"):AddItem(w, 2.5)
+                end
+            end)
         end
-    end)
-
-    safe_notify("SafeRunner", "GUI loaded. Toggle SilentAim via UI or T.", 4)
-
-    -- expose globally for quick testing
-    _G.SafeRunner = _G.SafeRunner or {}
-    _G.SafeRunner.SilentAim = silentAim
+    end
 end
 
--- run guarded
-local ok, err = pcall(safeMain)
-if not ok then
-    warn("[SafeRunner] safeMain error:", err)
-    safe_notify("SafeRunner Error", tostring(err), 6)
+-- bind to local tool activation
+local function bindToolsForCharacter(char)
+    if not char then return end
+    -- watch for tools in character and backpack
+    local function connectTool(tool)
+        if not tool or not tool:IsA("Tool") then return end
+        -- avoid duplicate connections: use attribute
+        if tool:GetAttribute("_silent_conn") then return end
+        local conn = tool.Activated:Connect(function()
+            onLocalToolActivated(tool)
+        end)
+        tool:SetAttribute("_silent_conn", true)
+        -- disconnect on removal
+        tool.AncestryChanged:Connect(function(_, parent)
+            if not parent then
+                pcall(function() conn:Disconnect() end)
+            end
+        end)
+    end
+    for _, t in ipairs(char:GetChildren()) do
+        if t:IsA("Tool") then connectTool(t) end
+    end
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if backpack then
+        for _, t in ipairs(backpack:GetChildren()) do
+            if t:IsA("Tool") then connectTool(t) end
+        end
+        backpack.ChildAdded:Connect(function(c) if c and c:IsA("Tool") then task.delay(0.1, function() connectTool(c) end) end end)
+    end
+    char.ChildAdded:Connect(function(c) if c and c:IsA("Tool") then task.delay(0.05, function() connectTool(c) end) end end)
 end
 
--- small protection: ensure script doesn't spam nil-call errors
-if type(task) ~= "table" then
-    task = { wait = function(t) os.execute("sleep " .. (tonumber(t) or 0.03)) end }
+if LocalPlayer.Character then bindToolsForCharacter(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(function(ch) bindToolsForCharacter(ch) end)
+
+-- ====== Utility: populate remote lookup when available (non-blocking) ======
+task.spawn(function()
+    while true do
+        for name, info in pairs(REMOTE_LOOKUP) do
+            local node = safeFindPath(game, info.path)
+            if node then
+                -- store found path reference for quicker access
+                REMOTE_LOOKUP[name].instance = node
+            end
+        end
+        task.wait(2)
+    end
+end)
+
+-- override lookupRemoteInfo to return instance if found in table
+local function lookupRemoteInstance(name)
+    local r = REMOTE_LOOKUP[name]
+    if not r then return nil, nil end
+    if r.instance and (r.instance:IsA("RemoteEvent") or r.instance:IsA("RemoteFunction")) then
+        return r.instance, r.type
+    end
+    -- try search again
+    local node = safeFindPath(game, r.path)
+    if node and (node:IsA("RemoteEvent") or node:IsA("RemoteFunction")) then
+        REMOTE_LOOKUP[name].instance = node
+        return node, r.type
+    end
+    return nil, nil
 end
 
--- End of script
+-- replace previous lookup usage to instance-aware
+lookupRemoteInfo = function(name) return lookupRemoteInstance(name) end
+
+-- ====== Small UX: allow dragging GUI by title too ======
+title.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        mainFrame.Draggable = true
+    end
+end)
+title.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        mainFrame.Draggable = false
+    end
+end)
+
+-- ====== Init: set initial UI values & show ======
+inpFOV.box.Text = tostring(FOV_DEFAULT)
+chkLockBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
+chkLockBtn.Text = "OFF"
+fovCanvas.Visible = false
+
+-- expose some debug prints when toggles change
+togSilent.button.MouseButton1Click:Connect(function()
+    -- already handled in makeToggle; but show small notify
+    local state = togSilent.get()
+    local lbl = Instance.new("TextLabel", mainFrame)
+    lbl.Size = UDim2.new(1, -8, 0, 18)
+    lbl.Position = UDim2.new(0,4,0,132)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = "[SilentAim] "..(state and "ON" or "OFF")
+    lbl.TextColor3 = Color3.fromRGB(180,255,180)
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 13
+    game:GetService("Debris"):AddItem(lbl, 1.4)
+end)
+
+-- ====== Final note ======
+-- This is a general-purpose template: your game may require different remote names / args structures.
+-- If SilentAim doesn't affect the remote, print available remotes (use 'print' or tell me the game's remote names)
+-- and I will adapt arg-building to match exactly.
+
+print("[SilentAim] GUI loaded. Toggle, set FOV and lock center if desired.")
