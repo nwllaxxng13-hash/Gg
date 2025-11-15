@@ -1,0 +1,466 @@
+-- Silent Aim (Robust, low-lag, crash-resistant)
+-- "Permanent fix" approach: defensive pcall, throttling, minimal per-frame work.
+-- Requires WindUI (will try to load). If WindUI missing will fallback to StarterGui notification.
+
+repeat task.wait() until game:IsLoaded()
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local Camera = Workspace.CurrentCamera
+
+-- safe load WindUI
+local okWind, WindUI = pcall(function()
+    return loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+end)
+
+if not okWind or not WindUI then
+    pcall(function()
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "SilentAim",
+            Text  = "WindUI load failed — UI disabled (script continues headless).",
+            Duration = 4
+        })
+    end)
+end
+
+-- CONFIG / STATE
+local STATE = {
+    enabled = false,          -- overall toggle
+    fov_px = 140,             -- FOV radius (pixels)
+    lock_center = true,       -- lock center
+    hook_available = false,   -- metamethod hook available
+    throttle = 0.10,          -- search throttle seconds (10Hz)
+    last_search = 0,
+    highlight = nil,
+    current_target = nil,
+    closed = false
+}
+
+-- safe notification
+local function notify(title, text, dur)
+    pcall(function()
+        if WindUI then WindUI:Notify({Title=title, Content=text, Duration=dur or 2}) else
+            game.StarterGui:SetCore("SendNotification", {Title = title, Text = text, Duration = dur or 2})
+        end
+    end)
+end
+
+-- small utility: viewport center
+local function viewportCenter()
+    local ok, vs = pcall(function() return Camera.ViewportSize end)
+    if not ok or not vs then return Vector2.new(0,0) end
+    return Vector2.new(vs.X/2, vs.Y/2)
+end
+
+-- efficient player list cache (updates on join/leave)
+local players_cache = {}
+local function rebuildPlayersCache()
+    table.clear(players_cache)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then players_cache[#players_cache+1] = p end
+    end
+end
+rebuildPlayersCache()
+Players.PlayerAdded:Connect(function(p) if p ~= LocalPlayer then players_cache[#players_cache+1] = p end end)
+Players.PlayerRemoving:Connect(function(p)
+    for i = #players_cache, 1, -1 do if players_cache[i] == p then table.remove(players_cache, i) end end
+end)
+
+-- target search (throttled)
+local function onScreenAndInFov(vec3, fov, center)
+    local ok, sx, sy, onScreen = pcall(function()
+        local spx, spy, on = Camera:WorldToViewportPoint(vec3)
+        return spx, spy, on
+    end)
+    if not ok then return false end
+    if not onScreen then
+        -- pcall returned 3 values; onScreen is third
+        onScreen = select(3, Camera:WorldToViewportPoint(vec3))
+        if not onScreen then return false end
+    end
+    local v2 = Vector2.new(select(1, Camera:WorldToViewportPoint(vec3)), select(2, Camera:WorldToViewportPoint(vec3)))
+    local c = center or viewportCenter()
+    return (v2 - c).Magnitude <= (fov or STATE.fov_px)
+end
+
+local function findBestTarget()
+    local now = tick()
+    if now - STATE.last_search < STATE.throttle then return STATE.current_target end
+    STATE.last_search = now
+
+    local best, bestD = nil, math.huge
+    local center = viewportCenter()
+    -- iterate cached players (cheap)
+    for _, pl in ipairs(players_cache) do
+        local ok, char = pcall(function() return pl and pl.Character end)
+        if not ok or not char then goto cont end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then goto cont end
+        local aimPart = char:FindFirstChild("Head") or char.PrimaryPart or char:FindFirstChild("HumanoidRootPart")
+        if not aimPart then goto cont end
+        local spx, spy, onScreen = nil, nil, nil
+        local ok2, spx_, spy_, on_ = pcall(function() return Camera:WorldToViewportPoint(aimPart.Position) end)
+        if ok2 then spx, spy, onScreen = spx_, spy_, on_ end
+        if not onScreen then goto cont end
+        local d = (Vector2.new(spx, spy) - center).Magnitude
+        if d <= STATE.fov_px and d < bestD then
+            -- basic LOS check (cheap raycast)
+            local ok3, clear = pcall(function()
+                local from = Camera.CFrame.Position
+                local to = aimPart.Position
+                local rayParams = RaycastParams.new()
+                rayParams.FilterDescendantsInstances = { LocalPlayer.Character }
+                rayParams.FilterType = Enum.RaycastFilterType.Exclude
+                rayParams.IgnoreWater = true
+                local res = Workspace:Raycast(from, to - from, rayParams)
+                if not res then return true end
+                return res.Instance and res.Instance:IsDescendantOf(char)
+            end)
+            if ok3 and clear then best, bestD = pl, d end
+        end
+        ::cont::
+    end
+
+    STATE.current_target = best
+    return best
+end
+
+-- safe highlight
+local function clearHighlight()
+    if STATE.highlight then
+        pcall(function() STATE.highlight:Destroy() end)
+        STATE.highlight = nil
+    end
+    STATE.current_target = nil
+end
+local function applyHighlight(pl)
+    clearHighlight()
+    if not pl or not pl.Character then return end
+    pcall(function()
+        local hl = Instance.new("Highlight")
+        hl.Adornee = pl.Character
+        hl.FillTransparency = 0.7
+        hl.OutlineTransparency = 1
+        hl.FillColor = (pl.Team and pl.Team.TeamColor and pl.Team.TeamColor.Color) or Color3.new(1,1,1)
+        hl.Parent = pl.Character
+        STATE.highlight = hl
+    end)
+end
+
+-- build vector table (for VisualizeBullets)
+local function buildDirectionVectorList(muzzlePos, targetPos, count)
+    if not muzzlePos or not targetPos then return nil end
+    local dir = (targetPos - muzzlePos)
+    if dir.Magnitude == 0 then dir = Vector3.new(0,0,1) end
+    local unit = dir.Unit
+    local out = {}
+    for i=1,(count or 1) do
+        out[i] = { X = unit.X, Y = unit.Y, Z = unit.Z }
+    end
+    return out
+end
+
+-- rewrite helpers (defensive)
+local function rewriteInflictArgs(origArgs, targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then return origArgs end
+    local ok, copy = pcall(function() return type(origArgs) == "table" and (function(t) local o = {} for i=1,#t do o[i] = t[i] end return o end)(origArgs) or origArgs end)
+    if not ok then return origArgs end
+    local args = copy
+    -- replace humanoid / parts with target's humanoid/hrp where sensible
+    for i = 1, #args do
+        local v = args[i]
+        if typeof and typeof(v) == "Instance" then
+            if v:IsA("Humanoid") then
+                local repl = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+                if repl then args[i] = repl end
+            elseif v:IsA("BasePart") then
+                local repl = targetPlayer.Character:FindFirstChild("HumanoidRootPart") or targetPlayer.Character:FindFirstChild("Head")
+                if repl then args[i] = repl end
+            end
+        elseif type(v) == "table" then
+            -- check inner vector table possibility
+            for k2,v2 in pairs(v) do
+                if typeof and typeof(v2) == "Instance" then
+                    if v2:IsA("Humanoid") then
+                        local repl = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+                        if repl then v[k2] = repl end
+                    elseif v2:IsA("BasePart") then
+                        local repl = targetPlayer.Character:FindFirstChild("HumanoidRootPart") or targetPlayer.Character:FindFirstChild("Head")
+                        if repl then v[k2] = repl end
+                    end
+                end
+            end
+        end
+    end
+    return args
+end
+
+local function rewriteVisualizeArgs(origArgs, targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then return origArgs end
+    local ok, copy = pcall(function() return type(origArgs) == "table" and (function(t) local o = {} for i=1,#t do o[i] = t[i] end return o end)(origArgs) or origArgs end)
+    if not ok then return origArgs end
+    local args = copy
+
+    -- find muzzle position (first BasePart in args) or fallback to local tool handle
+    local muzzlePos = nil
+    for i=1,#args do
+        local v = args[i]
+        if typeof and typeof(v) == "Instance" and v:IsA("BasePart") then
+            local okp, pos = pcall(function() return v.Position end)
+            if okp and pos then muzzlePos = pos; break end
+        end
+    end
+    if not muzzlePos then
+        local okTool, tool = pcall(function() return LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Tool") end)
+        if okTool and tool then
+            local handle = tool:FindFirstChild("Handle") or tool
+            if handle and handle:IsA("BasePart") then muzzlePos = handle.Position end
+        end
+    end
+    if not muzzlePos then return args end
+
+    local targetPart = targetPlayer.Character:FindFirstChild("Head") or targetPlayer.Character.PrimaryPart or targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not targetPart then return args end
+    local targetPos = targetPart.Position
+
+    -- find vector-table slot
+    local vtIdx = nil
+    for i=1,#args do
+        local a = args[i]
+        if type(a) == "table" and #a > 0 then
+            local first = a[1]
+            if typeof and typeof(first) == "Vector3" or (type(first) == "table" and first.X and first.Y and first.Z) then
+                vtIdx = i; break
+            end
+        end
+    end
+
+    if vtIdx then
+        args[vtIdx] = buildDirectionVectorList(muzzlePos, targetPos, #args[vtIdx])
+    else
+        -- insert one vector table near front if none found
+        table.insert(args, 1, buildDirectionVectorList(muzzlePos, targetPos, 1))
+    end
+
+    return args
+end
+
+-- find remote by name (safe)
+local function findRemote(name)
+    if not name then return nil end
+    local ok, rem = pcall(function()
+        if ReplicatedStorage:FindFirstChild(name) and (ReplicatedStorage[name]:IsA("RemoteEvent") or ReplicatedStorage[name]:IsA("RemoteFunction")) then
+            return ReplicatedStorage[name]
+        end
+        for _, inst in ipairs(ReplicatedStorage:GetDescendants()) do
+            if inst.Name == name and (inst:IsA("RemoteEvent") or inst:IsA("RemoteFunction")) then return inst end
+        end
+        for _, inst in ipairs(Workspace:GetDescendants()) do
+            if inst.Name == name and (inst:IsA("RemoteEvent") or inst:IsA("RemoteFunction")) then return inst end
+        end
+        return nil
+    end)
+    if ok then return rem else return nil end
+end
+
+-- attempt metamethod namecall hook safely, with full guards
+local orig_namecall = nil
+local function tryInstallNamecallHook()
+    if type(getrawmetatable) ~= "function" or type(setreadonly) ~= "function" then return false end
+    local ok, mt = pcall(function() return getrawmetatable(game) end)
+    if not ok or not mt then return false end
+    if type(mt.__namecall) ~= "function" then return false end
+
+    local success = false
+    pcall(function()
+        orig_namecall = mt.__namecall
+        setreadonly(mt, false)
+        mt.__namecall = function(self, ...)
+            local method = getnamecallmethod and getnamecallmethod() or ""
+            local args = {...}
+            -- only intercept target remotes by name (avoid touching unrelated calls)
+            local name = tostring(self.Name or "")
+            local target = nil
+            -- choose FOV target (but don't call heavy find on every namecall; only for relevant remotes)
+            if name == "InflictTarget" or name == "VisualizeBullet" or name == "Inflict" or name == "AttackTarget" then
+                -- safe pcall to find target
+                local okt, t = pcall(findBestTarget)
+                if okt then target = t end
+            end
+
+            if target and name == "InflictTarget" then
+                local okr, newArgs = pcall(rewriteInflictArgs, args, target)
+                if okr and newArgs then
+                    return orig_namecall(self, table.unpack(newArgs))
+                end
+            elseif target and name == "VisualizeBullet" then
+                local okr, newArgs = pcall(rewriteVisualizeArgs, args, target)
+                if okr and newArgs then
+                    return orig_namecall(self, table.unpack(newArgs))
+                end
+            end
+
+            -- fallback: call original
+            return orig_namecall(self, ...)
+        end
+        setreadonly(mt, true)
+        success = true
+    end)
+    return success
+end
+
+-- install hook once
+local okHook, hookResult = pcall(function() return tryInstallNamecallHook() end)
+if okHook and hookResult then
+    STATE.hook_available = true
+    notify("SilentAim", "Hook installed (safe mode).", 2)
+else
+    STATE.hook_available = false
+    notify("SilentAim", "Hook unavailable in this executor — feature will not auto-intercept remotes.", 4)
+end
+
+-- UI (WindUI) - if available
+local Window
+if WindUI then
+    Window = WindUI:CreateWindow({
+        Title = "Silent Aim — Optimized",
+        Icon = "rbxassetid://129260712070622",
+        IconThemed = true,
+        Author = "SafeFix",
+        Folder = "SilentAim_Optimized",
+        Size = UDim2.fromOffset(520, 360),
+        Transparent = true,
+        Theme = "Dark",
+        SideBarWidth = 200,
+        ScrollBarEnabled = true
+    })
+
+    local mainSec = Window:Section({ Title = "Main", Opened = true })
+    local mainTab = mainSec:Tab({ Title = "Silent", Icon = "target" })
+
+    mainTab:Toggle({
+        Title = "Enable Silent Aim (safe)",
+        Value = STATE.enabled,
+        Callback = function(v)
+            if v then
+                if not STATE.hook_available then
+                    notify("SilentAim", "Cannot enable: metamethod hook not allowed by executor. Aborting.", 4)
+                    return
+                end
+                STATE.enabled = true
+                notify("SilentAim", "Enabled", 1.2)
+            else
+                STATE.enabled = false
+                clearHighlight()
+                notify("SilentAim", "Disabled", 1)
+            end
+        end
+    })
+
+    mainTab:Input({
+        Title = "FOV (px)",
+        Value = tostring(STATE.fov_px),
+        Placeholder = "120",
+        Callback = function(txt)
+            local n = tonumber(txt)
+            if n and n >= 8 and n <= 3000 then STATE.fov_px = n; notify("FOV", tostring(n).." px",1) else notify("FOV invalid","8-3000 px",1.6) end
+        end
+    })
+
+    mainTab:Toggle({
+        Title = "Lock center on screen",
+        Value = true,
+        Callback = function(v) STATE.lock_center = v end
+    })
+
+    mainTab:Button({
+        Title = "Force clear highlight",
+        Callback = function() clearHighlight(); notify("Highlight","Cleared",1) end
+    })
+
+    Window:Open()
+end
+
+-- small FOV GUI (lightweight) — 10Hz update, not RenderStepped heavy
+local fovGui = nil
+do
+    local ok, g = pcall(function()
+        local sg = Instance.new("ScreenGui")
+        sg.Name = "SilentAim_FOV_Optimized"
+        sg.ResetOnSpawn = false
+        sg.Parent = PlayerGui
+        local ring = Instance.new("Frame", sg)
+        ring.Name = "FOVRing"
+        ring.AnchorPoint = Vector2.new(0.5,0.5)
+        ring.BackgroundTransparency = 1
+        ring.BorderSizePixel = 0
+        ring.Size = UDim2.fromOffset(1,1)
+        local stroke = Instance.new("UIStroke", ring)
+        stroke.Thickness = 1
+        stroke.Color = Color3.fromRGB(255,90,90)
+        return { gui = sg, ring = ring }
+    end)
+    if ok then fovGui = g end
+end
+
+-- light UI updater, throttled (10Hz)
+local ui_updater = task.spawn(function()
+    while not STATE.closed do
+        pcall(function()
+            if not fovGui or not fovGui.gui or not fovGui.ring then return end
+            fovGui.ring.Visible = STATE.enabled
+            if STATE.enabled then
+                local vs = Camera.ViewportSize
+                local center = STATE.lock_center and Vector2.new(vs.X/2, vs.Y/2) or viewportCenter()
+                local diam = math.floor(STATE.fov_px * 2)
+                fovGui.ring.Size = UDim2.fromOffset(diam, diam)
+                fovGui.ring.Position = UDim2.fromOffset(center.X, center.Y)
+            end
+        end)
+        task.wait(0.1)
+    end
+end)
+
+-- background target updater (throttled using findBestTarget)
+local target_updater = task.spawn(function()
+    while not STATE.closed do
+        if STATE.enabled then
+            local ok, tgt = pcall(findBestTarget)
+            if ok and tgt then
+                if STATE.current_target ~= tgt then
+                    applyHighlight(tgt)
+                end
+            else
+                clearHighlight()
+            end
+        else
+            clearHighlight()
+        end
+        task.wait(STATE.throttle)
+    end
+end)
+
+-- cleanup handler
+local function cleanup()
+    STATE.closed = true
+    STATE.enabled = false
+    clearHighlight()
+    pcall(function() if fovGui and fovGui.gui then fovGui.gui:Destroy() end end)
+    if Window and Window.OnClose then
+        pcall(function() Window:Close() end)
+    end
+end
+
+-- automatically cleanup when player leaves or script is disabled
+Players.PlayerRemoving:Connect(function(p) if p == LocalPlayer then cleanup() end end)
+game:BindToClose(function() cleanup() end)
+
+-- final
+notify("SilentAim", "Initialized (optimized). Hook available: "..tostring(STATE.hook_available), 3)
