@@ -1,466 +1,320 @@
--- Silent Aim (Robust, low-lag, crash-resistant)
--- "Permanent fix" approach: defensive pcall, throttling, minimal per-frame work.
--- Requires WindUI (will try to load). If WindUI missing will fallback to StarterGui notification.
+-- Safe Runner + Basic Draggable GUI (No WindUI)
+-- Features:
+--  - Robust guards to avoid "attempt to call a nil value"
+--  - Basic draggable GUI with Toggle + FOV Input
+--  - Safe SilentAim: finds target in screen center FOV & highlights them (no remote hooks)
+--  - Lightweight, throttled loops to avoid lag
 
-repeat task.wait() until game:IsLoaded()
+-- ======= Basic waits & safety =======
+repeat task.wait() until game and game:IsLoaded()
 
--- Services
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
+-- cloneref fallback
+local cloneref = rawget(_G, "cloneref") or function(x) return x end
 
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-local Camera = Workspace.CurrentCamera
+-- safe pcall helper
+local function safe_pcall(fn, ...)
+    local ok, a, b, c = pcall(fn, ...)
+    return ok, a, b, c
+end
 
--- safe load WindUI
-local okWind, WindUI = pcall(function()
-    return loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
-end)
-
-if not okWind or not WindUI then
+-- safe notify (StarterGui)
+local function safe_notify(title, text, dur)
     pcall(function()
-        game.StarterGui:SetCore("SendNotification", {
-            Title = "SilentAim",
-            Text  = "WindUI load failed — UI disabled (script continues headless).",
-            Duration = 4
-        })
+        game:GetService("StarterGui"):SetCore("SendNotification", { Title = tostring(title), Text = tostring(text), Duration = dur or 3 })
     end)
 end
 
--- CONFIG / STATE
-local STATE = {
-    enabled = false,          -- overall toggle
-    fov_px = 140,             -- FOV radius (pixels)
-    lock_center = true,       -- lock center
-    hook_available = false,   -- metamethod hook available
-    throttle = 0.10,          -- search throttle seconds (10Hz)
-    last_search = 0,
-    highlight = nil,
-    current_target = nil,
-    closed = false
-}
+-- services (wrapped with cloneref)
+local Players   = cloneref(game:GetService("Players"))
+local Workspace = cloneref(game:GetService("Workspace"))
+local RunService = cloneref(game:GetService("RunService"))
+local UserInputService = cloneref(game:GetService("UserInputService"))
 
--- safe notification
-local function notify(title, text, dur)
-    pcall(function()
-        if WindUI then WindUI:Notify({Title=title, Content=text, Duration=dur or 2}) else
-            game.StarterGui:SetCore("SendNotification", {Title = title, Text = text, Duration = dur or 2})
-        end
-    end)
+local LocalPlayer = Players and Players.LocalPlayer
+if not LocalPlayer then
+    safe_notify("SafeRunner", "LocalPlayer not found. Abort.", 5)
+    return
 end
 
--- small utility: viewport center
-local function viewportCenter()
-    local ok, vs = pcall(function() return Camera.ViewportSize end)
-    if not ok or not vs then return Vector2.new(0,0) end
-    return Vector2.new(vs.X/2, vs.Y/2)
-end
-
--- efficient player list cache (updates on join/leave)
-local players_cache = {}
-local function rebuildPlayersCache()
-    table.clear(players_cache)
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer then players_cache[#players_cache+1] = p end
-    end
-end
-rebuildPlayersCache()
-Players.PlayerAdded:Connect(function(p) if p ~= LocalPlayer then players_cache[#players_cache+1] = p end end)
-Players.PlayerRemoving:Connect(function(p)
-    for i = #players_cache, 1, -1 do if players_cache[i] == p then table.remove(players_cache, i) end end
-end)
-
--- target search (throttled)
-local function onScreenAndInFov(vec3, fov, center)
-    local ok, sx, sy, onScreen = pcall(function()
-        local spx, spy, on = Camera:WorldToViewportPoint(vec3)
-        return spx, spy, on
-    end)
-    if not ok then return false end
-    if not onScreen then
-        -- pcall returned 3 values; onScreen is third
-        onScreen = select(3, Camera:WorldToViewportPoint(vec3))
-        if not onScreen then return false end
-    end
-    local v2 = Vector2.new(select(1, Camera:WorldToViewportPoint(vec3)), select(2, Camera:WorldToViewportPoint(vec3)))
-    local c = center or viewportCenter()
-    return (v2 - c).Magnitude <= (fov or STATE.fov_px)
-end
-
-local function findBestTarget()
-    local now = tick()
-    if now - STATE.last_search < STATE.throttle then return STATE.current_target end
-    STATE.last_search = now
-
-    local best, bestD = nil, math.huge
-    local center = viewportCenter()
-    -- iterate cached players (cheap)
-    for _, pl in ipairs(players_cache) do
-        local ok, char = pcall(function() return pl and pl.Character end)
-        if not ok or not char then goto cont end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum or hum.Health <= 0 then goto cont end
-        local aimPart = char:FindFirstChild("Head") or char.PrimaryPart or char:FindFirstChild("HumanoidRootPart")
-        if not aimPart then goto cont end
-        local spx, spy, onScreen = nil, nil, nil
-        local ok2, spx_, spy_, on_ = pcall(function() return Camera:WorldToViewportPoint(aimPart.Position) end)
-        if ok2 then spx, spy, onScreen = spx_, spy_, on_ end
-        if not onScreen then goto cont end
-        local d = (Vector2.new(spx, spy) - center).Magnitude
-        if d <= STATE.fov_px and d < bestD then
-            -- basic LOS check (cheap raycast)
-            local ok3, clear = pcall(function()
-                local from = Camera.CFrame.Position
-                local to = aimPart.Position
-                local rayParams = RaycastParams.new()
-                rayParams.FilterDescendantsInstances = { LocalPlayer.Character }
-                rayParams.FilterType = Enum.RaycastFilterType.Exclude
-                rayParams.IgnoreWater = true
-                local res = Workspace:Raycast(from, to - from, rayParams)
-                if not res then return true end
-                return res.Instance and res.Instance:IsDescendantOf(char)
+-- ======= GUI helpers =======
+local function makeDraggable(frame)
+    local dragging, dragInput, dragStart, startPos
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
             end)
-            if ok3 and clear then best, bestD = pl, d end
         end
-        ::cont::
-    end
-
-    STATE.current_target = best
-    return best
-end
-
--- safe highlight
-local function clearHighlight()
-    if STATE.highlight then
-        pcall(function() STATE.highlight:Destroy() end)
-        STATE.highlight = nil
-    end
-    STATE.current_target = nil
-end
-local function applyHighlight(pl)
-    clearHighlight()
-    if not pl or not pl.Character then return end
-    pcall(function()
-        local hl = Instance.new("Highlight")
-        hl.Adornee = pl.Character
-        hl.FillTransparency = 0.7
-        hl.OutlineTransparency = 1
-        hl.FillColor = (pl.Team and pl.Team.TeamColor and pl.Team.TeamColor.Color) or Color3.new(1,1,1)
-        hl.Parent = pl.Character
-        STATE.highlight = hl
+    end)
+    frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    RunService.RenderStepped:Connect(function()
+        if dragging and dragInput and dragStart and startPos then
+            local delta = dragInput.Position - dragStart
+            local newPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            frame.Position = newPos
+        end
     end)
 end
 
--- build vector table (for VisualizeBullets)
-local function buildDirectionVectorList(muzzlePos, targetPos, count)
-    if not muzzlePos or not targetPos then return nil end
-    local dir = (targetPos - muzzlePos)
-    if dir.Magnitude == 0 then dir = Vector3.new(0,0,1) end
-    local unit = dir.Unit
-    local out = {}
-    for i=1,(count or 1) do
-        out[i] = { X = unit.X, Y = unit.Y, Z = unit.Z }
-    end
-    return out
+-- create basic GUI (or reuse existing)
+local function createBasicGUI()
+    local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui") or game:GetService("CoreGui")
+    local existing = playerGui:FindFirstChild("SafeRunner_GUI")
+    if existing then existing:Destroy() end
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "SafeRunner_GUI"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = playerGui
+
+    local frame = Instance.new("Frame", screenGui)
+    frame.Name = "MainFrame"
+    frame.Position = UDim2.new(0.02, 0, 0.16, 0)
+    frame.Size = UDim2.new(0, 260, 0, 140)
+    frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
+    frame.BorderSizePixel = 0
+    frame.BackgroundTransparency = 0.05
+    frame.Active = true
+
+    local uicorner = Instance.new("UICorner", frame); uicorner.CornerRadius = UDim.new(0,8)
+
+    -- Title bar for dragging
+    local title = Instance.new("TextLabel", frame)
+    title.Size = UDim2.new(1, 0, 0, 28)
+    title.Position = UDim2.new(0,0,0,0)
+    title.BackgroundTransparency = 1
+    title.Text = "SafeRunner"
+    title.TextColor3 = Color3.fromRGB(220,220,220)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 16
+
+    -- Toggle button
+    local toggleBtn = Instance.new("TextButton", frame)
+    toggleBtn.Size = UDim2.new(0, 120, 0, 34)
+    toggleBtn.Position = UDim2.new(0, 10, 0, 36)
+    toggleBtn.Text = "SilentAim: OFF"
+    toggleBtn.Font = Enum.Font.Gotham
+    toggleBtn.TextSize = 14
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
+    toggleBtn.BorderSizePixel = 0
+    local tcorner = Instance.new("UICorner", toggleBtn); tcorner.CornerRadius = UDim.new(0,6)
+
+    -- FOV label + input
+    local fovLabel = Instance.new("TextLabel", frame)
+    fovLabel.Position = UDim2.new(0, 10, 0, 80)
+    fovLabel.Size = UDim2.new(0, 60, 0, 22)
+    fovLabel.Text = "FOV"
+    fovLabel.BackgroundTransparency = 1
+    fovLabel.TextColor3 = Color3.fromRGB(200,200,200)
+    fovLabel.Font = Enum.Font.Gotham
+    fovLabel.TextSize = 14
+
+    local fovInput = Instance.new("TextBox", frame)
+    fovInput.Position = UDim2.new(0, 70, 0, 78)
+    fovInput.Size = UDim2.new(0, 80, 0, 24)
+    fovInput.Text = "150"
+    fovInput.ClearTextOnFocus = false
+    fovInput.Font = Enum.Font.Gotham
+    fovInput.TextSize = 14
+    fovInput.BackgroundColor3 = Color3.fromRGB(42,42,42)
+    fovInput.TextColor3 = Color3.fromRGB(230,230,230)
+    local fic = Instance.new("UICorner", fovInput); fic.CornerRadius = UDim.new(0,5)
+
+    -- Close button
+    local closeBtn = Instance.new("TextButton", frame)
+    closeBtn.Position = UDim2.new(0, 200, 0, 36)
+    closeBtn.Size = UDim2.new(0, 48, 0, 34)
+    closeBtn.Text = "X"
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 14
+    closeBtn.BackgroundColor3 = Color3.fromRGB(65,65,65)
+    local ccorner = Instance.new("UICorner", closeBtn); ccorner.CornerRadius = UDim.new(0,6)
+
+    makeDraggable(frame)
+
+    return {
+        Gui = screenGui,
+        Frame = frame,
+        Toggle = toggleBtn,
+        FovInput = fovInput,
+        Close = closeBtn
+    }
 end
 
--- rewrite helpers (defensive)
-local function rewriteInflictArgs(origArgs, targetPlayer)
-    if not targetPlayer or not targetPlayer.Character then return origArgs end
-    local ok, copy = pcall(function() return type(origArgs) == "table" and (function(t) local o = {} for i=1,#t do o[i] = t[i] end return o end)(origArgs) or origArgs end)
-    if not ok then return origArgs end
-    local args = copy
-    -- replace humanoid / parts with target's humanoid/hrp where sensible
-    for i = 1, #args do
-        local v = args[i]
-        if typeof and typeof(v) == "Instance" then
-            if v:IsA("Humanoid") then
-                local repl = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
-                if repl then args[i] = repl end
-            elseif v:IsA("BasePart") then
-                local repl = targetPlayer.Character:FindFirstChild("HumanoidRootPart") or targetPlayer.Character:FindFirstChild("Head")
-                if repl then args[i] = repl end
-            end
-        elseif type(v) == "table" then
-            -- check inner vector table possibility
-            for k2,v2 in pairs(v) do
-                if typeof and typeof(v2) == "Instance" then
-                    if v2:IsA("Humanoid") then
-                        local repl = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
-                        if repl then v[k2] = repl end
-                    elseif v2:IsA("BasePart") then
-                        local repl = targetPlayer.Character:FindFirstChild("HumanoidRootPart") or targetPlayer.Character:FindFirstChild("Head")
-                        if repl then v[k2] = repl end
-                    end
-                end
-            end
+-- ======= Safe SilentAim core (no remote hooks) =======
+local function safeSilentAimModule(guiObjects)
+    local state = {
+        enabled = false,
+        fov = 150,
+        throttle = 0.12,
+        lastSearch = 0,
+        currentTarget = nil,
+        highlight = nil
+    }
+
+    -- player cache
+    local playerList = {}
+    local function rebuildPlayers()
+        table.clear(playerList)
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then table.insert(playerList, p) end
         end
     end
-    return args
-end
-
-local function rewriteVisualizeArgs(origArgs, targetPlayer)
-    if not targetPlayer or not targetPlayer.Character then return origArgs end
-    local ok, copy = pcall(function() return type(origArgs) == "table" and (function(t) local o = {} for i=1,#t do o[i] = t[i] end return o end)(origArgs) or origArgs end)
-    if not ok then return origArgs end
-    local args = copy
-
-    -- find muzzle position (first BasePart in args) or fallback to local tool handle
-    local muzzlePos = nil
-    for i=1,#args do
-        local v = args[i]
-        if typeof and typeof(v) == "Instance" and v:IsA("BasePart") then
-            local okp, pos = pcall(function() return v.Position end)
-            if okp and pos then muzzlePos = pos; break end
-        end
-    end
-    if not muzzlePos then
-        local okTool, tool = pcall(function() return LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Tool") end)
-        if okTool and tool then
-            local handle = tool:FindFirstChild("Handle") or tool
-            if handle and handle:IsA("BasePart") then muzzlePos = handle.Position end
-        end
-    end
-    if not muzzlePos then return args end
-
-    local targetPart = targetPlayer.Character:FindFirstChild("Head") or targetPlayer.Character.PrimaryPart or targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not targetPart then return args end
-    local targetPos = targetPart.Position
-
-    -- find vector-table slot
-    local vtIdx = nil
-    for i=1,#args do
-        local a = args[i]
-        if type(a) == "table" and #a > 0 then
-            local first = a[1]
-            if typeof and typeof(first) == "Vector3" or (type(first) == "table" and first.X and first.Y and first.Z) then
-                vtIdx = i; break
-            end
-        end
-    end
-
-    if vtIdx then
-        args[vtIdx] = buildDirectionVectorList(muzzlePos, targetPos, #args[vtIdx])
-    else
-        -- insert one vector table near front if none found
-        table.insert(args, 1, buildDirectionVectorList(muzzlePos, targetPos, 1))
-    end
-
-    return args
-end
-
--- find remote by name (safe)
-local function findRemote(name)
-    if not name then return nil end
-    local ok, rem = pcall(function()
-        if ReplicatedStorage:FindFirstChild(name) and (ReplicatedStorage[name]:IsA("RemoteEvent") or ReplicatedStorage[name]:IsA("RemoteFunction")) then
-            return ReplicatedStorage[name]
-        end
-        for _, inst in ipairs(ReplicatedStorage:GetDescendants()) do
-            if inst.Name == name and (inst:IsA("RemoteEvent") or inst:IsA("RemoteFunction")) then return inst end
-        end
-        for _, inst in ipairs(Workspace:GetDescendants()) do
-            if inst.Name == name and (inst:IsA("RemoteEvent") or inst:IsA("RemoteFunction")) then return inst end
-        end
-        return nil
+    rebuildPlayers()
+    Players.PlayerAdded:Connect(function(p) if p ~= LocalPlayer then table.insert(playerList, p) end end)
+    Players.PlayerRemoving:Connect(function(p)
+        for i=#playerList,1,-1 do if playerList[i] == p then table.remove(playerList, i) end end
     end)
-    if ok then return rem else return nil end
-end
 
--- attempt metamethod namecall hook safely, with full guards
-local orig_namecall = nil
-local function tryInstallNamecallHook()
-    if type(getrawmetatable) ~= "function" or type(setreadonly) ~= "function" then return false end
-    local ok, mt = pcall(function() return getrawmetatable(game) end)
-    if not ok or not mt then return false end
-    if type(mt.__namecall) ~= "function" then return false end
+    local Camera = Workspace.CurrentCamera
+    local function viewportCenter() local vs = Camera.ViewportSize return Vector2.new(vs.X/2, vs.Y/2) end
 
-    local success = false
-    pcall(function()
-        orig_namecall = mt.__namecall
-        setreadonly(mt, false)
-        mt.__namecall = function(self, ...)
-            local method = getnamecallmethod and getnamecallmethod() or ""
-            local args = {...}
-            -- only intercept target remotes by name (avoid touching unrelated calls)
-            local name = tostring(self.Name or "")
-            local target = nil
-            -- choose FOV target (but don't call heavy find on every namecall; only for relevant remotes)
-            if name == "InflictTarget" or name == "VisualizeBullet" or name == "Inflict" or name == "AttackTarget" then
-                -- safe pcall to find target
-                local okt, t = pcall(findBestTarget)
-                if okt then target = t end
-            end
+    local function findTarget()
+        local now = tick()
+        if now - state.lastSearch < state.throttle then return state.currentTarget end
+        state.lastSearch = now
 
-            if target and name == "InflictTarget" then
-                local okr, newArgs = pcall(rewriteInflictArgs, args, target)
-                if okr and newArgs then
-                    return orig_namecall(self, table.unpack(newArgs))
-                end
-            elseif target and name == "VisualizeBullet" then
-                local okr, newArgs = pcall(rewriteVisualizeArgs, args, target)
-                if okr and newArgs then
-                    return orig_namecall(self, table.unpack(newArgs))
-                end
-            end
-
-            -- fallback: call original
-            return orig_namecall(self, ...)
+        local best, bestD = nil, math.huge
+        local center = viewportCenter()
+        for _, pl in ipairs(playerList) do
+            local ok, char = pcall(function() return pl.Character end)
+            if not ok or not char then goto cont end
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if not hum or hum.Health <= 0 then goto cont end
+            local part = char:FindFirstChild("Head") or char.PrimaryPart or char:FindFirstChild("HumanoidRootPart")
+            if not part then goto cont end
+            local sx, sy, onScreen = nil, nil, false
+            local ok2, vx, vy, vs = pcall(function() return Camera:WorldToViewportPoint(part.Position) end)
+            if ok2 then sx, sy, onScreen = vx, vy, vs end
+            if not onScreen then goto cont end
+            local d = (Vector2.new(sx, sy) - center).Magnitude
+            if d <= state.fov and d < bestD then best, bestD = pl, d end
+            ::cont::
         end
-        setreadonly(mt, true)
-        success = true
-    end)
-    return success
-end
+        state.currentTarget = best
+        return best
+    end
 
--- install hook once
-local okHook, hookResult = pcall(function() return tryInstallNamecallHook() end)
-if okHook and hookResult then
-    STATE.hook_available = true
-    notify("SilentAim", "Hook installed (safe mode).", 2)
-else
-    STATE.hook_available = false
-    notify("SilentAim", "Hook unavailable in this executor — feature will not auto-intercept remotes.", 4)
-end
+    local function clearHighlight()
+        if state.highlight then pcall(function() state.highlight:Destroy() end) end
+        state.highlight = nil
+        state.currentTarget = nil
+    end
 
--- UI (WindUI) - if available
-local Window
-if WindUI then
-    Window = WindUI:CreateWindow({
-        Title = "Silent Aim — Optimized",
-        Icon = "rbxassetid://129260712070622",
-        IconThemed = true,
-        Author = "SafeFix",
-        Folder = "SilentAim_Optimized",
-        Size = UDim2.fromOffset(520, 360),
-        Transparent = true,
-        Theme = "Dark",
-        SideBarWidth = 200,
-        ScrollBarEnabled = true
-    })
-
-    local mainSec = Window:Section({ Title = "Main", Opened = true })
-    local mainTab = mainSec:Tab({ Title = "Silent", Icon = "target" })
-
-    mainTab:Toggle({
-        Title = "Enable Silent Aim (safe)",
-        Value = STATE.enabled,
-        Callback = function(v)
-            if v then
-                if not STATE.hook_available then
-                    notify("SilentAim", "Cannot enable: metamethod hook not allowed by executor. Aborting.", 4)
-                    return
-                end
-                STATE.enabled = true
-                notify("SilentAim", "Enabled", 1.2)
-            else
-                STATE.enabled = false
-                clearHighlight()
-                notify("SilentAim", "Disabled", 1)
-            end
-        end
-    })
-
-    mainTab:Input({
-        Title = "FOV (px)",
-        Value = tostring(STATE.fov_px),
-        Placeholder = "120",
-        Callback = function(txt)
-            local n = tonumber(txt)
-            if n and n >= 8 and n <= 3000 then STATE.fov_px = n; notify("FOV", tostring(n).." px",1) else notify("FOV invalid","8-3000 px",1.6) end
-        end
-    })
-
-    mainTab:Toggle({
-        Title = "Lock center on screen",
-        Value = true,
-        Callback = function(v) STATE.lock_center = v end
-    })
-
-    mainTab:Button({
-        Title = "Force clear highlight",
-        Callback = function() clearHighlight(); notify("Highlight","Cleared",1) end
-    })
-
-    Window:Open()
-end
-
--- small FOV GUI (lightweight) — 10Hz update, not RenderStepped heavy
-local fovGui = nil
-do
-    local ok, g = pcall(function()
-        local sg = Instance.new("ScreenGui")
-        sg.Name = "SilentAim_FOV_Optimized"
-        sg.ResetOnSpawn = false
-        sg.Parent = PlayerGui
-        local ring = Instance.new("Frame", sg)
-        ring.Name = "FOVRing"
-        ring.AnchorPoint = Vector2.new(0.5,0.5)
-        ring.BackgroundTransparency = 1
-        ring.BorderSizePixel = 0
-        ring.Size = UDim2.fromOffset(1,1)
-        local stroke = Instance.new("UIStroke", ring)
-        stroke.Thickness = 1
-        stroke.Color = Color3.fromRGB(255,90,90)
-        return { gui = sg, ring = ring }
-    end)
-    if ok then fovGui = g end
-end
-
--- light UI updater, throttled (10Hz)
-local ui_updater = task.spawn(function()
-    while not STATE.closed do
+    local function applyHighlight(pl)
+        clearHighlight()
+        if not pl or not pl.Character then return end
         pcall(function()
-            if not fovGui or not fovGui.gui or not fovGui.ring then return end
-            fovGui.ring.Visible = STATE.enabled
-            if STATE.enabled then
-                local vs = Camera.ViewportSize
-                local center = STATE.lock_center and Vector2.new(vs.X/2, vs.Y/2) or viewportCenter()
-                local diam = math.floor(STATE.fov_px * 2)
-                fovGui.ring.Size = UDim2.fromOffset(diam, diam)
-                fovGui.ring.Position = UDim2.fromOffset(center.X, center.Y)
+            local hl = Instance.new("Highlight")
+            hl.Adornee = pl.Character
+            hl.FillTransparency = 0.7
+            hl.OutlineTransparency = 1
+            hl.FillColor = (pl.Team and pl.Team.TeamColor and pl.Team.TeamColor.Color) or Color3.new(1,1,1)
+            hl.Parent = pl.Character
+            state.highlight = hl
+        end)
+    end
+
+    -- UI linkage
+    if guiObjects and guiObjects.FovInput then
+        guiObjects.FovInput.FocusLost:Connect(function(enter)
+            local txt = guiObjects.FovInput.Text
+            local n = tonumber(txt)
+            if n and n >= 10 and n <= 2000 then
+                state.fov = n
+                safe_notify("SafeSilentAim", "FOV set to "..tostring(n), 2)
+            else
+                guiObjects.FovInput.Text = tostring(state.fov)
+                safe_notify("SafeSilentAim", "Invalid FOV (10-2000)", 2)
             end
         end)
-        task.wait(0.1)
     end
-end)
 
--- background target updater (throttled using findBestTarget)
-local target_updater = task.spawn(function()
-    while not STATE.closed do
-        if STATE.enabled then
-            local ok, tgt = pcall(findBestTarget)
-            if ok and tgt then
-                if STATE.current_target ~= tgt then
-                    applyHighlight(tgt)
-                end
+    -- background search loop (throttled)
+    task.spawn(function()
+        while true do
+            local ok, tgt = pcall(findTarget)
+            if ok and state.enabled and tgt then
+                if state.currentTarget ~= tgt then applyHighlight(tgt) end
             else
                 clearHighlight()
             end
-        else
-            clearHighlight()
+            task.wait(0.12)
         end
-        task.wait(STATE.throttle)
-    end
-end)
+    end)
 
--- cleanup handler
-local function cleanup()
-    STATE.closed = true
-    STATE.enabled = false
-    clearHighlight()
-    pcall(function() if fovGui and fovGui.gui then fovGui.gui:Destroy() end end)
-    if Window and Window.OnClose then
-        pcall(function() Window:Close() end)
-    end
+    -- Public API
+    return {
+        toggle = function()
+            state.enabled = not state.enabled
+            if not state.enabled then clearHighlight() end
+            if guiObjects and guiObjects.Toggle then
+                guiObjects.Toggle.Text = "SilentAim: " .. (state.enabled and "ON" or "OFF")
+            end
+        end,
+        enable = function() state.enabled = true; if guiObjects and guiObjects.Toggle then guiObjects.Toggle.Text = "SilentAim: ON" end end,
+        disable = function() state.enabled = false; clearHighlight(); if guiObjects and guiObjects.Toggle then guiObjects.Toggle.Text = "SilentAim: OFF" end end,
+        isEnabled = function() return state.enabled end,
+        setFov = function(n) state.fov = tonumber(n) or state.fov end
+    }
 end
 
--- automatically cleanup when player leaves or script is disabled
-Players.PlayerRemoving:Connect(function(p) if p == LocalPlayer then cleanup() end end)
-game:BindToClose(function() cleanup() end)
+-- ======= Main guarded runner =======
+local function safeMain()
+    -- build GUI
+    local gui = createBasicGUI()
 
--- final
-notify("SilentAim", "Initialized (optimized). Hook available: "..tostring(STATE.hook_available), 3)
+    -- attach close
+    gui.Close.MouseButton1Click:Connect(function()
+        local parent = gui.Gui.Parent
+        if parent then
+            pcall(function() gui.Gui:Destroy() end)
+        end
+    end)
+
+    -- create module
+    local silentAim = safeSilentAimModule(gui)
+
+    -- toggle button binding
+    gui.Toggle.MouseButton1Click:Connect(function()
+        pcall(function() silentAim.toggle() end)
+    end)
+
+    -- keybind: toggle with "T" by default (you can change)
+    local TOGGLE_KEY = Enum.KeyCode.T
+    UserInputService.InputBegan:Connect(function(input, typing)
+        if typing then return end
+        if input.KeyCode == TOGGLE_KEY then
+            pcall(function() silentAim.toggle() end)
+        end
+    end)
+
+    safe_notify("SafeRunner", "GUI loaded. Toggle SilentAim via UI or T.", 4)
+
+    -- expose globally for quick testing
+    _G.SafeRunner = _G.SafeRunner or {}
+    _G.SafeRunner.SilentAim = silentAim
+end
+
+-- run guarded
+local ok, err = pcall(safeMain)
+if not ok then
+    warn("[SafeRunner] safeMain error:", err)
+    safe_notify("SafeRunner Error", tostring(err), 6)
+end
+
+-- small protection: ensure script doesn't spam nil-call errors
+if type(task) ~= "table" then
+    task = { wait = function(t) os.execute("sleep " .. (tonumber(t) or 0.03)) end }
+end
+
+-- End of script
