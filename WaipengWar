@@ -1,502 +1,152 @@
--- Silent-Aim Robust Full Script (LocalScript-ready)
--- Place: StarterPlayer > StarterPlayerScripts or StarterGui
--- Purpose: draggable GUI, Silent Aim toggle, FOV selector, center lock,
---          safe remote calls with nil checks + friendly warnings to console/GUI.
-
--- ======= Configuration =======
-local FOV_DEFAULT = 150
-local TARGET_SEARCH_INTERVAL = 0.06
-local HIGHLIGHT_COLOR = Color3.fromRGB(255, 120, 80)
-local HIGHLIGHT_FILL = 0.55
-local ACTIVATED_FIRE_DELAY = 0 -- seconds
-local DEBUG_PRINT = false -- true => print extra debug
-
--- Remote lookup table: ปรับชื่อ/ตำแหน่ง remote ในเกมถ้าไม่ตรง
-local REMOTE_LOOKUP = {
-    InflictTarget = { path = {"ReplicatedStorage","Remotes","InflictTarget"}, type = "Invoke" },
-    VisualizeBullet = { path = {"ReplicatedStorage","Remotes","VisualizeBullet"}, type = "Fire" },
-}
-
--- ======= Services =======
+--==================================================
+--  MAIN SETTINGS
+--==================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Workspace = game:GetService("Workspace")
-local CoreGui = game:GetService("CoreGui")
-local LocalPlayer = Players.LocalPlayer
-local Camera = Workspace.CurrentCamera
+local UIS = game:GetService("UserInputService")
+local RS = game:GetService("ReplicatedStorage")
 
--- ======= Safety utilities =======
-local function dbg(...)
-    if DEBUG_PRINT then
-        pcall(print, "[SilentAimDBG]", ...)
-    end
-end
+local lp = Players.LocalPlayer
+local cam = workspace.CurrentCamera
+local mouse = lp:GetMouse()
 
-local function safeFindPath(root, path)
-    if type(path) ~= "table" or not root then return nil end
-    local node = root
-    for _, name in ipairs(path) do
-        if not node then return nil end
-        node = node:FindFirstChild(name)
-    end
-    return node
-end
+-- Toggle
+local SilentAim_Enabled = false
+local FOV = 120
 
-local function safeFire(remote, ...)
-    if not remote or not remote.FireServer then return false, "no remote or FireServer missing" end
-    local ok, err = pcall(function() return remote:FireServer(...) end)
-    return ok, err
-end
+-- Highlight Folder
+local HLFolder = Instance.new("Folder", game.CoreGui)
+HLFolder.Name = "SA_Highlights"
 
-local function safeInvoke(remote, ...)
-    if not remote or not remote.InvokeServer then return false, "no remote or InvokeServer missing" end
-    local ok, res = pcall(function() return remote:InvokeServer(...) end)
-    return ok, res
-end
-
--- lookup that caches instance
-local function getRemoteInstance(name)
-    local info = REMOTE_LOOKUP[name]
-    if not info then return nil end
-    if info.instance and (info.instance:IsA("RemoteEvent") or info.instance:IsA("RemoteFunction")) then
-        return info.instance, info.type
-    end
-    local node = safeFindPath(game, info.path)
-    if node and (node:IsA("RemoteEvent") or node:IsA("RemoteFunction")) then
-        REMOTE_LOOKUP[name].instance = node
-        return node, info.type
-    end
-    return nil, info.type
-end
-
--- ======= GUI creation (draggable) =======
--- ensure CoreGui available
-if not CoreGui then
-    warn("[SilentAim] CoreGui unavailable. Script must run as LocalScript in normal client context.")
-    return
-end
-
--- destroy previous GUI if any
-pcall(function()
-    local old = CoreGui:FindFirstChild("SilentAim_GUI_v1")
-    if old then old:Destroy() end
-end)
-
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "SilentAim_GUI_v1"
-screenGui.Parent = CoreGui
-screenGui.ResetOnSpawn = false
-
-local mainFrame = Instance.new("Frame", screenGui)
-mainFrame.Name = "Main"
-mainFrame.Size = UDim2.new(0, 300, 0, 160)
-mainFrame.Position = UDim2.new(0.02, 0, 0.2, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(28,28,28)
-mainFrame.BorderSizePixel = 0
-mainFrame.Active = true
-mainFrame.Draggable = true
-local corner = Instance.new("UICorner", mainFrame); corner.CornerRadius = UDim.new(0,8)
-
-local title = Instance.new("TextLabel", mainFrame)
-title.Size = UDim2.new(1,0,0,28)
-title.Position = UDim2.new(0,0,0,0)
-title.BackgroundTransparency = 1
-title.Text = "Silent Aim (drag)"
-title.Font = Enum.Font.GothamBold
-title.TextSize = 16
-title.TextColor3 = Color3.fromRGB(235,235,235)
-
-local function makeToggle(parent, y, labelText, default)
-    local lbl = Instance.new("TextLabel", parent)
-    lbl.Size = UDim2.new(0.58,0,0,22)
-    lbl.Position = UDim2.new(0.02,0,0,y)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = labelText
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextSize = 14
-    lbl.TextColor3 = Color3.fromRGB(220,220,220)
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-
-    local btn = Instance.new("TextButton", parent)
-    btn.Size = UDim2.new(0.36,0,0,24)
-    btn.Position = UDim2.new(0.62,0,0,y)
-    btn.BackgroundColor3 = default and Color3.fromRGB(60,160,80) or Color3.fromRGB(65,65,65)
-    btn.Text = default and "ON" or "OFF"
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 13
-    btn.TextColor3 = Color3.new(1,1,1)
-
-    local state = default
-    btn.MouseButton1Click:Connect(function()
-        state = not state
-        btn.BackgroundColor3 = state and Color3.fromRGB(60,160,80) or Color3.fromRGB(65,65,65)
-        btn.Text = state and "ON" or "OFF"
-    end)
-    return {label = lbl, button = btn, get = function() return state end, set = function(v) state = v; btn.BackgroundColor3 = state and Color3.fromRGB(60,160,80) or Color3.fromRGB(65,65,65); btn.Text = state and "ON" or "OFF" end}
-end
-
-local function makeInput(parent, y, labelText, default)
-    local lbl = Instance.new("TextLabel", parent)
-    lbl.Size = UDim2.new(0.58,0,0,18)
-    lbl.Position = UDim2.new(0.02,0,0,y)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = labelText
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextSize = 13
-    lbl.TextColor3 = Color3.fromRGB(200,200,200)
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-
-    local box = Instance.new("TextBox", parent)
-    box.Size = UDim2.new(0.94,0,0,26)
-    box.Position = UDim2.new(0.03,0,0,y+0.16)
-    box.Text = tostring(default or "")
-    box.PlaceholderText = tostring(default or "")
-    box.ClearTextOnFocus = false
-    box.Font = Enum.Font.Gotham
-    box.TextSize = 14
-    box.TextColor3 = Color3.new(1,1,1)
-    box.BackgroundColor3 = Color3.fromRGB(40,40,40)
-    box.BorderSizePixel = 0
-    local cornerb = Instance.new("UICorner", box); cornerb.CornerRadius = UDim.new(0,6)
-    return {label = lbl, box = box}
-end
-
-local togSilent = makeToggle(mainFrame, 34, "Silent Aim", false)
-local inpFOV = makeInput(mainFrame, 68, "FOV radius (px)", FOV_DEFAULT)
-
-local chkLockLabel = Instance.new("TextLabel", mainFrame)
-chkLockLabel.Size = UDim2.new(0.6,0,0,18)
-chkLockLabel.Position = UDim2.new(0.03,0,0,118)
-chkLockLabel.BackgroundTransparency = 1
-chkLockLabel.Text = "Lock center"
-chkLockLabel.Font = Enum.Font.Gotham
-chkLockLabel.TextSize = 13
-chkLockLabel.TextColor3 = Color3.fromRGB(200,200,200)
-chkLockLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-local chkLockBtn = Instance.new("TextButton", mainFrame)
-chkLockBtn.Size = UDim2.new(0.24,0,0,24)
-chkLockBtn.Position = UDim2.new(0.65,0,0,116)
-chkLockBtn.BackgroundColor3 = Color3.fromRGB(65,65,65)
-chkLockBtn.Text = "OFF"
-chkLockBtn.Font = Enum.Font.GothamBold
-chkLockBtn.TextSize = 13
-chkLockBtn.TextColor3 = Color3.new(1,1,1)
-local lockCenter = false
-chkLockBtn.MouseButton1Click:Connect(function()
-    lockCenter = not lockCenter
-    chkLockBtn.BackgroundColor3 = lockCenter and Color3.fromRGB(60,160,80) or Color3.fromRGB(65,65,65)
-    chkLockBtn.Text = lockCenter and "ON" or "OFF"
-end)
-
--- FOV canvas and crosshair
-local fovCanvas = Instance.new("Frame", screenGui)
-fovCanvas.Name = "FOVCanvas"
-fovCanvas.Size = UDim2.new(0, FOV_DEFAULT*2, 0, FOV_DEFAULT*2)
-fovCanvas.AnchorPoint = Vector2.new(0.5,0.5)
-fovCanvas.BackgroundTransparency = 1
-fovCanvas.Position = UDim2.new(0.5,0,0.5,0)
-fovCanvas.Visible = false
-
-local fovCircle = Instance.new("ImageLabel", fovCanvas)
-fovCircle.Size = UDim2.new(1,0,1,0)
-fovCircle.Position = UDim2.new(0,0,0,0)
-fovCircle.BackgroundTransparency = 1
--- fallback to built-in circle if asset blocked: we set image only if available
-pcall(function() fovCircle.Image = "rbxassetid://7031400161" end)
-fovCircle.ImageTransparency = 0.6
-fovCircle.ScaleType = Enum.ScaleType.Slice
-fovCircle.SliceCenter = Rect.new(10,10,246,246)
-
-local aimCross = Instance.new("Frame", screenGui)
-aimCross.Size = UDim2.new(0,16,0,16)
-aimCross.Position = UDim2.new(0.5, -8, 0.5, -8)
-aimCross.BackgroundColor3 = Color3.fromRGB(255,80,80)
-aimCross.BackgroundTransparency = 0.25
-local aimCorner = Instance.new("UICorner", aimCross); aimCorner.CornerRadius = UDim.new(0,4)
-aimCross.Visible = true
-aimCross.Active = true
-
-local draggingCross = false
-aimCross.InputBegan:Connect(function(inp)
-    if lockCenter then return end
-    if inp.UserInputType == Enum.UserInputType.MouseButton1 then draggingCross = true end
-end)
-UserInputService.InputEnded:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.MouseButton1 then draggingCross = false end
-end)
+--==================================================
+--  FOV CIRCLE
+--==================================================
+local Circle = Drawing.new("Circle")
+Circle.Thickness = 2
+Circle.Radius = FOV
+Circle.Color = Color3.fromRGB(255,50,50)
+Circle.Filled = false
+Circle.Visible = true
 
 RunService.RenderStepped:Connect(function()
-    if draggingCross and not lockCenter then
-        local m = UserInputService:GetMouseLocation()
-        aimCross.Position = UDim2.new(0, m.X-8, 0, m.Y-8)
-        fovCanvas.Position = UDim2.new(0, m.X, 0, m.Y)
-    end
+	Circle.Position = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
 end)
 
-local function getAimCenterAndRadius()
-    local rad = tonumber(inpFOV.box.Text) or FOV_DEFAULT
-    if lockCenter then
-        local v = Camera and Camera.ViewportSize or Vector2.new(1920,1080)
-        return Vector2.new(v.X/2, v.Y/2), rad
-    else
-        local pos = aimCross.AbsolutePosition
-        local x = pos.X + aimCross.AbsoluteSize.X/2
-        local y = pos.Y + aimCross.AbsoluteSize.Y/2
-        return Vector2.new(x,y), rad
-    end
+--==================================================
+--  FIND TARGET IN FOV
+--==================================================
+function GetTarget()
+	local best = nil
+	local bestDist = math.huge
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= lp and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+
+			local pos, vis = cam:WorldToViewportPoint(plr.Character.HumanoidRootPart.Position)
+			if vis then
+				local dist = (Vector2.new(pos.X,pos.Y) - Circle.Position).Magnitude
+				if dist < FOV and dist < bestDist then
+					bestDist = dist
+					best = plr
+				end
+			end
+		end
+	end
+
+	return best
 end
 
--- ======= Target selection & highlight (safe) =======
-local currentTargetPlayer = nil
-local highlightInst = nil
+--==================================================
+--  HIGHLIGHT TARGET
+--==================================================
+function HighlightTarget(plr)
+	for _, x in pairs(HLFolder:GetChildren()) do x:Destroy() end
+	if not plr or not plr.Character then return end
 
-local function clearHighlight()
-    if highlightInst then
-        pcall(function() highlightInst:Destroy() end)
-        highlightInst = nil
-    end
-    currentTargetPlayer = nil
+	local h = Instance.new("Highlight")
+	h.FillColor = Color3.fromRGB(255,0,0)
+	h.OutlineColor = Color3.fromRGB(255,255,255)
+	h.FillTransparency = 0.5
+	h.OutlineTransparency = 0
+	h.Adornee = plr.Character
+	h.Parent = HLFolder
 end
 
-local function highlightPlayerModel(model)
-    clearHighlight()
-    if not model then return end
-    local ok, h = pcall(function()
-        local highlight = Instance.new("Highlight")
-        highlight.Adornee = model
-        highlight.FillColor = HIGHLIGHT_COLOR
-        highlight.FillTransparency = 1 - HIGHLIGHT_FILL
-        highlight.OutlineTransparency = 1
-        highlight.Parent = screenGui
-        return highlight
-    end)
-    if ok then highlightInst = h end
-end
+--==================================================
+--  HOOK REMOTE: INFILCT TARGET
+--==================================================
+local Inflict = RS.Remotes:WaitForChild("InflictTarget")
 
-local function isEnemy(p)
-    if not p or p == LocalPlayer then return false end
-    if LocalPlayer.Team and p.Team and LocalPlayer.Team == p.Team then return false end
-    return true
-end
+local Old_Inflict
+Old_Inflict = hookfunction(Inflict.InvokeServer, function(remote, Gun, HRP, RA, Stats, Number)
 
-local function onScreenAndInFov(worldPos, fov, center)
-    if not Camera then return false end
-    local sp, onScreen = Camera:WorldToViewportPoint(worldPos)
-    if not onScreen then return false end
-    local screenPos = Vector2.new(sp.X, sp.Y)
-    return (screenPos - center).Magnitude <= fov
-end
+	if SilentAim_Enabled then
+		local t = GetTarget()
+		if t and t.Character then
+			
+			HighlightTarget(t)
 
-local function findBestTarget()
-    local center, fov = getAimCenterAndRadius()
-    local best, bestD = nil, math.huge
-    for _, pl in ipairs(Players:GetPlayers()) do
-        if isEnemy(pl) and pl.Character then
-            local head = pl.Character:FindFirstChild("Head") or pl.Character.PrimaryPart
-            if head then
-                local sp, onScr = Camera:WorldToViewportPoint(head.Position)
-                if onScr then
-                    local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
-                    if d < bestD and onScreenAndInFov(head.Position, fov, center) then
-                        bestD = d
-                        best = pl
-                    end
-                end
-            end
-        end
-    end
-    return best
-end
+			-- เปลี่ยน args ให้ยิงโดนเป้าเสมอ
+			Gun = lp.Character:WaitForChild("Plastic rifleX")
+			HRP = t.Character:WaitForChild("Humanoid")
+			RA = t.Character:WaitForChild("HumanoidRootPart")
+		end
+	end
 
--- seeker loop
-local tickAcc = 0
-RunService.Heartbeat:Connect(function(dt)
-    tickAcc = tickAcc + dt
-    if tickAcc >= TARGET_SEARCH_INTERVAL then
-        tickAcc = 0
-        if togSilent.get() then
-            local best = findBestTarget()
-            if best and best.Character then
-                highlightPlayerModel(best.Character)
-                currentTargetPlayer = best
-            else
-                clearHighlight()
-            end
-            local center, r = getAimCenterAndRadius()
-            fovCanvas.Size = UDim2.new(0, r*2, 0, r*2)
-            fovCanvas.Position = UDim2.new(0, center.X, 0, center.Y)
-            fovCanvas.Visible = true
-        else
-            clearHighlight()
-            fovCanvas.Visible = false
-        end
-    end
+	return Old_Inflict(remote, Gun, HRP, RA, Stats, Number)
 end)
 
--- ======= Remote arg builders (safe, generic) =======
-local function buildInflictArgsFromTarget(player, damageOverride)
-    if not player or not player.Character then return nil end
-    local hum = player.Character:FindFirstChildOfClass("Humanoid")
-    local hrp = player.Character:FindFirstChild("HumanoidRootPart") or player.Character.PrimaryPart
-    if not hum or not hrp then return nil end
-    local dmg = tonumber(damageOverride) or 20
-    -- generic best-effort args (game-specific format may vary)
-    return {
-        "Gun",
-        player.Character,
-        hum,
-        hrp,
-        player.Character:FindFirstChild("Right Arm") or player.Character:FindFirstChildWhichIsA("BasePart"),
-        {}, -- misc table
-        dmg
-    }
-end
+--==================================================
+--  HOOK REMOTE: VISUALIZE BULLET
+--==================================================
+local Visual = RS.Remotes:WaitForChild("VisualizeBullet")
 
-local function buildVisualizeArgsForLocalWeapon(targetModel)
-    local char = LocalPlayer.Character
-    if not char then return nil end
-    local weapon = char:FindFirstChildOfClass("Tool") or char:FindFirstChild("Plastic rifleX") or char:FindFirstChildWhichIsA("Tool")
-    if not weapon then return nil end
-    local handle = weapon:FindFirstChild("Handle") or weapon
-    local firePoint = handle and (handle:FindFirstChild("GunFirePoint1") or handle:FindFirstChild("GunMuzzlePoint1")) or handle
-    local dirVec = Camera and Camera.CFrame.LookVector or Vector3.new(0,0,-1)
-    if targetModel and targetModel.PrimaryPart and firePoint then
-        dirVec = (targetModel.PrimaryPart.Position - firePoint.Position).Unit
-    elseif targetModel and targetModel.PrimaryPart then
-        dirVec = (targetModel.PrimaryPart.Position - (handle and handle.Position or char.PrimaryPart.Position)).Unit
-    end
-    local args = {
-        weapon,
-        handle,
-        { BaseDamage = 40, BulletSpeed = 100000, Range = 10000 },
-        { vector and vector.create and vector.create(dirVec.X, dirVec.Y, dirVec.Z) or {dirVec.X,dirVec.Y,dirVec.Z} },
-        firePoint,
-        firePoint,
-        { ChargeLevel = 0 }
-    }
-    return args
-end
+local Old_Visual
+Old_Visual = hookfunction(Visual.FireServer, function(remote, Gun, Handle, Stats, DirectionTable, FirePoint, MuzzlePoint, FX)
 
--- ======= Core: on Tool.Activated =======
-local function onLocalToolActivated(tool)
-    if not togSilent.get() then return end
-    local best = currentTargetPlayer or findBestTarget()
-    if not best then
-        -- optional: small GUI warn
-        dbg("No target in FOV at activation")
-        return
-    end
+	if SilentAim_Enabled then
+		local t = GetTarget()
+		if t and t.Character and t.Character:FindFirstChild("HumanoidRootPart") then
+			
+			HighlightTarget(t)
 
-    -- InflictTarget (Invoke)
-    local inflictRemote, inflictType = getRemoteInstance("InflictTarget")
-    if inflictRemote and inflictType == "Invoke" then
-        local args = buildInflictArgsFromTarget(best, 21)
-        if args then
-            task.spawn(function()
-                if ACTIVATED_FIRE_DELAY > 0 then task.wait(ACTIVATED_FIRE_DELAY) end
-                local ok, res = safeInvoke(inflictRemote, unpack(args))
-                if not ok then
-                    warn("[SilentAim] InflictTarget invoke failed:", res)
-                else
-                    dbg("InflictTarget invoke ok")
-                end
-            end)
-        end
-    else
-        dbg("InflictTarget remote not found or not InvokeServer")
-    end
+			local targetPos = t.Character.HumanoidRootPart.Position
+			local gunPos = FirePoint.Position
 
-    -- VisualizeBullet (Fire)
-    local visRemote, visType = getRemoteInstance("VisualizeBullet")
-    if visRemote and visType == "Fire" then
-        local vargs = buildVisualizeArgsForLocalWeapon(best and best.Character)
-        if vargs then
-            task.spawn(function()
-                if ACTIVATED_FIRE_DELAY > 0 then task.wait(ACTIVATED_FIRE_DELAY) end
-                local ok, err = safeFire(visRemote, unpack(vargs))
-                if not ok then
-                    warn("[SilentAim] VisualizeBullet fire failed:", err)
-                else
-                    dbg("VisualizeBullet fired")
-                end
-            end)
-        end
-    else
-        dbg("VisualizeBullet remote not found or not RemoteEvent")
-    end
-end
+			local dir = (targetPos - gunPos).Unit
+			
+			DirectionTable[1] = dir
+		end
+	end
 
--- ======= Bind tools in character/backpack safely =======
-local function connectTool(tool)
-    if not tool or not tool:IsA("Tool") then return end
-    -- prevent duplicate connection via attribute
-    if tool:GetAttribute("_silent_conn") then return end
-    local success, conn = pcall(function()
-        return tool.Activated:Connect(function() onLocalToolActivated(tool) end)
-    end)
-    if success and conn then
-        pcall(function() tool:SetAttribute("_silent_conn", true) end)
-        -- cleanup when tool removed
-        tool.AncestryChanged:Connect(function(_, parent)
-            if not parent then
-                pcall(function() conn:Disconnect() end)
-            end
-        end)
-    else
-        dbg("Failed connecting to tool.Activated (tool may be server-authoritative)")
-    end
-end
-
-local function bindToolsForCharacter(char)
-    if not char then return end
-    for _, c in ipairs(char:GetChildren()) do
-        if c:IsA("Tool") then connectTool(c) end
-    end
-    local backpack = LocalPlayer:FindFirstChild("Backpack")
-    if backpack then
-        for _, c in ipairs(backpack:GetChildren()) do
-            if c:IsA("Tool") then connectTool(c) end
-        end
-        backpack.ChildAdded:Connect(function(c) if c and c:IsA("Tool") then task.delay(0.05, function() connectTool(c) end) end end)
-    end
-    char.ChildAdded:Connect(function(c) if c and c:IsA("Tool") then task.delay(0.05, function() connectTool(c) end) end end)
-end
-
-if LocalPlayer.Character then bindToolsForCharacter(LocalPlayer.Character) end
-LocalPlayer.CharacterAdded:Connect(function(ch) task.delay(0.05, function() bindToolsForCharacter(ch) end) end)
-
--- ======= Periodic remote discovery (cache) =======
-task.spawn(function()
-    while true do
-        for name, info in pairs(REMOTE_LOOKUP) do
-            local node = safeFindPath(game, info.path)
-            if node and (node:IsA("RemoteEvent") or node:IsA("RemoteFunction")) then
-                REMOTE_LOOKUP[name].instance = node
-            end
-        end
-        task.wait(2)
-    end
+	return Old_Visual(remote, Gun, Handle, Stats, DirectionTable, FirePoint, MuzzlePoint, FX)
 end)
 
--- ======= UX: small on-screen notifications from toggles =======
-togSilent.button.MouseButton1Click:Connect(function()
-    local s = togSilent.get() and "ON" or "OFF"
-    dbg("[SilentAim] Toggle ->", s)
-    -- ephemeral label
-    pcall(function()
-        local label = Instance.new("TextLabel", mainFrame)
-        label.Size = UDim2.new(1, -8, 0, 18)
-        label.Position = UDim2.new(0, 4, 0, 132)
-        label.BackgroundTransparency = 1
-        label.Text = "[SilentAim] "..s
-        label.TextColor3 = Color3.fromRGB(180,255,180)
-        label.Font = Enum.Font.Gotham
-        label.TextSize = 13
-        game:GetService("Debris"):AddItem(label, 1.6)
-    end)
-end)
+--==================================================
+--  SIMPLE GUI (DRAG)
+--==================================================
 
--- ======= Finished init =======
-dbg("[SilentAim] initialized successfully")
+local Screen = Instance.new("ScreenGui", game.CoreGui)
+Screen.Name = "SilentAimUI"
+
+local Frame = Instance.new("Frame", Screen)
+Frame.Size = UDim2.new(0,200,0,60)
+Frame.Position = UDim2.new(0.5,-100,0.2,0)
+Frame.BackgroundColor3 = Color3.fromRGB(40,40,40)
+Frame.Active = true
+Frame.Draggable = true
+
+local Btn = Instance.new("TextButton", Frame)
+Btn.Size = UDim2.new(1,0,1,0)
+Btn.BackgroundColor3 = Color3.fromRGB(60,60,60)
+Btn.TextColor3 = Color3.new(1,1,1)
+Btn.Text = "Silent Aim : OFF"
+
+Btn.MouseButton1Click:Connect(function()
+	SilentAim_Enabled = not SilentAim_Enabled
+	Btn.Text = "Silent Aim : "..(SilentAim_Enabled and "ON" or "OFF")
+
+	if not SilentAim_Enabled then
+		for _, x in pairs(HLFolder:GetChildren()) do x:Destroy() end
+	end
+end)
