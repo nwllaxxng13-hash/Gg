@@ -1,14 +1,14 @@
--- Combined Script Functional from first script, Design from second (Dummy UI)
--- UI library: X2ZU Dummy UI (open-source)
--- WARNING: use at your own risk. Adjust for your game structure if paths differ.
+-- Delta Menu (Dummy UI) - Upgraded Aim Assist & Hitboxes (visual-only)
+-- Paste into StarterPlayerScripts or StarterGui as LocalScript
+-- WARNING: use at your own risk. These are client-side assists/visuals only.
 
 -- Load Dummy UI Library
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/x2zu/OPEN-SOURCE-UI-ROBLOX/refs/heads/main/X2ZU%20UI%20ROBLOX%20OPEN%20SOURCE/DummyUi-leak-by-x2zu/fetching-main/Tools/Framework.luau"))()
 
 -- Create Main Window (Dummy UI)
 local Window = Library:Window({
-    Title = "Delta Menu",
-    Desc = "Delta (Dummy UI)",
+    Title = "Kim Menu",
+    Desc = "จัดไปๆๆ",
     Icon = 105059922903197,
     Theme = "Dark",
     Config = {
@@ -17,7 +17,7 @@ local Window = Library:Window({
     },
     CloseUIButton = {
         Enabled = true,
-        Text = "Delta"
+        Text = "Kim Ez"
     }
 })
 
@@ -30,13 +30,12 @@ local HttpService = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
 local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Local Player
+-- Local Player & camera
 local LocalPlayer = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
--- Variables from first script
+-- Core variables (unchanged features)
 local SpinEnabled = false
 local SpinConnection = nil
 local ESPEnabled = false
@@ -45,26 +44,18 @@ local SpinDirection = 1
 local SpinIntensity = 1.0
 local ESPColor = Color3.fromRGB(255, 0, 0)
 local ESPTransparency = 0.3
-local BackgroundColor = Color3.fromRGB(30, 30, 35)
-local TextColor = Color3.fromRGB(255, 255, 255)
-local CommandPrefix = "-"
-
--- Новые переменные с РАБОЧИМИ функциями
-local ThirdPersonEnabled = false
-local FirstPersonEnabled = false
-local AimAssistEnabled = false
-local HitboxesEnabled = false
-local NoclipEnabled = false
 local InfiniteJumpEnabled = false
-local TimeEnabled = false
+local AimAssistEnabled = false -- controlled by UI
+local HitboxesEnabled = false -- controlled by UI
+local NoclipEnabled = false
 local NoclipConnection = nil
-local Configs = {}
-local CurrentConfig = "default"
+local TimeEnabled = false
 
--- ESP Objects
 local ESPObjects = {}
 
--- Time GUI
+-- ------------------------
+-- Time GUI (unchanged)
+-- ------------------------
 local TimeGui = Instance.new("ScreenGui")
 TimeGui.Name = "DeltaTimeGUI"
 TimeGui.Parent = CoreGui
@@ -103,7 +94,6 @@ TimeValue.Parent = TimeFrame
 
 TimeGui.Enabled = false
 
--- Function update time
 local function updateTime()
     while TimeEnabled do
         local currentTime = os.date("%H:%M:%S")
@@ -112,36 +102,38 @@ local function updateTime()
     end
 end
 
--- Set game time
 local function setGameTime(hour)
     Lighting.ClockTime = hour
-    notify("Time", "Время установлено на " .. hour .. ":00")
+    if Window and Window.Notify then
+        pcall(function() Window:Notify({ Title = "Time", Desc = "Время установлено на " .. hour .. ":00", Time = 3 }) end)
+    end
+    print("[Delta] Time set to " .. hour .. ":00")
 end
 
--- Notify (simple)
 local function notify(title, message)
-    -- If Dummy UI supports notifications, it might provide Window:Notify - but keep console fallback
     if Window and Window.Notify then
         pcall(function() Window:Notify({ Title = title, Desc = message, Time = 3 }) end)
     end
     print("[Delta] " .. title .. ": " .. message)
 end
 
--- Spin functions
+-- ------------------------
+-- Spin (unchanged)
+-- ------------------------
 local function startSpin()
     if SpinConnection then
         SpinConnection:Disconnect()
     end
 
-    SpinConnection = RunService.Heartbeat:Connect(function()
+    SpinConnection = RunService.Heartbeat:Connect(function(dt)
         if SpinEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
             local root = LocalPlayer.Character.HumanoidRootPart
-            root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(SpinSpeed * SpinDirection * SpinIntensity * RunService.Heartbeat:Wait()), 0)
-            -- using small extra multiplier to smooth; previous code used constant rad per frame. This is fine.
+            local angle = SpinSpeed * SpinDirection * SpinIntensity * dt
+            root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(angle), 0)
         end
     end)
 
-    notify("Kritilka", "Spin started - Speed " .. tostring(SpinSpeed) .. " Direction " .. tostring(SpinDirection))
+    notify("Kritilka", "Spin started - Speed " .. tostring(SpinSpeed))
 end
 
 local function stopSpin()
@@ -152,12 +144,13 @@ local function stopSpin()
     notify("Kritilka", "Spin stopped")
 end
 
--- Toggle ESP
+-- ------------------------
+-- ESP (unchanged)
+-- ------------------------
 local function toggleESP()
     ESPEnabled = not ESPEnabled
     if ESPEnabled then
         notify("Visuals", "ESP enabled")
-        -- create highlight for existing players
         for _, player in pairs(Players:GetPlayers()) do
             if player ~= LocalPlayer and player.Character then
                 local existing = player.Character:FindFirstChild("DeltaESP")
@@ -173,7 +166,6 @@ local function toggleESP()
                 ESPObjects[player] = highlight
             end
         end
-        -- listen for new players/characters
         Players.PlayerAdded:Connect(function(p)
             p.CharacterAdded:Connect(function(chr)
                 if ESPEnabled and p ~= LocalPlayer then
@@ -197,16 +189,16 @@ local function toggleESP()
         for _, player in pairs(Players:GetPlayers()) do
             if player.Character then
                 local highlight = player.Character:FindFirstChild("DeltaESP")
-                if highlight then
-                    highlight:Destroy()
-                end
+                if highlight then highlight:Destroy() end
             end
         end
         ESPObjects = {}
     end
 end
 
--- Real noclip implementation
+-- ------------------------
+-- Noclip & Infinite Jump (unchanged)
+-- ------------------------
 local function toggleNoclip(state)
     NoclipEnabled = (state == nil) and not NoclipEnabled or state
     if NoclipEnabled then
@@ -226,7 +218,6 @@ local function toggleNoclip(state)
             NoclipConnection:Disconnect()
             NoclipConnection = nil
         end
-        -- try to restore CanCollide true on character parts
         if LocalPlayer.Character then
             for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
                 if part:IsA("BasePart") then
@@ -238,262 +229,235 @@ local function toggleNoclip(state)
     end
 end
 
--- Infinite Jump toggle
 local function toggleInfiniteJump(state)
     InfiniteJumpEnabled = (state == nil) and not InfiniteJumpEnabled or state
     notify("Movement", "Infinite Jump " .. (InfiniteJumpEnabled and "включен" or "выключен"))
 end
 
--- Aim Assist (simple smooth lookAt)
-local function aimAssist()
-    if not AimAssistEnabled then return end
-    local closestPlayer = nil
-    local closestDistance = math.huge
+-- ------------------------
+-- Upgraded Aim Assist
+-- ------------------------
+local Aim = {
+    enabled = false,              -- toggled by UI
+    holdToAim = false,            -- when true, only aim while RightMouse is held
+    holdPressed = false,
+    fov = 60,                     -- degrees
+    maxDistance = 80,             -- studs
+    smoothing = 0.25,             -- 0 = instant, 1 = very slow
+    targetPart = "Head",          -- "Head" or "HumanoidRootPart"
+    prediction = false,           -- boolean
+    predictionFactor = 0.25,      -- how much to lead: 0 = none, 1 = full velocity
+    activeConnection = nil
+}
 
-    if not (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")) then return end
-    local myPos = LocalPlayer.Character.HumanoidRootPart.Position
-
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChildOfClass("Humanoid") and player.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
-            local targetPos = player.Character.HumanoidRootPart.Position
-            local distance = (myPos - targetPos).Magnitude
-            if distance < closestDistance and distance < 50 then
-                closestDistance = distance
-                closestPlayer = player
-            end
-        end
+-- track right mouse
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        Aim.holdPressed = true
     end
-
-    if closestPlayer and closestPlayer.Character and closestPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local targetPos = closestPlayer.Character.HumanoidRootPart.Position
-        camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetPos)
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        Aim.holdPressed = false
     end
+end)
+
+-- utility: angle between camera look and direction to target (deg)
+local function angleToTargetDeg(camCFrame, targetPos)
+    local dir = (targetPos - camCFrame.Position)
+    if dir.Magnitude == 0 then return 0 end
+    local dot = camCFrame.LookVector:Dot(dir.Unit)
+    dot = math.clamp(dot, -1, 1)
+    local angle = math.deg(math.acos(dot))
+    return angle
 end
 
--- Hitboxes: add BoxHandleAdornment on parts
-local function updateHitboxes()
-    if not HitboxesEnabled then return end
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            for _, part in pairs(player.Character:GetChildren()) do
-                if part:IsA("BasePart") then
-                    local existing = part:FindFirstChild("DeltaHitbox")
-                    if existing and existing:IsA("BoxHandleAdornment") then
-                        existing.Size = part.Size
-                    else
-                        local box = Instance.new("BoxHandleAdornment")
-                        box.Name = "DeltaHitbox"
-                        box.Adornee = part
-                        box.AlwaysOnTop = true
-                        box.ZIndex = 10
-                        box.Size = part.Size
-                        box.Parent = part
-                        -- style via adornment properties: BoxHandleAdornment doesn't have Color3 property, uses SurfaceAppearance in some engines — we keep defaults
-                        box.Transparency = 0.3
+-- utility: choose best target (closest angle within FOV and within range)
+local function findBestTarget()
+    if not (camera and camera.CFrame and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")) then return nil end
+    local camPos = camera.CFrame.Position
+    local best = nil
+    local bestScore = math.huge -- lower is better (angle then distance)
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl ~= LocalPlayer and pl.Character and pl.Character.Parent then
+            local hum = pl.Character:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 then
+                local part = pl.Character:FindFirstChild(Aim.targetPart) or pl.Character:FindFirstChild("HumanoidRootPart") or pl.Character:FindFirstChildWhichIsA("BasePart")
+                if part then
+                    local pos = part.Position
+                    local dist = (pos - camPos).Magnitude
+                    if dist <= Aim.maxDistance then
+                        local ang = angleToTargetDeg(camera.CFrame, pos)
+                        if ang <= (Aim.fov / 2) then
+                            -- scoring: combination of angle and distance (angle weighed more)
+                            local score = ang * 1.0 + (dist / Aim.maxDistance) * 10
+                            if score < bestScore then
+                                bestScore = score
+                                best = {player = pl, part = part, distance = dist, angle = ang}
+                            end
+                        end
                     end
                 end
             end
         end
     end
+    return best
 end
 
--- Infinite Jump handler
+-- compute predicted position (very simple linear)
+local function predictedPosition(part, factor)
+    factor = factor or Aim.predictionFactor
+    if not part then return nil end
+    local vel = (part:IsA("BasePart") and part.Velocity) or Vector3.new(0,0,0)
+    return part.Position + vel * factor
+end
+
+local function aimFrame(dt)
+    if not Aim.enabled then return end
+    if Aim.holdToAim and not Aim.holdPressed then return end
+    if not (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")) then return end
+
+    local targetData = findBestTarget()
+    if not targetData then return end
+
+    local targetPos = targetData.part.Position
+    if Aim.prediction then
+        local pred = predictedPosition(targetData.part)
+        if pred then targetPos = pred end
+    end
+
+    -- build desired CFrame that looks from camera position to targetPos
+    local desired = CFrame.lookAt(camera.CFrame.Position, targetPos, Vector3.new(0,1,0))
+    if Aim.smoothing <= 0 then
+        camera.CFrame = desired
+    else
+        -- camera:CFrame = camera.CFrame:Lerp(desired, 1 - math.exp(-Aim.smoothing * dt * 60))
+        -- simple lerp factor clamped to (0..1) each frame:
+        local lerpFactor = math.clamp(1 - math.pow(1 - Aim.smoothing, dt * 60), 0, 1)
+        camera.CFrame = camera.CFrame:Lerp(desired, lerpFactor)
+    end
+end
+
+-- ------------------------
+-- Upgraded Hitboxes (visual-only)
+-- ------------------------
+local Hitbox = {
+    enabled = false,
+    scale = 1.15,              -- multiplier for the adornment size
+    color = Color3.fromRGB(255, 0, 0),
+    transparency = 0.35,
+    zIndex = 10,
+    adornments = {},           -- map player -> list of adornments per part
+    cleanupConnections = {}    -- for character removal
+}
+
+local function createAdornmentForPart(part)
+    if not part or not part:IsA("BasePart") then return nil end
+    -- reuse existing if present
+    local existing = part:FindFirstChild("DeltaHitbox")
+    if existing and existing:IsA("BoxHandleAdornment") then
+        existing.Size = part.Size * Hitbox.scale
+        existing.AlwaysOnTop = true
+        existing.ZIndex = Hitbox.zIndex
+        existing.Transparency = Hitbox.transparency
+        return existing
+    end
+    local box = Instance.new("BoxHandleAdornment")
+    box.Name = "DeltaHitbox"
+    box.Adornee = part
+    box.AlwaysOnTop = true
+    box.ZIndex = Hitbox.zIndex
+    box.Size = part.Size * Hitbox.scale
+    box.Transparency = Hitbox.transparency
+    -- BoxHandleAdornment doesn't directly take Color3 in older RBX versions; use Adornee.Parent for tint via SurfaceGui? We'll attempt OutlineColor fill by setting box.Parent and rely on BoxHandleAdornment tint behavior.
+    box.Parent = part
+    return box
+end
+
+local function applyHitboxesToCharacter(character)
+    if not character then return end
+    -- clean old adornments in this character
+    for _, part in pairs(character:GetChildren()) do
+        if part:IsA("BasePart") then
+            -- only create adornment for typical body parts
+            if part.Name ~= "HumanoidRootPart" or true then
+                createAdornmentForPart(part)
+            end
+        end
+    end
+end
+
+local function removeHitboxesFromCharacter(character)
+    if not character then return end
+    for _, part in pairs(character:GetChildren()) do
+        if part:IsA("BasePart") then
+            local adorn = part:FindFirstChild("DeltaHitbox")
+            if adorn and adorn:IsA("BoxHandleAdornment") then
+                adorn:Destroy()
+            end
+        end
+    end
+end
+
+local function enableHitboxes()
+    Hitbox.enabled = true
+    -- apply to existing players
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl ~= LocalPlayer and pl.Character then
+            applyHitboxesToCharacter(pl.Character)
+        end
+        -- hook CharacterAdded to apply
+        if not Hitbox.cleanupConnections[pl] then
+            Hitbox.cleanupConnections[pl] = pl.CharacterAdded:Connect(function(chr)
+                task.wait(0.4)
+                if Hitbox.enabled then applyHitboxesToCharacter(chr) end
+            end)
+        end
+    end
+    -- global PlayerAdded
+    if not Hitbox.playerAddedConn then
+        Hitbox.playerAddedConn = Players.PlayerAdded:Connect(function(p)
+            Hitbox.cleanupConnections[p] = p.CharacterAdded:Connect(function(chr)
+                task.wait(0.4)
+                if Hitbox.enabled then applyHitboxesToCharacter(chr) end
+            end)
+        end)
+    end
+end
+
+local function disableHitboxes()
+    Hitbox.enabled = false
+    -- remove adornments on all players
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl.Character then removeHitboxesFromCharacter(pl.Character) end
+        if Hitbox.cleanupConnections[pl] then
+            pcall(function() Hitbox.cleanupConnections[pl]:Disconnect() end)
+            Hitbox.cleanupConnections[pl] = nil
+        end
+    end
+    if Hitbox.playerAddedConn then
+        pcall(function() Hitbox.playerAddedConn:Disconnect() end)
+        Hitbox.playerAddedConn = nil
+    end
+end
+
+-- ------------------------
+-- Old Aim & Hitbox controls replaced by upgraded ones
+-- ------------------------
+
+-- Infinite Jump handler (unchanged)
 UserInputService.JumpRequest:Connect(function()
     if InfiniteJumpEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
         LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Jumping)
     end
 end)
 
--- -------------------
--- Kill Aura & Auto Cut (kept from earlier working implementation)
--- Slightly simplified/integrated for this UI conversion
--- -------------------
+-- ------------------------
+-- UI (Dummy UI) layout - add upgraded settings
+-- ------------------------
 
-local function safeGetRemoteEvents()
-    local ok, rem = pcall(function() return ReplicatedStorage:FindFirstChild("RemoteEvents") end)
-    if ok then return rem end
-    return nil
-end
-
-local function findToolInInventory(preferredList)
-    local inv = LocalPlayer:FindFirstChild("Inventory")
-    if inv then
-        for _, name in ipairs(preferredList) do
-            local t = inv:FindFirstChild(name)
-            if t then return t end
-        end
-        for _, c in ipairs(inv:GetChildren()) do
-            if c:IsA("Tool") then return c end
-        end
-    end
-    local char = LocalPlayer.Character
-    if char then
-        for _, c in ipairs(char:GetChildren()) do
-            if c:IsA("Tool") then return c end
-        end
-    end
-    return nil
-end
-
-local function tryEquipTool(tool)
-    if not tool then return false end
-    local rem = safeGetRemoteEvents()
-    if rem then
-        local tryNames = {"EquipItemHandle","Equip","EquipTool","EquipItem"}
-        for _, nm in ipairs(tryNames) do
-            local ev = rem:FindFirstChild(nm)
-            if ev and ev.FireServer then
-                pcall(function() ev:FireServer("FireAllClients", tool) end)
-            end
-        end
-    end
-    if LocalPlayer.Character and tool.Parent ~= LocalPlayer.Character then
-        pcall(function() tool.Parent = LocalPlayer.Character end)
-    end
-    return true
-end
-
-local function invokeToolDamage(targetModel, toolInstance, damageID, cframeOverride)
-    local rem = safeGetRemoteEvents()
-    if not rem then return false, "RemoteEvents not found" end
-    local ev = rem:FindFirstChild("ToolDamageObject")
-    if not ev then return false, "ToolDamageObject not found" end
-    local cframeParam = cframeOverride
-    if not cframeParam then
-        local part = targetModel.PrimaryPart or targetModel:FindFirstChildWhichIsA("BasePart")
-        if part then cframeParam = part.CFrame end
-    end
-    if not cframeParam then cframeParam = CFrame.new(0,0,0) end
-    local ok, err = pcall(function() ev:InvokeServer(targetModel, toolInstance, tostring(damageID), cframeParam) end)
-    return ok, err
-end
-
--- Keep simple KillAura + AutoCut data
-local KillAura = {
-    enabled = false,
-    radius = 200,
-    damageID = "1_8982038982",
-    supportedTools = {"Good Axe","Strong Axe","Old Axe","Chainsaw","Spear"},
-    perTargetDelay = 0.08
-}
-
-local AutoCut = {
-    enabled = false,
-    damageID = "23_1975662729",
-    axePriority = {"Good Axe","Strong Axe","Old Axe","Chainsaw"},
-    perTreeDelay = 0.08,
-    loopDelay = 1.0,
-    autoEquip = true
-}
-
-local function getValidTargetsInRadius(rootPos, radius)
-    local results = {}
-    local chars = Workspace:FindFirstChild("Characters") or Workspace
-    for _, model in ipairs(chars:GetChildren()) do
-        if model:IsA("Model") and model:FindFirstChildWhichIsA("Humanoid") then
-            local part = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChildWhichIsA("BasePart")
-            if part and (part.Position - rootPos).Magnitude <= radius then
-                table.insert(results, {model = model, part = part})
-            end
-        end
-    end
-    return results
-end
-
-local KillAuraThread = nil
-local function startKillAura()
-    if KillAuraThread then return end
-    KillAuraThread = task.spawn(function()
-        while KillAura.enabled do
-            if not (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")) then
-                task.wait(0.5)
-                continue
-            end
-            local hrp = LocalPlayer.Character.HumanoidRootPart
-            local tool = findToolInInventory(KillAura.supportedTools)
-            if not tool then
-                task.wait(1)
-                continue
-            end
-            tryEquipTool(tool)
-            local targets = getValidTargetsInRadius(hrp.Position, KillAura.radius)
-            for _, t in ipairs(targets) do
-                if not KillAura.enabled then break end
-                if t.model ~= LocalPlayer.Character then
-                    pcall(function()
-                        invokeToolDamage(t.model, tool, KillAura.damageID, CFrame.new(t.part.Position))
-                    end)
-                end
-                task.wait(KillAura.perTargetDelay)
-            end
-            task.wait(0.25)
-        end
-        KillAuraThread = nil
-    end)
-end
-
-local AutoCutThread = nil
-local function getAllSmallTrees()
-    local out = {}
-    local map = Workspace:FindFirstChild("Map")
-    if not map then return out end
-    local function scanFolder(folder)
-        for _, obj in ipairs(folder:GetChildren()) do
-            if obj:IsA("Model") and obj.Name == "Small Tree" then
-                table.insert(out, obj)
-            end
-        end
-    end
-    if map:FindFirstChild("Foliage") then scanFolder(map.Foliage) end
-    if map:FindFirstChild("Landmarks") then scanFolder(map.Landmarks) end
-    return out
-end
-
-local function startAutoCut()
-    if AutoCutThread then return end
-    AutoCutThread = task.spawn(function()
-        while AutoCut.enabled do
-            local trees = getAllSmallTrees()
-            if #trees == 0 then
-                task.wait(AutoCut.loopDelay)
-                continue
-            end
-            local tool = findToolInInventory(AutoCut.axePriority)
-            if not tool then
-                warn("AutoCut: no tool found")
-                task.wait(2)
-                continue
-            end
-            if AutoCut.autoEquip then
-                tryEquipTool(tool)
-                task.wait(0.08)
-            end
-            for _, tree in ipairs(trees) do
-                if not AutoCut.enabled then break end
-                pcall(function()
-                    invokeToolDamage(tree, tool, AutoCut.damageID, tree.PrimaryPart and tree.PrimaryPart.CFrame or nil)
-                end)
-                task.wait(AutoCut.perTreeDelay)
-            end
-            task.wait(AutoCut.loopDelay)
-        end
-        AutoCutThread = nil
-    end)
-end
-
--- Toggle stops
-local function stopKillAura()
-    KillAura.enabled = false
-end
-local function stopAutoCut()
-    AutoCut.enabled = false
-end
-
--- -------------------
--- Build UI using Dummy UI API
--- -------------------
-
--- Tabs
+-- Visuals Tab
 local VisualsTab = Window:Tab({ Title = "Visuals", Icon = "eye" }) do
     VisualsTab:Section({ Title = "ESP Settings" })
 
@@ -501,12 +465,9 @@ local VisualsTab = Window:Tab({ Title = "Visuals", Icon = "eye" }) do
         Title = "ESP Toggle",
         Desc = "Toggle ESP ON/OFF",
         Value = ESPEnabled,
-        Callback = function(state)
-            toggleESP()
-        end
+        Callback = function(state) toggleESP() end
     })
 
-    -- color presets dropdown (no color picker in dummy UI example)
     VisualsTab:Dropdown({
         Title = "ESP Color",
         List = {"Red","Green","Blue","Yellow","White"},
@@ -518,10 +479,7 @@ local VisualsTab = Window:Tab({ Title = "Visuals", Icon = "eye" }) do
             elseif choice == "Yellow" then ESPColor = Color3.fromRGB(255,255,0)
             elseif choice == "White" then ESPColor = Color3.fromRGB(255,255,255)
             end
-            if ESPEnabled then
-                toggleESP()
-                toggleESP()
-            end
+            if ESPEnabled then toggleESP(); toggleESP() end
         end
     })
 
@@ -532,14 +490,12 @@ local VisualsTab = Window:Tab({ Title = "Visuals", Icon = "eye" }) do
         Value = ESPTransparency * 100,
         Callback = function(value)
             ESPTransparency = value / 100
-            if ESPEnabled then
-                toggleESP()
-                toggleESP()
-            end
+            if ESPEnabled then toggleESP(); toggleESP() end
         end
     })
 end
 
+-- Kritilka Tab (Spin)
 local KritilkaTab = Window:Tab({ Title = "Kritilka", Icon = "star" }) do
     KritilkaTab:Section({ Title = "Spin Settings" })
 
@@ -556,123 +512,166 @@ local KritilkaTab = Window:Tab({ Title = "Kritilka", Icon = "star" }) do
     KritilkaTab:Slider({
         Title = "Spin Speed",
         Min = 10,
-        Max = 100,
+        Max = 200,
         Value = SpinSpeed,
         Callback = function(val)
             SpinSpeed = val
-            if SpinEnabled then
-                stopSpin()
-                startSpin()
-            end
+            if SpinEnabled then stopSpin(); startSpin() end
         end
     })
 end
 
+-- Settings Tab
 local SettingsTab = Window:Tab({ Title = "Settings", Icon = "wrench" }) do
     SettingsTab:Section({ Title = "General" })
     SettingsTab:Toggle({
-        Title = "Auto Equip Tool (AutoCut)",
-        Desc = "Attempt to equip axe automatically when AutoCut runs",
-        Value = AutoCut.autoEquip,
-        Callback = function(state) AutoCut.autoEquip = state end
-    })
-
-    SettingsTab:Slider({
-        Title = "AutoCut per-tree delay (ms)",
-        Min = 10,
-        Max = 1000,
-        Value = AutoCut.perTreeDelay * 1000,
-        Callback = function(ms) AutoCut.perTreeDelay = ms / 1000 end
-    })
-    SettingsTab:Slider({
-        Title = "AutoCut sweep delay (ms)",
-        Min = 200,
-        Max = 5000,
-        Value = AutoCut.loopDelay * 1000,
-        Callback = function(ms) AutoCut.loopDelay = ms / 1000 end
+        Title = "Auto Restore Collision on Noclip Off",
+        Desc = "Restores collisions when Noclip is disabled",
+        Value = true,
+        Callback = function(_) end
     })
 end
 
+-- Combat Tab (upgraded Aim & Hitboxes)
 local CombatTab = Window:Tab({ Title = "Combat", Icon = "crosshair" }) do
-    CombatTab:Section({ Title = "Combat Features" })
+    CombatTab:Section({ Title = "Aim Assist (Upgraded)" })
+
     CombatTab:Toggle({
         Title = "Aim Assist",
-        Desc = "Toggle Aim Assist",
-        Value = AimAssistEnabled,
-        Callback = function(state) AimAssistEnabled = state notify("Combat", "Aim Assist " .. (state and "enabled" or "disabled")) end
+        Desc = "Toggle Aim Assist (smooth/lookAt camera)",
+        Value = Aim.enabled,
+        Callback = function(state)
+            Aim.enabled = state
+            AimAssistEnabled = state
+            notify("Combat", "Aim Assist " .. (state and "enabled" or "disabled"))
+        end
     })
+
     CombatTab:Toggle({
-        Title = "Hitboxes",
-        Desc = "Toggle Hitboxes",
+        Title = "Hold to Aim (RMB)",
+        Desc = "Only aim while holding Right Mouse Button",
+        Value = Aim.holdToAim,
+        Callback = function(state)
+            Aim.holdToAim = state
+        end
+    })
+
+    CombatTab:Dropdown({
+        Title = "Target Part",
+        List = {"Head","HumanoidRootPart"},
+        Value = "Head",
+        Callback = function(choice)
+            Aim.targetPart = choice
+        end
+    })
+
+    CombatTab:Slider({
+        Title = "Aim FOV (deg)",
+        Min = 10, Max = 180, Value = Aim.fov,
+        Callback = function(val) Aim.fov = val end
+    })
+
+    CombatTab:Slider({
+        Title = "Max Distance (studs)",
+        Min = 10, Max = 300, Value = Aim.maxDistance,
+        Callback = function(val) Aim.maxDistance = val end
+    })
+
+    CombatTab:Slider({
+        Title = "Smoothing (0 instant -> 0.8 smooth)",
+        Min = 0, Max = 80, Value = math.floor(Aim.smoothing * 100),
+        Callback = function(v) Aim.smoothing = math.clamp(v/100, 0, 0.95) end
+    })
+
+    CombatTab:Toggle({
+        Title = "Prediction",
+        Desc = "Small lead based on velocity",
+        Value = Aim.prediction,
+        Callback = function(state) Aim.prediction = state end
+    })
+
+    CombatTab:Slider({
+        Title = "Prediction Factor",
+        Min = 0, Max = 100, Value = math.floor(Aim.predictionFactor * 100),
+        Callback = function(v) Aim.predictionFactor = math.clamp(v/100, 0, 2) end
+    })
+
+    CombatTab:Section({ Title = "Hitboxes (Visual-only)" })
+
+    CombatTab:Toggle({
+        Title = "Hitboxes (visual)",
+        Desc = "Show scaled BoxHandleAdornment on body parts (visual only)",
         Value = HitboxesEnabled,
         Callback = function(state)
             HitboxesEnabled = state
-            if not state then
-                -- remove adornments
-                for _, player in pairs(Players:GetPlayers()) do
-                    if player.Character then
-                        for _, part in pairs(player.Character:GetChildren()) do
-                            local hx = part:FindFirstChild("DeltaHitbox")
-                            if hx and hx:IsA("BoxHandleAdornment") then hx:Destroy() end
-                        end
-                    end
-                end
+            Hitbox.enabled = state
+            if state then
+                enableHitboxes()
+            else
+                disableHitboxes()
             end
             notify("Combat", "Hitboxes " .. (state and "enabled" or "disabled"))
         end
     })
 
-    CombatTab:Section({ Title = "Kill Aura / AutoCut" })
-    CombatTab:Toggle({
-        Title = "Kill Aura",
-        Desc = "Toggle automatic attacks on nearby targets",
-        Value = KillAura.enabled,
-        Callback = function(state)
-            KillAura.enabled = state
-            if state then startKillAura() else stopKillAura() end
-            notify("KillAura", state and "Enabled" or "Disabled")
-        end
-    })
     CombatTab:Slider({
-        Title = "Kill Aura Radius",
-        Min = 20, Max = 800, Value = KillAura.radius,
-        Callback = function(val) KillAura.radius = math.clamp(val,20,800) end
-    })
-    CombatTab:Textbox({
-        Title = "KillAura Damage ID",
-        Desc = "Damage string (e.g. 1_8982038982)",
-        Placeholder = KillAura.damageID,
-        Callback = function(txt) if txt and txt ~= "" then KillAura.damageID = txt; notify("KillAura","DamageID set") end
+        Title = "Hitbox Scale (%)",
+        Min = 100, Max = 250, Value = math.floor(Hitbox.scale * 100),
+        Callback = function(v)
+            Hitbox.scale = math.clamp(v/100, 0.5, 3)
+            if Hitbox.enabled then
+                for _, pl in ipairs(Players:GetPlayers()) do
+                    if pl.Character then applyHitboxesToCharacter(pl.Character) end
+                end
+            end
         end
     })
 
-    CombatTab:Toggle({
-        Title = "Auto Cut Small Tree",
-        Desc = "Equip axe and hit all Small Tree models",
-        Value = AutoCut.enabled,
-        Callback = function(state)
-            AutoCut.enabled = state
-            if state then startAutoCut() else stopAutoCut() end
-            notify("AutoCut", state and "Enabled" or "Disabled")
+    CombatTab:Dropdown({
+        Title = "Hitbox Color Presets",
+        List = {"Red","Green","Blue","Yellow","White"},
+        Value = "Red",
+        Callback = function(choice)
+            if choice == "Red" then Hitbox.color = Color3.fromRGB(255,0,0)
+            elseif choice == "Green" then Hitbox.color = Color3.fromRGB(0,255,0)
+            elseif choice == "Blue" then Hitbox.color = Color3.fromRGB(0,0,255)
+            elseif choice == "Yellow" then Hitbox.color = Color3.fromRGB(255,255,0)
+            elseif choice == "White" then Hitbox.color = Color3.fromRGB(255,255,255)
+            end
+            -- BoxHandleAdornment may not support direct color property across all clients; currently we rely on transparency/size only
+            if Hitbox.enabled then
+                for _, pl in ipairs(Players:GetPlayers()) do
+                    if pl.Character then applyHitboxesToCharacter(pl.Character) end
+                end
+            end
         end
     })
 
-    CombatTab:Textbox({
-        Title = "AutoCut Damage ID",
-        Desc = "Damage string used for tree hits",
-        Placeholder = AutoCut.damageID,
-        Callback = function(txt) if txt and txt ~= "" then AutoCut.damageID = txt; notify("AutoCut","DamageID set") end end
+    CombatTab:Slider({
+        Title = "Hitbox Transparency",
+        Min = 0, Max = 100, Value = Hitbox.transparency * 100,
+        Callback = function(v)
+            Hitbox.transparency = math.clamp(v/100, 0, 0.9)
+            if Hitbox.enabled then
+                for _, pl in ipairs(Players:GetPlayers()) do
+                    if pl.Character then applyHitboxesToCharacter(pl.Character) end
+                end
+            end
+        end
     })
 end
 
+-- Movement Tab
 local MovementTab = Window:Tab({ Title = "Movement", Icon = "run" }) do
     MovementTab:Section({ Title = "Movement Features" })
+
     MovementTab:Toggle({
         Title = "No Clip",
         Desc = "Toggle No Clip",
         Value = NoclipEnabled,
         Callback = function(state) toggleNoclip(state) end
     })
+
     MovementTab:Toggle({
         Title = "Infinite Jump",
         Desc = "Toggle Infinite Jump",
@@ -681,8 +680,10 @@ local MovementTab = Window:Tab({ Title = "Movement", Icon = "run" }) do
     })
 end
 
+-- Time Tab
 local TimeTab = Window:Tab({ Title = "Time", Icon = "clock" }) do
     TimeTab:Section({ Title = "Настройки времени" })
+
     TimeTab:Toggle({
         Title = "Реальное время",
         Desc = "Показать реальное время",
@@ -690,12 +691,7 @@ local TimeTab = Window:Tab({ Title = "Time", Icon = "clock" }) do
         Callback = function(state)
             TimeEnabled = state
             TimeGui.Enabled = state
-            if state then
-                task.spawn(updateTime)
-                notify("Time", "Реальное время включено")
-            else
-                notify("Time", "Реальное время выключено")
-            end
+            if state then task.spawn(updateTime); notify("Time", "Реальное время включено") else notify("Time", "Реальное время выключено") end
         end
     })
 
@@ -713,8 +709,10 @@ local TimeTab = Window:Tab({ Title = "Time", Icon = "clock" }) do
     })
 end
 
+-- Misc Tab
 local MiscTab = Window:Tab({ Title = "Misc", Icon = "tool" }) do
     MiscTab:Section({ Title = "Utilities" })
+
     MiscTab:Button({
         Title = "Anti AFK",
         Desc = "Enable anti-AFK",
@@ -727,6 +725,7 @@ local MiscTab = Window:Tab({ Title = "Misc", Icon = "tool" }) do
             notify("AntiAFK", "Enabled")
         end
     })
+
     MiscTab:Button({
         Title = "Load InfiniteYield",
         Desc = "Load Infinite Yield script",
@@ -737,11 +736,42 @@ local MiscTab = Window:Tab({ Title = "Misc", Icon = "tool" }) do
     })
 end
 
--- Hook main loop for aim assist and hitboxes
+-- ------------------------
+-- Main loop (upgraded aim + hitboxes)
+-- ------------------------
+local lastTime = tick()
 RunService.Heartbeat:Connect(function(dt)
-    if AimAssistEnabled then aimAssist() end
-    if HitboxesEnabled then updateHitboxes() end
+    -- Aim assist updates each frame (smoothed)
+    if Aim.enabled and AimAssistEnabled then
+        aimFrame(dt)
+    end
+
+    -- Hitboxes: we don't re-create every frame. But ensure adornment sizes follow parts (small check once per 0.5s)
+    -- For responsiveness, update adornment sizes less frequently
+    if Hitbox.enabled then
+        -- update adornment sizes for visible characters (cheap)
+        for _, pl in ipairs(Players:GetPlayers()) do
+            if pl.Character then
+                for _, part in ipairs(pl.Character:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        local adorn = part:FindFirstChild("DeltaHitbox")
+                        if adorn and adorn:IsA("BoxHandleAdornment") then
+                            -- only adjust size if noticeably different
+                            local desired = part.Size * Hitbox.scale
+                            if (adorn.Size - desired).Magnitude > 0.01 then
+                                adorn.Size = desired
+                                adorn.Transparency = Hitbox.transparency
+                                adorn.ZIndex = Hitbox.zIndex
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- other features (unchanged) can run here if needed
 end)
 
--- Final
-notify("Delta", "Menu loaded successfully! Converted to Dummy UI and features wired.")
+-- Final notification
+notify("Delta", "Menu loaded — Aim Assist & Hitboxes upgraded. Hitboxes are visual-only.")
