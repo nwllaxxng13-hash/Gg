@@ -1,0 +1,493 @@
+--[[
+    SILENT AIM + ESP: DUMMY UI (THAI FULL VERSION)
+    สถานะ: เพิ่มระบบ ESP สมบูรณ์ (Name, HP, Respawn Support)
+]]
+
+-- โหลด DummyUI Library
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/x2zu/OPEN-SOURCE-UI-ROBLOX/refs/heads/main/X2ZU%20UI%20ROBLOX%20OPEN%20SOURCE/DummyUi-leak-by-x2zu/fetching-main/Tools/Framework.luau"))()
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
+
+-- ## 0. ตรวจสอบความปลอดภัย
+if not getrawmetatable or not hookmetamethod then
+    game.StarterGui:SetCore("SendNotification", {Title = "ข้อผิดพลาด", Text = "ตัวรันของคุณไม่รองรับฟังก์ชัน Hook!", Duration = 5})
+    return
+end
+
+-- ## 1. ตัวแปรและการตั้งค่า (รวม ESP Settings)
+getgenv().CheatSettings = {
+    -- Silent Aim Settings
+    AimEnabled = true,
+    FOVSize = 150,
+    ShowFOV = true,
+    TeamCheck = true,
+    WallCheck = false,
+    CloseRangeFix = true,
+    LockPart = "Head",
+    
+    -- ESP Settings
+    EspEnabled = false,
+    EspTeamCheck = true,
+    EspShowName = true,
+    EspShowHp = true
+}
+
+local SelectedTarget = nil
+local EspCache = {} -- เก็บข้อมูล ESP ของแต่ละคน
+
+-- ==========================================
+--           ระบบ ESP (มองทะลุ)
+-- ==========================================
+
+local function RemoveEsp(player)
+    if EspCache[player] then
+        if EspCache[player].Billboard then EspCache[player].Billboard:Destroy() end
+        if EspCache[player].Highlight then EspCache[player].Highlight:Destroy() end
+        EspCache[player] = nil
+    end
+end
+
+local function CreateEsp(player)
+    if player == LocalPlayer then return end
+    if EspCache[player] then RemoveEsp(player) end -- ลบของเก่าก่อนสร้างใหม่
+
+    local objects = {}
+
+    -- 1. สร้าง Highlight (กรอบเรืองแสง)
+    local hl = Instance.new("Highlight")
+    hl.Name = "EspHighlight"
+    hl.FillColor = Color3.fromRGB(255, 0, 0)
+    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+    hl.FillTransparency = 0.5
+    hl.OutlineTransparency = 0
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.Parent = game.CoreGui
+    objects.Highlight = hl
+
+    -- 2. สร้างป้ายชื่อ (BillboardGui)
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "EspInfo"
+    bb.Size = UDim2.new(0, 200, 0, 50)
+    bb.StudsOffset = Vector3.new(0, 4.5, 0) -- สูงกว่าหัวนิดหน่อย
+    bb.AlwaysOnTop = true
+    bb.Parent = game.CoreGui
+    objects.Billboard = bb
+
+    local txt = Instance.new("TextLabel", bb)
+    txt.Size = UDim2.new(1, 0, 1, 0)
+    txt.BackgroundTransparency = 1
+    txt.TextStrokeTransparency = 0
+    txt.Font = Enum.Font.GothamBold
+    txt.TextSize = 13
+    txt.TextColor3 = Color3.fromRGB(255, 255, 255)
+    objects.TextLabel = txt
+
+    EspCache[player] = objects
+end
+
+local function UpdateEsp(player)
+    if not getgenv().CheatSettings.EspEnabled then 
+        RemoveEsp(player)
+        return 
+    end
+
+    local char = player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") or not char:FindFirstChild("Humanoid") then
+        RemoveEsp(player) -- ถ้าไม่มีตัวละคร ให้ลบ ESP
+        return
+    end
+
+    local hum = char.Humanoid
+    if hum.Health <= 0 then
+        RemoveEsp(player) -- ถ้าตาย ให้ลบ ESP
+        return
+    end
+
+    -- เช็คทีม
+    if getgenv().CheatSettings.EspTeamCheck and player.Team == LocalPlayer.Team then
+        RemoveEsp(player)
+        return
+    end
+
+    -- สร้าง ESP ถ้ายังไม่มี
+    if not EspCache[player] then
+        CreateEsp(player)
+    end
+
+    local obj = EspCache[player]
+    
+    -- อัปเดตตำแหน่ง Highlight
+    if obj.Highlight.Adornee ~= char then
+        obj.Highlight.Adornee = char
+    end
+
+    -- อัปเดตตำแหน่งป้ายชื่อ
+    if obj.Billboard.Adornee ~= char:FindFirstChild("Head") then
+        obj.Billboard.Adornee = char:FindFirstChild("Head") or char.HumanoidRootPart
+    end
+
+    -- อัปเดตข้อความ (ชื่อ | ระยะ | เลือด)
+    local dist = math.floor((LocalPlayer.Character.HumanoidRootPart.Position - char.HumanoidRootPart.Position).Magnitude)
+    local hpText = math.floor(hum.Health)
+    
+    obj.TextLabel.Text = string.format("%s\n[%dm] [HP: %d]", player.Name, dist, hpText)
+
+    -- เปลี่ยนสีตามเลือด
+    if hum.Health < (hum.MaxHealth * 0.3) then
+        obj.TextLabel.TextColor3 = Color3.fromRGB(255, 50, 50) -- เลือดน้อย สีแดง
+    else
+        obj.TextLabel.TextColor3 = Color3.fromRGB(0, 255, 100) -- ปกติ สีเขียว
+    end
+end
+
+-- Loop หลักสำหรับ ESP
+task.spawn(function()
+    while true do
+        if getgenv().CheatSettings.EspEnabled then
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer then
+                    UpdateEsp(p)
+                end
+            end
+        else
+            for _, p in pairs(Players:GetPlayers()) do
+                RemoveEsp(p)
+            end
+        end
+        task.wait(0.1) -- อัปเดตทุก 0.1 วินาที
+    end
+end)
+
+-- จัดการผู้เล่นออก
+Players.PlayerRemoving:Connect(function(plr)
+    RemoveEsp(plr)
+end)
+
+-- ==========================================
+--           ระบบ SILENT AIM (VISUALS)
+-- ==========================================
+local CurrentHighlight = nil
+local CurrentTag = nil
+
+local function ClearAimVisuals()
+    if CurrentHighlight then CurrentHighlight:Destroy(); CurrentHighlight = nil end
+    if CurrentTag then CurrentTag:Destroy(); CurrentTag = nil end
+end
+
+local function AddAimVisuals(target)
+    if not target or not target.Parent then return end
+    local Char = target.Parent
+    
+    -- Highlight สีแดงเข้มสำหรับเป้าหมายที่ถูกล็อค
+    if not CurrentHighlight then
+        CurrentHighlight = Instance.new("Highlight")
+        CurrentHighlight.FillColor = Color3.fromRGB(255, 0, 0)
+        CurrentHighlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+        CurrentHighlight.FillTransparency = 0.5
+        CurrentHighlight.Parent = game.CoreGui
+    end
+    if CurrentHighlight.Adornee ~= Char then CurrentHighlight.Adornee = Char end
+
+    -- ป้าย LOCKED
+    if not CurrentTag then
+        local Billboard = Instance.new("BillboardGui")
+        Billboard.Adornee = target
+        Billboard.Size = UDim2.new(0, 200, 0, 50)
+        Billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+        Billboard.AlwaysOnTop = true
+        
+        local Label = Instance.new("TextLabel")
+        Label.Size = UDim2.new(1, 0, 1, 0)
+        Label.BackgroundTransparency = 1
+        Label.Text = ">>> LOCKED <<<"
+        Label.TextColor3 = Color3.fromRGB(255, 0, 0) -- สีแดง
+        Label.Font = Enum.Font.GothamBlack
+        Label.TextSize = 14
+        Label.TextStrokeTransparency = 0
+        Label.Parent = Billboard
+        
+        CurrentTag = Billboard
+        CurrentTag.Parent = game.CoreGui
+    end
+    if CurrentTag.Adornee ~= target then CurrentTag.Adornee = target end
+end
+
+-- ==========================================
+--           ระบบ SILENT AIM (LOGIC)
+-- ==========================================
+local function IsVisible(targetPart)
+    if not getgenv().CheatSettings.WallCheck then return true end
+    local origin = Camera.CFrame.Position
+    local direction = (targetPart.Position - origin)
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local result = workspace:Raycast(origin, direction, params)
+    return (result == nil or result.Instance:IsDescendantOf(targetPart.Parent))
+end
+
+local function GetTarget()
+    local MaxDist = getgenv().CheatSettings.FOVSize
+    local Target = nil
+    local Center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local LockPartName = getgenv().CheatSettings.LockPart
+
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            if getgenv().CheatSettings.TeamCheck and plr.Team == LocalPlayer.Team then continue end
+
+            local Hum = plr.Character:FindFirstChild("Humanoid")
+            local TargetPart = plr.Character:FindFirstChild(LockPartName) or plr.Character:FindFirstChild("Head")
+            local Root = plr.Character:FindFirstChild("HumanoidRootPart")
+            
+            if Hum and Hum.Health > 0 and TargetPart and Root then
+                local ScreenPos, OnScreen = Camera:WorldToScreenPoint(TargetPart.Position)
+                if OnScreen then
+                    local Dist = (Vector2.new(ScreenPos.X, ScreenPos.Y) - Center).Magnitude
+                    if Dist < MaxDist then
+                        if getgenv().CheatSettings.CloseRangeFix then
+                            local distanceToPlayer = (Root.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
+                            if distanceToPlayer < 10 then
+                                Target = TargetPart
+                                MaxDist = Dist
+                            elseif IsVisible(TargetPart) then
+                                Target = TargetPart
+                                MaxDist = Dist
+                            end
+                        elseif IsVisible(TargetPart) then
+                             Target = TargetPart
+                             MaxDist = Dist
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return Target
+end
+
+-- ==========================================
+--           สร้างหน้าต่าง UI (DummyUI)
+-- ==========================================
+local Window = Library:Window({
+    Title = "Gemini Hub [ไทย]",
+    Desc = "Silent Aim + ESP",
+    Icon = 105059922903197, 
+    Theme = "Dark",
+    Config = {
+        Keybind = Enum.KeyCode.RightControl,
+        Size = UDim2.new(0, 500, 0, 450) -- ขยายกว้างขึ้นหน่อย
+    },
+    CloseUIButton = {
+        Enabled = true,
+        Text = "ปิดโปร"
+    }
+})
+
+-- === AIMBOT TAB ===
+local AimTab = Window:Tab({Title = "ล็อคเป้า", Icon = "crosshair"}) do
+    AimTab:Section({Title = "การตั้งค่าหลัก"})
+
+    AimTab:Toggle({
+        Title = "เปิด Silent Aim",
+        Desc = "กระสุนเข้าหัวอัตโนมัติ",
+        Value = true,
+        Callback = function(v)
+            getgenv().CheatSettings.AimEnabled = v
+            if not v then ClearAimVisuals() end
+        end
+    })
+
+    AimTab:Dropdown({
+        Title = "จุดที่ล็อค",
+        List = {"Head", "HumanoidRootPart", "Torso"},
+        Value = "Head",
+        Callback = function(choice)
+            getgenv().CheatSettings.LockPart = choice
+        end
+    })
+
+    AimTab:Slider({
+        Title = "ขนาดวงกลม (FOV)",
+        Desc = "รัศมีในการล็อค",
+        Min = 50,
+        Max = 800,
+        Rounding = 0,
+        Value = 150,
+        Callback = function(v)
+            getgenv().CheatSettings.FOVSize = v
+        end
+    })
+    
+    AimTab:Toggle({
+        Title = "แสดงวงกลม",
+        Value = true,
+        Callback = function(v)
+            getgenv().CheatSettings.ShowFOV = v
+        end
+    })
+
+    AimTab:Section({Title = "ความปลอดภัย"})
+
+    AimTab:Toggle({
+        Title = "เช็คทีมเดียวกัน",
+        Desc = "ไม่ล็อคพวกเดียวกัน",
+        Value = true,
+        Callback = function(v)
+            getgenv().CheatSettings.TeamCheck = v
+        end
+    })
+
+    AimTab:Toggle({
+        Title = "เช็คกำแพง",
+        Desc = "ล็อคเฉพาะตัวที่มองเห็น",
+        Value = false,
+        Callback = function(v)
+            getgenv().CheatSettings.WallCheck = v
+        end
+    })
+end
+
+-- === ESP TAB (ใหม่!) ===
+local EspTab = Window:Tab({Title = "มองทะลุ", Icon = "eye"}) do
+    EspTab:Section({Title = "การมองเห็น"})
+
+    EspTab:Toggle({
+        Title = "เปิดใช้งาน ESP",
+        Desc = "เปิด/ปิด การมองทะลุทั้งหมด",
+        Value = false,
+        Callback = function(v)
+            getgenv().CheatSettings.EspEnabled = v
+        end
+    })
+
+    EspTab:Toggle({
+        Title = "ซ่อนทีมเดียวกัน",
+        Desc = "ไม่แสดง ESP ฝั่งเดียวกัน",
+        Value = true,
+        Callback = function(v)
+            getgenv().CheatSettings.EspTeamCheck = v
+        end
+    })
+end
+
+-- === TELEPORT TAB ===
+local TpTab = Window:Tab({Title = "วาร์ป", Icon = "map"}) do
+    TpTab:Section({Title = "สถานที่"})
+
+    TpTab:Button({
+        Title = "ฐานโจร (Criminal Base)",
+        Desc = "วาร์ปไปที่ (-976, 108, 2057)",
+        Callback = function()
+            pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(-976, 108, 2057) end)
+        end
+    })
+
+    TpTab:Button({
+        Title = "ฐานตำรวจ (Police Base)",
+        Desc = "วาร์ปไปที่ (812, 100, 2249)",
+        Callback = function()
+            pcall(function() LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(812, 100, 2249) end)
+        end
+    })
+end
+
+
+-- ==========================================
+--           ระบบเบื้องหลัง (FOV Circle)
+-- ==========================================
+local FOVGui = Instance.new("ScreenGui")
+FOVGui.Name = "SilentAimFOV"
+FOVGui.ResetOnSpawn = false
+FOVGui.IgnoreGuiInset = true
+FOVGui.Parent = game.CoreGui
+
+local FOVCircle = Instance.new("Frame")
+FOVCircle.Name = "Circle"
+FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+FOVCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
+FOVCircle.BackgroundColor3 = Color3.new(1,1,1)
+FOVCircle.BackgroundTransparency = 1
+FOVCircle.BorderSizePixel = 0
+FOVCircle.Parent = FOVGui
+local Stroke = Instance.new("UIStroke"); Stroke.Color = Color3.new(1,1,1); Stroke.Thickness = 1.5; Stroke.Transparency = 0.4; Stroke.Parent = FOVCircle
+local CircCorner = Instance.new("UICorner"); CircCorner.CornerRadius = UDim.new(1,0); CircCorner.Parent = FOVCircle
+
+RunService.RenderStepped:Connect(function()
+    SelectedTarget = GetTarget()
+    
+    local size = getgenv().CheatSettings.FOVSize * 2
+    FOVCircle.Size = UDim2.new(0, size, 0, size)
+    FOVCircle.Visible = getgenv().CheatSettings.ShowFOV and getgenv().CheatSettings.AimEnabled
+    
+    if SelectedTarget and getgenv().CheatSettings.AimEnabled then
+        Stroke.Color = Color3.fromRGB(255, 50, 50); Stroke.Thickness = 2
+        AddAimVisuals(SelectedTarget)
+    else
+        Stroke.Color = Color3.fromRGB(255, 255, 255); Stroke.Thickness = 1.5
+        ClearAimVisuals()
+    end
+end)
+
+-- ==========================================
+--           HOOK SYSTEM (Silent Aim)
+-- ==========================================
+local mt = getrawmetatable(game)
+local oldNamecall = mt.__namecall
+setreadonly(mt, false)
+
+mt.__namecall = newcclosure(function(self, ...)
+    local args = {...}
+    local method = getnamecallmethod()
+
+    if getgenv().CheatSettings.AimEnabled and SelectedTarget and not checkcaller() then
+        -- Hook Raycast
+        if method == "Raycast" then
+            local origin = args[1]
+            local direction = (SelectedTarget.Position - origin)
+            
+            if direction.Magnitude < 5 then
+                 args[2] = direction 
+            else
+                 args[2] = direction.Unit * args[2].Magnitude
+            end
+            
+            return oldNamecall(self, unpack(args))
+            
+        elseif method == "FindPartOnRay" then
+            local ray = args[1]
+            if typeof(ray) == "Ray" then
+                local newRay = Ray.new(ray.Origin, (SelectedTarget.Position - ray.Origin).Unit * ray.Direction.Magnitude)
+                args[1] = newRay
+                return oldNamecall(self, unpack(args))
+            end
+        end
+
+        -- Remote Hook (Universal Fix)
+        if method == "FireServer" and (string.find(self.Name, "Shoot") or string.find(self.Name, "Fire") or string.find(self.Name, "Bullet") or string.find(self.Name, "Attack")) then
+             -- หา Vector3 แล้วเปลี่ยน
+             for i, v in pairs(args) do
+                if typeof(v) == "Vector3" then
+                    if (v - Camera.CFrame.Position).Magnitude > 2 then
+                        args[i] = SelectedTarget.Position
+                    end
+                end
+             end
+             -- หาใน Table
+             if type(args[1]) == "table" then
+                 if args[1].p and typeof(args[1].p) == "Vector3" then args[1].p = SelectedTarget.Position end
+                 if args[1][1] and type(args[1][1]) == "table" and args[1][1][2] then args[1][1][2] = SelectedTarget.Position end
+             end
+        end
+    end
+
+    return oldNamecall(self, unpack(args))
+end)
+
+setreadonly(mt, true)
+Window:Notify({Title = "Gemini Hub", Desc = "โหลด Silent Aim + ESP เรียบร้อย!", Time = 4})
