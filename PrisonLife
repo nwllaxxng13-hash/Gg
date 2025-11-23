@@ -1,6 +1,6 @@
 --[[
     SILENT AIM + ESP: DUMMY UI (THAI FULL VERSION)
-    สถานะ: เพิ่มระบบ ESP สมบูรณ์ (Name, HP, Respawn Support)
+    สถานะ: เพิ่ม Target Priority Fix ให้ Silent Aim เพื่อรองรับ Multi-Target
 ]]
 
 -- โหลด DummyUI Library
@@ -12,6 +12,7 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local Mouse = LocalPlayer:GetMouse()
+local Teams = game:GetService("Teams") -- เพิ่ม Teams service สำหรับ ESP
 
 -- ## 0. ตรวจสอบความปลอดภัย
 if not getrawmetatable or not hookmetamethod then
@@ -19,7 +20,7 @@ if not getrawmetatable or not hookmetamethod then
     return
 end
 
--- ## 1. ตัวแปรและการตั้งค่า (รวม ESP Settings)
+-- ## 1. ตัวแปรและการตั้งค่า (ปรับปรุง Target Priority)
 getgenv().CheatSettings = {
     -- Silent Aim Settings
     AimEnabled = true,
@@ -29,144 +30,202 @@ getgenv().CheatSettings = {
     WallCheck = false,
     CloseRangeFix = true,
     LockPart = "Head",
+    TargetPriority = "FOV", -- **เพิ่ม Target Priority**
     
-    -- ESP Settings
+    -- ESP Settings (New Template Logic)
     EspEnabled = false,
     EspTeamCheck = true,
     EspShowName = true,
-    EspShowHp = true
+    EspShowHp = true,
+    EspShowTeam = true,
+    EspHeadboxSize = 0, -- ตั้งค่าเป็น 0 เพื่อปิด Headbox Visualization
 }
 
 local SelectedTarget = nil
-local EspCache = {} -- เก็บข้อมูล ESP ของแต่ละคน
+local playerStates = {} 
+
+-- Constants for ESP
+local HEADBOX_TRANSPARENCY = 0.7
 
 -- ==========================================
 --           ระบบ ESP (มองทะลุ)
 -- ==========================================
 
-local function RemoveEsp(player)
-    if EspCache[player] then
-        if EspCache[player].Billboard then EspCache[player].Billboard:Destroy() end
-        if EspCache[player].Highlight then EspCache[player].Highlight:Destroy() end
-        EspCache[player] = nil
-    end
-end
+local function getColor(p)      
+    return (p.Team and p.Team.TeamColor.Color) or Color3.new(1,1,1)      
+end      
 
-local function CreateEsp(player)
-    if player == LocalPlayer then return end
-    if EspCache[player] then RemoveEsp(player) end -- ลบของเก่าก่อนสร้างใหม่
+local function clearVisuals(p)      
+    local state = playerStates[p]      
+    if state then      
+        if state.highlight then      
+            state.highlight:Destroy()      
+            state.highlight = nil      
+        end      
+        if state.esp then      
+            state.esp:Destroy()      
+            state.esp = nil      
+        end        
+        playerStates[p] = nil        
+    end      
+end      
 
-    local objects = {}
-
-    -- 1. สร้าง Highlight (กรอบเรืองแสง)
-    local hl = Instance.new("Highlight")
-    hl.Name = "EspHighlight"
-    hl.FillColor = Color3.fromRGB(255, 0, 0)
-    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-    hl.FillTransparency = 0.5
-    hl.OutlineTransparency = 0
+local function createHighlight(character, color)      
+    if not character or not character:IsDescendantOf(game) then return nil end      
+    local hl = Instance.new("Highlight")      
+    hl.Adornee = character      
+    hl.FillColor = color      
+    hl.FillTransparency = 0.75      
+    hl.OutlineTransparency = 1      
     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    hl.Parent = game.CoreGui
-    objects.Highlight = hl
+    hl.Parent = game.CoreGui      
+    return hl      
+end      
 
-    -- 2. สร้างป้ายชื่อ (BillboardGui)
-    local bb = Instance.new("BillboardGui")
-    bb.Name = "EspInfo"
-    bb.Size = UDim2.new(0, 200, 0, 50)
-    bb.StudsOffset = Vector3.new(0, 4.5, 0) -- สูงกว่าหัวนิดหน่อย
-    bb.AlwaysOnTop = true
-    bb.Parent = game.CoreGui
-    objects.Billboard = bb
+local function createBillboard(hrp, p)      
+    local bb = Instance.new("BillboardGui")      
+    bb.Adornee = hrp      
+    bb.Size = UDim2.new(0, 150, 0, 60)      
+    bb.StudsOffset = Vector3.new(0, 3, 0)       
+    bb.AlwaysOnTop = true      
+    bb.Parent = game.CoreGui 
+      
+    local function addLabel(y, txt, col)        
+        local l = Instance.new("TextLabel", bb)        
+        l.Size = UDim2.new(1, 0, 0, 20)        
+        l.Position = UDim2.new(0, 0, 0, y)        
+        l.BackgroundTransparency = 1        
+        l.Text = txt        
+        l.Font = Enum.Font.Bodoni        
+        l.TextColor3 = col        
+        l.TextStrokeTransparency = 0        
+        l.TextStrokeColor3 = Color3.fromRGB(20, 20, 20)        
+        l.TextSize = 18        
+        return l        
+    end        
+      
+    local nameLabel = addLabel(0, p.Name, Color3.new(1, 1, 1))        
+    local hpLabel = addLabel(20, "", Color3.fromRGB(255, 100, 100))        
+    local teamLabel = addLabel(40, "", Color3.fromRGB(150, 200, 255))        
+      
+    return bb, nameLabel, hpLabel, teamLabel      
+end      
 
-    local txt = Instance.new("TextLabel", bb)
-    txt.Size = UDim2.new(1, 0, 1, 0)
-    txt.BackgroundTransparency = 1
-    txt.TextStrokeTransparency = 0
-    txt.Font = Enum.Font.GothamBold
-    txt.TextSize = 13
-    txt.TextColor3 = Color3.fromRGB(255, 255, 255)
-    objects.TextLabel = txt
+local function updateEsp(p)      
+    local settings = getgenv().CheatSettings
+    if not settings.EspEnabled then      
+        return clearVisuals(p)      
+    end      
+    if not p or not p.Character or p == LocalPlayer then      
+        return clearVisuals(p)      
+    end      
+      
+    local hum = p.Character:FindFirstChildOfClass("Humanoid")        
+    local hrp = p.Character:FindFirstChild("HumanoidRootPart")        
+    if not hum or not hrp then        
+        return clearVisuals(p)        
+    end        
+      
+    if hum.Health <= 0 or (settings.EspTeamCheck and p.Team == LocalPlayer.Team) then
+        return clearVisuals(p)        
+    end        
+      
+    local state = playerStates[p]        
+    if not state then        
+        state = {}        
+        playerStates[p] = state        
+    end        
+      
+    -- Highlight ESP       
+    if not state.highlight then 
+        state.highlight = createHighlight(p.Character, getColor(p))        
+    end        
+      
+    -- Billboard ESP (Name, HP, Team Info)      
+    if settings.EspShowName and not state.esp then        
+        state.esp, state.name, state.hp, state.team = createBillboard(hrp, p)        
+    end        
 
-    EspCache[player] = objects
-end
+    if state.esp then
+        local head = p.Character:FindFirstChild("Head")
+        if state.esp.Adornee ~= (head or hrp) then
+            state.esp.Adornee = head or hrp
+        end
 
-local function UpdateEsp(player)
-    if not getgenv().CheatSettings.EspEnabled then 
-        RemoveEsp(player)
-        return 
+        if state.name then state.name.Text = p.Name end
+        if state.hp and settings.EspShowHp then 
+            state.hp.Text = "HP: " .. math.floor(hum.Health) 
+            state.hp.Visible = true
+        elseif state.hp then
+            state.hp.Visible = false
+        end
+        if state.team and settings.EspShowTeam then 
+            state.team.Text = "Team: " .. (p.Team and p.Team.Name or "None")
+            state.team.Visible = true
+        elseif state.team then
+            state.team.Visible = false
+        end
     end
-
-    local char = player.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") or not char:FindFirstChild("Humanoid") then
-        RemoveEsp(player) -- ถ้าไม่มีตัวละคร ให้ลบ ESP
-        return
-    end
-
-    local hum = char.Humanoid
-    if hum.Health <= 0 then
-        RemoveEsp(player) -- ถ้าตาย ให้ลบ ESP
-        return
-    end
-
-    -- เช็คทีม
-    if getgenv().CheatSettings.EspTeamCheck and player.Team == LocalPlayer.Team then
-        RemoveEsp(player)
-        return
-    end
-
-    -- สร้าง ESP ถ้ายังไม่มี
-    if not EspCache[player] then
-        CreateEsp(player)
-    end
-
-    local obj = EspCache[player]
-    
-    -- อัปเดตตำแหน่ง Highlight
-    if obj.Highlight.Adornee ~= char then
-        obj.Highlight.Adornee = char
-    end
-
-    -- อัปเดตตำแหน่งป้ายชื่อ
-    if obj.Billboard.Adornee ~= char:FindFirstChild("Head") then
-        obj.Billboard.Adornee = char:FindFirstChild("Head") or char.HumanoidRootPart
-    end
-
-    -- อัปเดตข้อความ (ชื่อ | ระยะ | เลือด)
-    local dist = math.floor((LocalPlayer.Character.HumanoidRootPart.Position - char.HumanoidRootPart.Position).Magnitude)
-    local hpText = math.floor(hum.Health)
-    
-    obj.TextLabel.Text = string.format("%s\n[%dm] [HP: %d]", player.Name, dist, hpText)
-
-    -- เปลี่ยนสีตามเลือด
-    if hum.Health < (hum.MaxHealth * 0.3) then
-        obj.TextLabel.TextColor3 = Color3.fromRGB(255, 50, 50) -- เลือดน้อย สีแดง
-    else
-        obj.TextLabel.TextColor3 = Color3.fromRGB(0, 255, 100) -- ปกติ สีเขียว
-    end
-end
-
+end      
+      
 -- Loop หลักสำหรับ ESP
 task.spawn(function()
     while true do
         if getgenv().CheatSettings.EspEnabled then
             for _, p in pairs(Players:GetPlayers()) do
                 if p ~= LocalPlayer then
-                    UpdateEsp(p)
+                    updateEsp(p)
                 end
             end
         else
             for _, p in pairs(Players:GetPlayers()) do
-                RemoveEsp(p)
+                clearVisuals(p)
             end
         end
-        task.wait(0.1) -- อัปเดตทุก 0.1 วินาที
+        task.wait(0.1)
     end
 end)
 
--- จัดการผู้เล่นออก
+-- จัดการผู้เล่นเข้า/ออก/เกิด
 Players.PlayerRemoving:Connect(function(plr)
-    RemoveEsp(plr)
+    clearVisuals(plr)
 end)
+
+local function setupCharacter(p)      
+    if not p or not p.Character then return end      
+    local hum = p.Character:FindFirstChildOfClass("Humanoid")      
+    if not hum then return end      
+      
+    hum.Died:Connect(function()        
+        clearVisuals(p)        
+    end)      
+end      
+      
+local function onPlayerAdded(p)      
+    if p == LocalPlayer then return end      
+    
+    p.CharacterAppearanceLoaded:Connect(function()      
+        clearVisuals(p)      
+        task.wait(0.1)      
+        setupCharacter(p)      
+    end)      
+      
+    p:GetPropertyChangedSignal("Team"):Connect(function()        
+        clearVisuals(p)        
+        if p.Character then        
+            setupCharacter(p)        
+        end        
+    end)        
+      
+    if p.Character then        
+        setupCharacter(p)        
+    end      
+end      
+
+for _, p in pairs(Players:GetPlayers()) do      
+    onPlayerAdded(p)      
+end      
+Players.PlayerAdded:Connect(onPlayerAdded)
 
 -- ==========================================
 --           ระบบ SILENT AIM (VISUALS)
@@ -183,7 +242,6 @@ local function AddAimVisuals(target)
     if not target or not target.Parent then return end
     local Char = target.Parent
     
-    -- Highlight สีแดงเข้มสำหรับเป้าหมายที่ถูกล็อค
     if not CurrentHighlight then
         CurrentHighlight = Instance.new("Highlight")
         CurrentHighlight.FillColor = Color3.fromRGB(255, 0, 0)
@@ -193,7 +251,6 @@ local function AddAimVisuals(target)
     end
     if CurrentHighlight.Adornee ~= Char then CurrentHighlight.Adornee = Char end
 
-    -- ป้าย LOCKED
     if not CurrentTag then
         local Billboard = Instance.new("BillboardGui")
         Billboard.Adornee = target
@@ -205,7 +262,7 @@ local function AddAimVisuals(target)
         Label.Size = UDim2.new(1, 0, 1, 0)
         Label.BackgroundTransparency = 1
         Label.Text = ">>> LOCKED <<<"
-        Label.TextColor3 = Color3.fromRGB(255, 0, 0) -- สีแดง
+        Label.TextColor3 = Color3.fromRGB(255, 0, 0)
         Label.Font = Enum.Font.GothamBlack
         Label.TextSize = 14
         Label.TextStrokeTransparency = 0
@@ -232,14 +289,15 @@ local function IsVisible(targetPart)
 end
 
 local function GetTarget()
-    local MaxDist = getgenv().CheatSettings.FOVSize
+    local MaxScore = math.huge 
     local Target = nil
     local Center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     local LockPartName = getgenv().CheatSettings.LockPart
+    local Settings = getgenv().CheatSettings
 
     for _, plr in pairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character then
-            if getgenv().CheatSettings.TeamCheck and plr.Team == LocalPlayer.Team then continue end
+            if Settings.TeamCheck and plr.Team == LocalPlayer.Team then continue end
 
             local Hum = plr.Character:FindFirstChild("Humanoid")
             local TargetPart = plr.Character:FindFirstChild(LockPartName) or plr.Character:FindFirstChild("Head")
@@ -247,21 +305,39 @@ local function GetTarget()
             
             if Hum and Hum.Health > 0 and TargetPart and Root then
                 local ScreenPos, OnScreen = Camera:WorldToScreenPoint(TargetPart.Position)
+                
                 if OnScreen then
-                    local Dist = (Vector2.new(ScreenPos.X, ScreenPos.Y) - Center).Magnitude
-                    if Dist < MaxDist then
-                        if getgenv().CheatSettings.CloseRangeFix then
-                            local distanceToPlayer = (Root.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
-                            if distanceToPlayer < 10 then
+                    local FOVDist = (Vector2.new(ScreenPos.X, ScreenPos.Y) - Center).Magnitude
+                    
+                    if FOVDist < Settings.FOVSize then
+                        
+                        -- **ตรรกะการจัดลำดับความสำคัญ (Priority Logic)**
+                        local Score
+                        local distanceToPlayer = (Root.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
+                        
+                        if Settings.TargetPriority == "Distance" then
+                            -- Priority: เลือกผู้เล่นที่อยู่ใกล้ที่สุด (ระยะทาง 3D)
+                            Score = distanceToPlayer
+                        else -- Default/FOV: เลือกผู้เล่นที่อยู่ใกล้ศูนย์กลางหน้าจอที่สุด
+                            Score = FOVDist
+                        end
+
+                        -- การเช็คกำแพง (WallCheck) และ CloseRangeFix
+                        local PassWallCheck = IsVisible(TargetPart)
+                        local IsClose = distanceToPlayer < 10
+
+                        if Settings.CloseRangeFix and IsClose then
+                            -- ล็อกระยะใกล้ทันที ไม่สนกำแพง
+                            if Score < MaxScore then
                                 Target = TargetPart
-                                MaxDist = Dist
-                            elseif IsVisible(TargetPart) then
-                                Target = TargetPart
-                                MaxDist = Dist
+                                MaxScore = Score
                             end
-                        elseif IsVisible(TargetPart) then
-                             Target = TargetPart
-                             MaxDist = Dist
+                        elseif PassWallCheck then
+                            -- ถ้ามองเห็น
+                            if Score < MaxScore then
+                                Target = TargetPart
+                                MaxScore = Score
+                            end
                         end
                     end
                 end
@@ -281,7 +357,7 @@ local Window = Library:Window({
     Theme = "Dark",
     Config = {
         Keybind = Enum.KeyCode.RightControl,
-        Size = UDim2.new(0, 500, 0, 450) -- ขยายกว้างขึ้นหน่อย
+        Size = UDim2.new(0, 500, 0, 450)
     },
     CloseUIButton = {
         Enabled = true,
@@ -296,7 +372,7 @@ local AimTab = Window:Tab({Title = "ล็อคเป้า", Icon = "crosshair
     AimTab:Toggle({
         Title = "เปิด Silent Aim",
         Desc = "กระสุนเข้าหัวอัตโนมัติ",
-        Value = true,
+        Value = getgenv().CheatSettings.AimEnabled,
         Callback = function(v)
             getgenv().CheatSettings.AimEnabled = v
             if not v then ClearAimVisuals() end
@@ -306,9 +382,19 @@ local AimTab = Window:Tab({Title = "ล็อคเป้า", Icon = "crosshair
     AimTab:Dropdown({
         Title = "จุดที่ล็อค",
         List = {"Head", "HumanoidRootPart", "Torso"},
-        Value = "Head",
+        Value = getgenv().CheatSettings.LockPart,
         Callback = function(choice)
             getgenv().CheatSettings.LockPart = choice
+        end
+    })
+    
+    AimTab:Dropdown({
+        Title = "จัดลำดับความสำคัญ",
+        Desc = "เลือกเป้าหมายที่ดีที่สุด",
+        List = {"FOV", "Distance"},
+        Value = getgenv().CheatSettings.TargetPriority,
+        Callback = function(choice)
+            getgenv().CheatSettings.TargetPriority = choice
         end
     })
 
@@ -318,7 +404,7 @@ local AimTab = Window:Tab({Title = "ล็อคเป้า", Icon = "crosshair
         Min = 50,
         Max = 800,
         Rounding = 0,
-        Value = 150,
+        Value = getgenv().CheatSettings.FOVSize,
         Callback = function(v)
             getgenv().CheatSettings.FOVSize = v
         end
@@ -326,7 +412,7 @@ local AimTab = Window:Tab({Title = "ล็อคเป้า", Icon = "crosshair
     
     AimTab:Toggle({
         Title = "แสดงวงกลม",
-        Value = true,
+        Value = getgenv().CheatSettings.ShowFOV,
         Callback = function(v)
             getgenv().CheatSettings.ShowFOV = v
         end
@@ -337,7 +423,7 @@ local AimTab = Window:Tab({Title = "ล็อคเป้า", Icon = "crosshair
     AimTab:Toggle({
         Title = "เช็คทีมเดียวกัน",
         Desc = "ไม่ล็อคพวกเดียวกัน",
-        Value = true,
+        Value = getgenv().CheatSettings.TeamCheck,
         Callback = function(v)
             getgenv().CheatSettings.TeamCheck = v
         end
@@ -346,21 +432,21 @@ local AimTab = Window:Tab({Title = "ล็อคเป้า", Icon = "crosshair
     AimTab:Toggle({
         Title = "เช็คกำแพง",
         Desc = "ล็อคเฉพาะตัวที่มองเห็น",
-        Value = false,
+        Value = getgenv().CheatSettings.WallCheck,
         Callback = function(v)
             getgenv().CheatSettings.WallCheck = v
         end
     })
 end
 
--- === ESP TAB (ใหม่!) ===
+-- === ESP TAB ===
 local EspTab = Window:Tab({Title = "มองทะลุ", Icon = "eye"}) do
-    EspTab:Section({Title = "การมองเห็น"})
+    EspTab:Section({Title = "การมองเห็นหลัก"})
 
     EspTab:Toggle({
         Title = "เปิดใช้งาน ESP",
-        Desc = "เปิด/ปิด การมองทะลุทั้งหมด",
-        Value = false,
+        Desc = "เปิด/ปิด การมองทะลุ (Highlight + Info)",
+        Value = getgenv().CheatSettings.EspEnabled,
         Callback = function(v)
             getgenv().CheatSettings.EspEnabled = v
         end
@@ -369,11 +455,38 @@ local EspTab = Window:Tab({Title = "มองทะลุ", Icon = "eye"}) do
     EspTab:Toggle({
         Title = "ซ่อนทีมเดียวกัน",
         Desc = "ไม่แสดง ESP ฝั่งเดียวกัน",
-        Value = true,
+        Value = getgenv().CheatSettings.EspTeamCheck,
         Callback = function(v)
             getgenv().CheatSettings.EspTeamCheck = v
         end
     })
+
+    EspTab:Section({Title = "การแสดงผล"})
+        
+    EspTab:Toggle({
+        Title = "แสดงชื่อ (Name)",
+        Value = getgenv().CheatSettings.EspShowName,
+        Callback = function(v)
+            getgenv().CheatSettings.EspShowName = v
+        end
+    })
+    
+    EspTab:Toggle({
+        Title = "แสดงเลือด (HP)",
+        Value = getgenv().CheatSettings.EspShowHp,
+        Callback = function(v)
+            getgenv().CheatSettings.EspShowHp = v
+        end
+    })
+
+    EspTab:Toggle({
+        Title = "แสดงทีม (Team)",
+        Value = getgenv().CheatSettings.EspShowTeam,
+        Callback = function(v)
+            getgenv().CheatSettings.EspShowTeam = v
+        end
+    })
+
 end
 
 -- === TELEPORT TAB ===
