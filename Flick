@@ -1,0 +1,326 @@
+--[[
+    INTEGRATED SCRIPT: SILENT AIM + ESP + AUTO FIRE
+    UI Library: DummyUI (x2zu)
+]]
+
+-- 1. Configuration & Variables
+getgenv().SilentAim = true      
+getgenv().Fov = 150             
+getgenv().ShowFovCircle = true
+getgenv().AutoFire = false
+getgenv().EspEnabled = false
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+-- Silent Aim Variables
+local currentTarget = nil
+local FovColor = Color3.fromRGB(255, 255, 255)
+local FovLockedColor = Color3.fromRGB(255, 0, 0)
+
+-- 2. Setup UI Library
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/x2zu/OPEN-SOURCE-UI-ROBLOX/refs/heads/main/X2ZU%20UI%20ROBLOX%20OPEN%20SOURCE/DummyUi-leak-by-x2zu/fetching-main/Tools/Framework.luau"))()
+
+local Window = Library:Window({
+    Title = "x2zu [ Stellar Modified ]",
+    Desc = "Silent Aim / ESP / AutoFire",
+    Icon = 105059922903197,
+    Theme = "Dark",
+    Config = {
+        Keybind = Enum.KeyCode.RightControl,
+        Size = UDim2.new(0, 500, 0, 400)
+    },
+    CloseUIButton = {
+        Enabled = true,
+        Text = "Close"
+    }
+})
+
+-- 3. UI Construction
+
+-- === TAB: MAIN (Combat) ===
+local MainTab = Window:Tab({Title = "Combat", Icon = "crosshair"}) do
+    MainTab:Section({Title = "Silent Aim"})
+
+    MainTab:Toggle({
+        Title = "Enable Silent Aim",
+        Desc = "Redirects bullets to head",
+        Value = getgenv().SilentAim,
+        Callback = function(v)
+            getgenv().SilentAim = v
+        end
+    })
+
+    MainTab:Toggle({
+        Title = "Show FOV Circle",
+        Desc = "Draws the radius circle",
+        Value = getgenv().ShowFovCircle,
+        Callback = function(v)
+            getgenv().ShowFovCircle = v
+        end
+    })
+
+    MainTab:Slider({
+        Title = "FOV Radius",
+        Min = 10,
+        Max = 800,
+        Rounding = 0,
+        Value = getgenv().Fov,
+        Callback = function(val)
+            getgenv().Fov = val
+        end
+    })
+
+    MainTab:Section({Title = "Automation"})
+
+    MainTab:Toggle({
+        Title = "Auto Fire",
+        Desc = "Clicks Mobile Fire Button when target is locked",
+        Value = getgenv().AutoFire,
+        Callback = function(v)
+            getgenv().AutoFire = v
+        end
+    })
+end
+
+-- === TAB: ESP (Visuals) ===
+local EspTab = Window:Tab({Title = "Visuals", Icon = "eye"}) do
+    EspTab:Section({Title = "Player ESP"})
+
+    EspTab:Toggle({
+        Title = "Enable ESP",
+        Desc = "Highlights players & Nametags",
+        Value = getgenv().EspEnabled,
+        Callback = function(v)
+            getgenv().EspEnabled = v
+            if not v then
+                -- Clear ESP when disabled
+                for _, player in pairs(Players:GetPlayers()) do
+                    if player.Character then
+                        local h = player.Character:FindFirstChild("StellarHighlight")
+                        if h then h:Destroy() end
+                        local b = player.Character:FindFirstChild("Head"):FindFirstChild("StellarTag")
+                        if b then b:Destroy() end
+                    end
+                end
+            end
+        end
+    })
+end
+
+-- === TAB: SETTINGS ===
+local SettingsTab = Window:Tab({Title = "Settings", Icon = "wrench"}) do
+    SettingsTab:Section({Title = "Menu Config"})
+    SettingsTab:Button({
+        Title = "Unload Script",
+        Desc = "Removes UI",
+        Callback = function()
+            -- Add unload logic if library supports it, otherwise just notify
+            Window:Notify({Title = "Script", Desc = "Reload game to fully unload.", Time = 3})
+        end
+    })
+end
+
+-- 4. Logic Implementation
+
+-- Drawing the FOV Circle
+local FovCircle = Drawing.new("Circle")
+FovCircle.Thickness = 1
+FovCircle.Filled = false
+FovCircle.NumSides = 64
+FovCircle.ZIndex = 2
+
+-- Helper: Check Visibility
+local function isVisible(targetCharacter, targetPart)
+    local origin = Camera.CFrame.Position
+    local direction = (targetPart.Position - origin)
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {LocalPlayer.Character, targetCharacter}
+    local result = workspace:Raycast(origin, direction, params)
+    return not result or result.Instance:IsDescendantOf(targetCharacter)
+end
+
+-- Helper: Get Closest Player
+local function getClosestPlayerInFov()
+    local closestPlayer, smallestDistance = nil, math.huge
+    local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local character = player.Character
+            local targetPart = character:FindFirstChild("Head")
+            local humanoid = character:FindFirstChild("Humanoid")
+            
+            -- Checks: Exists, Alive, Not Teammate (Optional: add team check here if needed)
+            if targetPart and humanoid and humanoid.Health > 0 then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                if onScreen then
+                    local distanceFromCenter = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+                    
+                    if distanceFromCenter <= getgenv().Fov and distanceFromCenter < smallestDistance then
+                        -- Check Visibility
+                        if isVisible(character, targetPart) then
+                            smallestDistance = distanceFromCenter
+                            closestPlayer = character
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return closestPlayer
+end
+
+-- 5. ESP Functions
+local function CreateEsp(player)
+    if player == LocalPlayer then return end
+    
+    local function Apply(char)
+        if not getgenv().EspEnabled then return end
+        
+        -- 1. Highlight
+        if not char:FindFirstChild("StellarHighlight") then
+            local hl = Instance.new("Highlight")
+            hl.Name = "StellarHighlight"
+            hl.FillColor = Color3.fromRGB(255, 0, 0)
+            hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+            hl.FillTransparency = 0.5
+            hl.OutlineTransparency = 0
+            hl.Parent = char
+        end
+        
+        -- 2. Nametag
+        local head = char:WaitForChild("Head", 5)
+        if head and not head:FindFirstChild("StellarTag") then
+            local bb = Instance.new("BillboardGui")
+            bb.Name = "StellarTag"
+            bb.Adornee = head
+            bb.Size = UDim2.new(0, 100, 0, 50)
+            bb.StudsOffset = Vector3.new(0, 2, 0)
+            bb.AlwaysOnTop = true
+            
+            local txt = Instance.new("TextLabel")
+            txt.Size = UDim2.new(1, 0, 1, 0)
+            txt.BackgroundTransparency = 1
+            txt.Text = player.Name
+            txt.TextColor3 = Color3.fromRGB(255, 255, 255)
+            txt.TextStrokeTransparency = 0
+            txt.Font = Enum.Font.GothamBold
+            txt.TextSize = 14
+            txt.Parent = bb
+            
+            bb.Parent = head
+        end
+    end
+
+    if player.Character then Apply(player.Character) end
+    player.CharacterAdded:Connect(Apply)
+end
+
+-- Hook existing players
+for _, p in pairs(Players:GetPlayers()) do CreateEsp(p) end
+Players.PlayerAdded:Connect(CreateEsp)
+
+-- Loop to keep ESP updated (in case toggled on later)
+task.spawn(function()
+    while task.wait(1) do
+        if getgenv().EspEnabled then
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character and not p.Character:FindFirstChild("StellarHighlight") then
+                    CreateEsp(p)
+                end
+            end
+        end
+    end
+end)
+
+
+-- 6. Main Loops (RenderStepped & AutoFire)
+
+-- RenderStepped: Updates FOV Circle and Current Target
+RunService.RenderStepped:Connect(function()
+    -- FOV Drawing
+    if not getgenv().ShowFovCircle then
+        FovCircle.Visible = false
+    else
+        FovCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        FovCircle.Radius = getgenv().Fov
+        FovCircle.Visible = true
+        FovCircle.Color = currentTarget and FovLockedColor or FovColor
+    end
+    
+    -- Target Logic
+    if getgenv().SilentAim then 
+        currentTarget = getClosestPlayerInFov() 
+    else
+        currentTarget = nil
+    end
+end)
+
+-- Auto Fire Loop
+task.spawn(function()
+    while task.wait() do -- Fast loop
+        if getgenv().AutoFire and currentTarget and getgenv().SilentAim then
+            pcall(function()
+                -- Locating the button based on your path
+                local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+                local Controls = PlayerGui:FindFirstChild("MobileControls")
+                if Controls then
+                    local Frame = Controls:FindFirstChild("Frame")
+                    if Frame then
+                        local FireBtn = Frame:FindFirstChild("FireButton")
+                        if FireBtn then
+                            -- Method 1: Fire Events (Best for Mobile UI)
+                            for _, connection in pairs(getconnections(FireBtn.Activated)) do
+                                connection:Fire()
+                            end
+                            for _, connection in pairs(getconnections(FireBtn.MouseButton1Down)) do
+                                connection:Fire()
+                            end
+                            
+                            -- Method 2: Fallback (Clicking center of screen if button logic fails)
+                            -- VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+                            -- task.wait()
+                            -- VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                        end
+                    end
+                end
+            end)
+            task.wait(0.1) -- Cooldown to prevent crash/lag
+        end
+    end
+end)
+
+
+-- 7. Hook Metamethod (Silent Aim Injection)
+local oldIndex
+local CFrame_new = CFrame.new
+
+oldIndex = hookmetamethod(game, "__index", function(self, index)
+    if not getgenv().SilentAim or not currentTarget then
+        return oldIndex(self, index)
+    end
+
+    -- Provided Logic
+    local func = debug.getinfo(3, "n")
+    if func and func.name == "castProjectile" and index == "CFrame" then
+        local targetHead = currentTarget:FindFirstChild("Head")
+        if targetHead then
+            return CFrame_new(Camera.CFrame.Position, targetHead.Position)
+        end
+    end
+    return oldIndex(self, index)
+end)
+
+-- Final Load Notification
+Window:Notify({
+    Title = "Script Loaded",
+    Desc = "Silent Aim + ESP + AutoFire Ready!",
+    Time = 5
+})
