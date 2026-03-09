@@ -1,0 +1,480 @@
+--[[
+    Auto Farm Gyakusatsu (Ro-Ghoul) - Standard GUI Version (V13)
+    [ Added: Auto Mask on Spawn, Hearts Counter, Smart Camera Release ]
+]]
+
+local player = game.Players.LocalPlayer
+local workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local UserInputService = game:GetService("UserInputService")
+
+-- ==========================================
+-- 1. Settings & Auto Save System
+-- ==========================================
+local Settings = {
+    AutoFarm = false,
+    NewKajiriMode = false,
+    HopBoss = false,
+    AutoFaction = false,
+    AutoMask = false,
+    FactionChoice = "CCG",
+    WeaponStage = "One",
+    DistanceFromBoss = 15,
+    TeleportSpeed = 200
+}
+
+local SaveFileName = "GyakuFarm_SaveV13.json"
+
+local function SaveConfig()
+    pcall(function()
+        if writefile then writefile(SaveFileName, HttpService:JSONEncode(Settings)) end
+    end)
+end
+
+local function LoadConfig()
+    pcall(function()
+        if isfile and readfile and isfile(SaveFileName) then
+            local data = HttpService:JSONDecode(readfile(SaveFileName))
+            for k, v in pairs(data) do Settings[k] = v end
+        end
+    end)
+end
+LoadConfig()
+
+local StagesList = {"One", "Two", "Three", "Four", "Five", "Six"}
+local StageIndex = table.find(StagesList, Settings.WeaponStage) or 1
+local key = nil
+
+-- ==========================================
+-- 2. Get Remote Key (Bypass System)
+-- ==========================================
+task.spawn(function()
+    repeat 
+        for i,v in pairs(getgc(true)) do
+            if not key and type(v) == "function" and getinfo(v).source:find(".ClientControl") then
+                for i2,v2 in pairs(getconstants(v)) do
+                    if v2 == "KeyEvent" then
+                        local keyfound = getconstant(v, i2 + 1)
+                        if #keyfound >= 100 then
+                            key = keyfound
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(1)
+    until key
+end)
+
+-- ==========================================
+-- 3. Auto Faction Loop
+-- ==========================================
+task.spawn(function()
+    while task.wait(5) do
+        if Settings.AutoFarm and Settings.AutoFaction then
+            pcall(function()
+                local args = { [1] = Settings.FactionChoice }
+                game:GetService("ReplicatedStorage").Remotes.Race.Chose:InvokeServer(unpack(args))
+            end)
+        end
+    end
+end)
+
+-- ==========================================
+-- 4. Core Functions
+-- ==========================================
+local function pressKey(keyToPress, aimPosition)
+    if not key or not player.Character or not player.Character:FindFirstChild("Remotes") then return end
+    
+    local hit = player:GetMouse().Hit
+    local camCFrame = workspace.CurrentCamera.CFrame
+    
+    if aimPosition and player.Character:FindFirstChild("HumanoidRootPart") then
+        hit = CFrame.new(aimPosition)
+        camCFrame = CFrame.lookAt(player.Character.HumanoidRootPart.Position, aimPosition)
+    end
+    
+    local fireEvent = Instance.new("RemoteEvent").FireServer
+    fireEvent(player.Character.Remotes.KeyEvent, key, keyToPress, "Down", hit, nil, camCFrame)
+end
+
+-- [อัปเดต] หาระยะและเลือด + คืนค่าว่าควรล็อคกล้องหรือไม่ (shouldLockCam)
+local function getSmartTarget()
+    local spawnFolder = workspace:FindFirstChild("NPCSpawns")
+    if not spawnFolder then return nil, nil, false end
+    local gyakuSpawn = spawnFolder:FindFirstChild("GyakusatsuSpawn")
+    if not gyakuSpawn then return nil, nil, false end
+
+    local hearts = {}
+    local boss = nil
+
+    for _, v in ipairs(gyakuSpawn:GetChildren()) do
+        if v:IsA("Model") and v.Name ~= "Mob" then
+            local hum = v:FindFirstChild("Humanoid")
+            local hrp = v:FindFirstChild("HumanoidRootPart")
+            
+            if hum and hrp and hum.Health > 0 then
+                if v.Name == "Gyakusatsu" then
+                    boss = v
+                else
+                    table.insert(hearts, v)
+                end
+            end
+        end
+    end
+
+    local warpObj, aimPos, shouldLockCam
+
+    if #hearts >= 2 then
+        -- มี 2 ดวง: วาร์ปดวงแรก เล็งดวงสอง + ล็อคกล้อง
+        warpObj = hearts[1]
+        aimPos = hearts[2].HumanoidRootPart.Position
+        shouldLockCam = true
+    elseif #hearts == 1 then
+        -- เหลือ 1 ดวง: วาร์ปหาดวงนั้น เล็งบอส + ปล่อยกล้องอิสระ
+        warpObj = hearts[1]
+        if boss then aimPos = boss.HumanoidRootPart.Position else aimPos = warpObj.HumanoidRootPart.Position end
+        shouldLockCam = false
+    elseif boss then
+        -- เหลือแค่บอส: วาร์ปหาบอส เล็งบอส + ปล่อยกล้องอิสระ
+        warpObj = boss
+        aimPos = boss.HumanoidRootPart.Position
+        shouldLockCam = false
+    end
+
+    return warpObj, aimPos, shouldLockCam
+end
+
+local isHopping = false
+local function ServerHop()
+    if isHopping then return end
+    isHopping = true
+    
+    local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+    pcall(function()
+        local result = HttpService:JSONDecode(game:HttpGet(url))
+        if result and result.data then
+            for _, server in ipairs(result.data) do
+                if server.playing > 0 and server.playing < server.maxPlayers - 2 and server.id ~= game.JobId then
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, player)
+                    task.wait(5)
+                end
+            end
+        end
+    end)
+    task.wait(3)
+    isHopping = false
+end
+
+local function tp(targetCFrame)
+    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
+    local hrp = player.Character.HumanoidRootPart
+    local val = Instance.new("CFrameValue")
+    val.Value = hrp.CFrame
+    
+    local distance = (hrp.Position - targetCFrame.Position).Magnitude
+    local timeToTake = distance / Settings.TeleportSpeed
+    if timeToTake < 0.1 then timeToTake = 0.1 end
+    
+    local tweenInfo = TweenInfo.new(timeToTake, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, 0, false, 0)
+    local tween = TweenService:Create(val, tweenInfo, {Value = targetCFrame})
+    tween:Play()
+
+    local completed = false
+    tween.Completed:Connect(function() completed = true end)
+
+    while not completed do
+        if not Settings.AutoFarm or not player.Character or player.Character.Humanoid.Health <= 0 then 
+            tween:Cancel() break 
+        end
+        if player.Character:FindFirstChild("HumanoidRootPart") then
+            player.Character.HumanoidRootPart.CFrame = val.Value
+            player.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+        end
+        task.wait()
+    end
+    val:Destroy()
+end
+
+-- ==========================================
+-- 5. Main Auto Farm Loop
+-- ==========================================
+local hasMasked = false
+
+task.spawn(function()
+    task.wait(3)
+    while task.wait() do
+        if Settings.AutoFarm then
+            pcall(function()
+                local char = player.Character
+                if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
+                    
+                    -- [ใหม่] Auto Mask ตอนเกิด (ทำงานครั้งเดียวต่อ 1 ชีวิต)
+                    if Settings.AutoMask and not hasMasked and key then
+                        hasMasked = true
+                        pcall(function()
+                            local args = {
+                                [1] = key, -- ใช้ Dynamic Key แทนค่าคงที่เพื่อความปลอดภัย
+                                [2] = "M",
+                                [3] = "Down",
+                                [4] = "ShiftLock",
+                            }
+                            char.Remotes.KeyEvent:FireServer(unpack(args))
+                        end)
+                        task.wait(0.5)
+                    end
+
+                    if not char:FindFirstChild("Kagune") and not char:FindFirstChild("Quinque") then
+                        pressKey(Settings.WeaponStage)
+                        task.wait(0.5)
+                    end
+
+                    local warpNpc, aimPos, shouldLockCam = getSmartTarget()
+
+                    if warpNpc and aimPos then
+                        
+                        local standPos = warpNpc.HumanoidRootPart.Position + Vector3.new(0, Settings.DistanceFromBoss, 0)
+                        local distance = (char.HumanoidRootPart.Position - standPos).Magnitude
+
+                        if distance > 25 then
+                            local lookCFrame = CFrame.lookAt(standPos, aimPos)
+                            tp(lookCFrame)
+                        else
+                            if Settings.NewKajiriMode then
+                                char.Humanoid.AutoRotate = false
+                            else
+                                char.Humanoid.AutoRotate = true
+                            end
+                            
+                            char.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+                            char.HumanoidRootPart.CFrame = CFrame.lookAt(standPos, aimPos)
+                            
+                            -- [อัปเดต] ล็อคกล้องเฉพาะตอนมีหัวใจ >= 2 เท่านั้น
+                            if shouldLockCam then
+                                workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos)
+                            end
+
+                            if Settings.NewKajiriMode then
+                                pressKey("F", aimPos)
+                                pressKey("Mouse1", aimPos)
+                            else
+                                pressKey("Mouse1", aimPos)
+                            end
+                        end
+                    else
+                        if char:FindFirstChild("Humanoid") then
+                            char.Humanoid.AutoRotate = true
+                        end
+                        if Settings.HopBoss then
+                            ServerHop()
+                        end
+                    end
+                else
+                    -- รีเซ็ตสถานะหน้ากากเมื่อตาย
+                    hasMasked = false
+                end
+            end)
+        else
+            -- รีเซ็ตสถานะหน้ากากเมื่อปิดฟาร์ม
+            hasMasked = false
+        end
+    end
+end)
+
+-- ==========================================
+-- 6. GUI Creation
+-- ==========================================
+local GyakuGui = Instance.new("ScreenGui")
+local MainFrame = Instance.new("Frame")
+local Title = Instance.new("TextLabel")
+
+if CoreGui:FindFirstChild("GyakuGui") then CoreGui.GyakuGui:Destroy() end
+if player.PlayerGui:FindFirstChild("GyakuGui") then player.PlayerGui.GyakuGui:Destroy() end
+
+GyakuGui.Name = "GyakuGui"
+GyakuGui.ResetOnSpawn = false
+pcall(function() GyakuGui.Parent = CoreGui end)
+if GyakuGui.Parent == nil then GyakuGui.Parent = player.PlayerGui end
+
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = GyakuGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Position = UDim2.new(0.5, -125, 0.5, -150)
+MainFrame.Size = UDim2.new(0, 250, 0, 360) -- เพิ่มความสูงให้พอดีเมนูใหม่
+MainFrame.Active = true
+
+Title.Name = "Title"
+Title.Parent = MainFrame
+Title.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.Font = Enum.Font.SourceSansBold
+Title.Text = "  Ro-Ghoul: Gyaku V13"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 15
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+local dragging, dragInput, dragStart, startPos
+Title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true; dragStart = input.Position; startPos = MainFrame.Position
+        input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
+    end
+end)
+Title.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+local function UpdateBtn(btn, state, onText, offText)
+    if not btn then return end
+    if state then
+        btn.Text = onText; btn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+    else
+        btn.Text = offText; btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    end
+end
+
+local FarmToggle = Instance.new("TextButton", MainFrame)
+local KajiriToggle = Instance.new("TextButton", MainFrame)
+local HopToggle = Instance.new("TextButton", MainFrame)
+local AutoFactionToggle = Instance.new("TextButton", MainFrame)
+local AutoMaskToggle = Instance.new("TextButton", MainFrame)
+local FactionChoiceBtn = Instance.new("TextButton", MainFrame)
+local StageBtn = Instance.new("TextButton", MainFrame)
+
+local function ApplyBtnStyle(btn, yOffset)
+    btn.Position = UDim2.new(0.05, 0, 0, yOffset)
+    btn.Size = UDim2.new(0.9, 0, 0, 30)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 16
+    btn.BorderSizePixel = 0
+end
+
+ApplyBtnStyle(FarmToggle, 35)
+FarmToggle.MouseButton1Click:Connect(function()
+    Settings.AutoFarm = not Settings.AutoFarm
+    UpdateBtn(FarmToggle, Settings.AutoFarm, "Auto Farm: ON", "Auto Farm: OFF")
+    if not Settings.AutoFarm and player.Character and player.Character:FindFirstChild("Humanoid") then
+        player.Character.Humanoid.AutoRotate = true
+    end
+    SaveConfig()
+end)
+UpdateBtn(FarmToggle, Settings.AutoFarm, "Auto Farm: ON", "Auto Farm: OFF")
+
+ApplyBtnStyle(KajiriToggle, 70)
+KajiriToggle.MouseButton1Click:Connect(function()
+    Settings.NewKajiriMode = not Settings.NewKajiriMode
+    UpdateBtn(KajiriToggle, Settings.NewKajiriMode, "New Kajiri (Dodge): ON", "New Kajiri (Dodge): OFF")
+    SaveConfig()
+end)
+UpdateBtn(KajiriToggle, Settings.NewKajiriMode, "New Kajiri (Dodge): ON", "New Kajiri (Dodge): OFF")
+
+ApplyBtnStyle(HopToggle, 105)
+HopToggle.MouseButton1Click:Connect(function()
+    Settings.HopBoss = not Settings.HopBoss
+    UpdateBtn(HopToggle, Settings.HopBoss, "Hop Boss: ON", "Hop Boss: OFF")
+    SaveConfig()
+end)
+UpdateBtn(HopToggle, Settings.HopBoss, "Hop Boss: ON", "Hop Boss: OFF")
+
+ApplyBtnStyle(AutoFactionToggle, 140)
+AutoFactionToggle.MouseButton1Click:Connect(function()
+    Settings.AutoFaction = not Settings.AutoFaction
+    UpdateBtn(AutoFactionToggle, Settings.AutoFaction, "Auto Faction: ON", "Auto Faction: OFF")
+    SaveConfig()
+end)
+UpdateBtn(AutoFactionToggle, Settings.AutoFaction, "Auto Faction: ON", "Auto Faction: OFF")
+
+ApplyBtnStyle(AutoMaskToggle, 175)
+AutoMaskToggle.MouseButton1Click:Connect(function()
+    Settings.AutoMask = not Settings.AutoMask
+    UpdateBtn(AutoMaskToggle, Settings.AutoMask, "Auto Mask: ON", "Auto Mask: OFF")
+    SaveConfig()
+end)
+UpdateBtn(AutoMaskToggle, Settings.AutoMask, "Auto Mask: ON", "Auto Mask: OFF")
+
+ApplyBtnStyle(FactionChoiceBtn, 210)
+FactionChoiceBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 150)
+FactionChoiceBtn.MouseButton1Click:Connect(function()
+    if Settings.FactionChoice == "CCG" then Settings.FactionChoice = "GHOUL" else Settings.FactionChoice = "CCG" end
+    FactionChoiceBtn.Text = "Faction Target: " .. Settings.FactionChoice
+    SaveConfig()
+end)
+FactionChoiceBtn.Text = "Faction Target: " .. Settings.FactionChoice
+
+ApplyBtnStyle(StageBtn, 245)
+StageBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+StageBtn.MouseButton1Click:Connect(function()
+    StageIndex = StageIndex + 1
+    if StageIndex > #StagesList then StageIndex = 1 end
+    Settings.WeaponStage = StagesList[StageIndex]
+    StageBtn.Text = "Equip Stage: " .. Settings.WeaponStage
+    SaveConfig()
+end)
+StageBtn.Text = "Equip Stage: " .. Settings.WeaponStage
+
+local DistLabel = Instance.new("TextLabel", MainFrame)
+DistLabel.BackgroundTransparency = 1
+DistLabel.Position = UDim2.new(0.05, 0, 0, 280)
+DistLabel.Size = UDim2.new(0.6, 0, 0, 30)
+DistLabel.Font = Enum.Font.SourceSans
+DistLabel.Text = "Distance (Base):"
+DistLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+DistLabel.TextSize = 16
+DistLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local DistInput = Instance.new("TextBox", MainFrame)
+DistInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+DistInput.Position = UDim2.new(0.65, 0, 0, 280)
+DistInput.Size = UDim2.new(0.3, 0, 0, 30)
+DistInput.Font = Enum.Font.SourceSansBold
+DistInput.Text = tostring(Settings.DistanceFromBoss)
+DistInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+DistInput.TextSize = 16
+
+DistInput.FocusLost:Connect(function()
+    local num = tonumber(DistInput.Text)
+    if num then
+        Settings.DistanceFromBoss = num
+        SaveConfig()
+    else
+        DistInput.Text = tostring(Settings.DistanceFromBoss)
+    end
+end)
+
+-- [ใหม่] ระบบโชว์จำนวน Hearts แบบเรียลไทม์
+local HeartsLabel = Instance.new("TextLabel", MainFrame)
+HeartsLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+HeartsLabel.BorderSizePixel = 0
+HeartsLabel.Position = UDim2.new(0, 0, 1, -30) -- ไว้ล่างสุด
+HeartsLabel.Size = UDim2.new(1, 0, 0, 30)
+HeartsLabel.Font = Enum.Font.SourceSansBold
+HeartsLabel.Text = "Hearts: N/A"
+HeartsLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
+HeartsLabel.TextSize = 16
+
+task.spawn(function()
+    while task.wait(0.5) do
+        pcall(function()
+            local heartsVal = player.PlayerFolder.Inventory.Hearts.Value
+            HeartsLabel.Text = "Hearts: " .. format_number(heartsVal)
+        end)
+    end
+end)
+
+function format_number(number)
+    local i, k, j = tostring(number):match("(%-?%d?)(%d*)(%.?.*)")
+    return i..k:reverse():gsub("(%d%d%d)", "%1,"):reverse()..j
+end
