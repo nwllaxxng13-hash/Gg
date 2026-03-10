@@ -1,7 +1,7 @@
 --[[
-    Ark Hub (Ro-Ghoul) 
-    UI: x2zu OPEN-SOURCE
-    Features: Standard Autofarm + Bosses + Auto Stats + Gyaku V13 + Auto Save + Auto Exec
+    Ark Hub (Ro-Ghoul) - Premium Ultimate
+    UI: x2zu OPEN-SOURCE (Beautified)
+    Features: Auto Bypass Menu, Standard Farm, Bosses, Auto Stats, Gyaku V13, Auto Save & Exec
 ]]
 
 local player = game.Players.LocalPlayer
@@ -11,8 +11,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
-
-repeat task.wait() until player:FindFirstChild("PlayerFolder")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- ==========================================
 -- 1. Global Configurations & Auto Save
@@ -51,7 +50,6 @@ local Config = {
     GyakuDistance = 15,
     HasMasked = false,
     
-    -- Auto Execute Loadstring (URL or Code)
     AutoExecURL = "" 
 }
 
@@ -85,10 +83,28 @@ local function LoadConfig()
         end
     end)
 end
-LoadConfig() -- โหลดค่าเซฟก่อนสร้าง UI
+
+-- โหลด Config เป็นสิ่งแรกสุด เพื่อดูว่าตั้งฝั่งอะไรไว้
+LoadConfig()
 
 -- ==========================================
--- 2. Bypass Key Grabber
+-- 2. Auto Faction On Boot (Bypass Main Menu)
+-- ==========================================
+task.spawn(function()
+    pcall(function()
+        -- รอให้ Remote โหลดแปบนึง แล้วส่งคำสั่งเลือกฝั่งและเข้าเกมทันที
+        local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+        if remotes and remotes:FindFirstChild("Race") then
+            remotes.Race.Chose:InvokeServer(Config.FactionChoice)
+        end
+    end)
+end)
+
+-- รอจนกว่าระบบเกมจะสร้างตัวละครและโฟลเดอร์เสร็จ (หลุดจากหน้าเมนูแล้ว)
+repeat task.wait() until player:FindFirstChild("PlayerFolder")
+
+-- ==========================================
+-- 3. Bypass Key Grabber
 -- ==========================================
 task.spawn(function()
     repeat 
@@ -111,7 +127,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 3. Core Functions (Shared)
+-- 4. Core Functions (Shared)
 -- ==========================================
 local function pressKey(keyToPress, aimPosition)
     if not Config.Key or not player.Character or not player.Character:FindFirstChild("Remotes") then return end
@@ -159,7 +175,7 @@ local function tp(targetCFrame)
 end
 
 -- ==========================================
--- 4. Standard Farm Logic
+-- 5. Standard Farm Logic
 -- ==========================================
 local function getStandardNPC()
     local nearestnpc, nearest = nil, math.huge
@@ -249,7 +265,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 5. Gyaku V13 Logic & Auto Hop
+-- 6. Gyaku V13 Logic & Auto Hop
 -- ==========================================
 local function getGyakuTarget()
     local spawnFolder = workspace:FindFirstChild("NPCSpawns")
@@ -293,7 +309,6 @@ local function ServerHop()
             for _, server in ipairs(result.data) do
                 if server.playing > 0 and server.playing < server.maxPlayers - 2 and server.id ~= game.JobId then
                     
-                    -- [ Auto Execute when Hop Trigger ]
                     local qot = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
                     if qot and Config.AutoExecURL ~= "" then
                         qot(Config.AutoExecURL)
@@ -308,18 +323,16 @@ local function ServerHop()
     task.wait(3); isHopping = false
 end
 
--- V13 Faction Loop
 task.spawn(function()
     while task.wait(5) do
         if Config.GyakuFarm and Config.AutoFaction then
             pcall(function()
-                game:GetService("ReplicatedStorage").Remotes.Race.Chose:InvokeServer(Config.FactionChoice)
+                ReplicatedStorage.Remotes.Race.Chose:InvokeServer(Config.FactionChoice)
             end)
         end
     end
 end)
 
--- V13 Farm Loop
 task.spawn(function()
     task.wait(3)
     while task.wait() do
@@ -376,7 +389,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 6. Auto Stats Logic
+-- 7. Auto Stats Logic
 -- ==========================================
 task.spawn(function()
     local statRemote = player:WaitForChild("PlayerFolder"):WaitForChild("StatsFunction")
@@ -391,19 +404,23 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 7. Heart Tracker Overlay
+-- 8. Heart Tracker Overlay
 -- ==========================================
 local OverlayGui = Instance.new("ScreenGui", CoreGui)
 OverlayGui.Name = "ArkHeartTracker"
 local HeartsLabel = Instance.new("TextLabel", OverlayGui)
-HeartsLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+HeartsLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+HeartsLabel.BackgroundTransparency = 0.5
 HeartsLabel.BorderSizePixel = 0
-HeartsLabel.Position = UDim2.new(0, 0, 1, -30)
-HeartsLabel.Size = UDim2.new(1, 0, 0, 30)
-HeartsLabel.Font = Enum.Font.SourceSansBold
-HeartsLabel.Text = "Hearts: N/A"
-HeartsLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
-HeartsLabel.TextSize = 16
+HeartsLabel.Position = UDim2.new(0.4, 0, 0.95, -30)
+HeartsLabel.Size = UDim2.new(0.2, 0, 0, 35)
+HeartsLabel.Font = Enum.Font.GothamBold
+HeartsLabel.Text = "❤️ Hearts: N/A"
+HeartsLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+HeartsLabel.TextSize = 18
+
+local uiCorner = Instance.new("UICorner", HeartsLabel)
+uiCorner.CornerRadius = UDim.new(0, 8)
 
 local function format_number(number)
     local i, k, j = tostring(number):match("(%-?%d?)(%d*)(%.?.*)")
@@ -414,55 +431,54 @@ task.spawn(function()
     while task.wait(0.5) do
         pcall(function()
             local heartsVal = player.PlayerFolder.Inventory.Hearts.Value
-            HeartsLabel.Text = "Hearts: " .. format_number(heartsVal)
+            HeartsLabel.Text = "❤️ Hearts: " .. format_number(heartsVal)
         end)
     end
 end)
 
 -- ==========================================
--- 8. x2zu UI Library Integration
+-- 9. x2zu UI Library Integration (Premium Look)
 -- ==========================================
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/x2zu/OPEN-SOURCE-UI-ROBLOX/refs/heads/main/X2ZU%20UI%20ROBLOX%20OPEN%20SOURCE/DummyUi-leak-by-x2zu/fetching-main/Tools/Framework.luau"))()
 
 local Window = Library:Window({
-    Title = "Ark Hub [ Ro-Ghoul ]",
-    Desc = "Powered by x2zu",
+    Title = "✨ Ark Hub Premium | Ro-Ghoul",
+    Desc = "Ultimate Autofarm & Auto Boss by x2zu",
     Icon = 105059922903197,
     Theme = "Dark",
-    Config = { Keybind = Enum.KeyCode.LeftControl, Size = UDim2.new(0, 520, 0, 420) },
-    CloseUIButton = { Enabled = true, Text = "Close GUI" }
+    Config = { Keybind = Enum.KeyCode.LeftControl, Size = UDim2.new(0, 540, 0, 440) },
+    CloseUIButton = { Enabled = true, Text = "Hide GUI (LCtrl)" }
 })
 
 local SidebarLine = Instance.new("Frame")
 SidebarLine.Size = UDim2.new(0, 1, 1, 0)
 SidebarLine.Position = UDim2.new(0, 140, 0, 0)
-SidebarLine.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+SidebarLine.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
 SidebarLine.BorderSizePixel = 0
 SidebarLine.ZIndex = 5
 SidebarLine.Name = "SidebarLine"
-SidebarLine.Parent = CoreGui:FindFirstChild("Ark Hub [ Ro-Ghoul ]") or CoreGui
+SidebarLine.Parent = CoreGui:FindFirstChild("✨ Ark Hub Premium | Ro-Ghoul") or CoreGui
 
--- [ Tab 1: Main ]
-local MainTab = Window:Tab({Title = "Main", Icon = "home"}) do
-    MainTab:Section({Title = "Auto Farm Standard"})
+-- [ Tab 1: Main 🏠 ]
+local MainTab = Window:Tab({Title = "Main 🏠", Icon = "home"}) do
+    MainTab:Section({Title = "⚔️ Auto Farm Settings"})
     
-    -- หาค่าตั้งต้นของ Dropdown ให้ตรงกับตัวอักษรของ TargetMap
     local defaultTargetName = "Aogiri member"
     for k, v in pairs(TargetMap) do if v == Config.FarmTarget then defaultTargetName = k break end end
     
     MainTab:Dropdown({
-        Title = "Farm Monster Target",
+        Title = "🎯 Farm Target",
         List = {"Humans", "Investigation", "Aogiri member"},
         Value = defaultTargetName,
         Callback = function(v) Config.FarmTarget = TargetMap[v]; SaveConfig() end
     })
     MainTab:Toggle({
-        Title = "Start Farm",
+        Title = "⚡ Start Farm",
         Value = Config.AutoFarm,
         Callback = function(v) Config.AutoFarm = v; SaveConfig() end
     })
     MainTab:Slider({
-        Title = "Tween Speed",
+        Title = "🚀 Tween Speed",
         Min = 0, Max = 400, Rounding = 0,
         Value = Config.TweenSpeed,
         Callback = function(v) Config.TweenSpeed = v; SaveConfig() end
@@ -470,17 +486,17 @@ local MainTab = Window:Tab({Title = "Main", Icon = "home"}) do
 end
 Window:Line()
 
--- [ Tab 2: Boss ]
-local BossTab = Window:Tab({Title = "Boss", Icon = "swords"}) do
-    BossTab:Section({Title = "Boss Targets"})
+-- [ Tab 2: Boss 👹 ]
+local BossTab = Window:Tab({Title = "Boss 👹", Icon = "swords"}) do
+    BossTab:Section({Title = "🩸 Target Bosses"})
     for bossName, _ in pairs(Config.Boss) do
         BossTab:Toggle({
-            Title = "Farm " .. bossName,
+            Title = "🗡️ Farm " .. bossName,
             Value = Config.Boss[bossName],
             Callback = function(v) Config.Boss[bossName] = v; SaveConfig() end
         })
     end
-    BossTab:Section({Title = "Auto Skills on Boss"})
+    BossTab:Section({Title = "✨ Auto Skills"})
     BossTab:Toggle({ Title = "Use E Skill", Value = Config.Skills.E, Callback = function(v) Config.Skills.E = v; SaveConfig() end })
     BossTab:Toggle({ Title = "Use R Skill", Value = Config.Skills.R, Callback = function(v) Config.Skills.R = v; SaveConfig() end })
     BossTab:Toggle({ Title = "Use F Skill", Value = Config.Skills.F, Callback = function(v) Config.Skills.F = v; SaveConfig() end })
@@ -488,64 +504,65 @@ local BossTab = Window:Tab({Title = "Boss", Icon = "swords"}) do
 end
 Window:Line()
 
--- [ Tab 3: Auto Stats ]
-local StatsTab = Window:Tab({Title = "Auto Stats", Icon = "bar-chart"}) do
-    StatsTab:Section({Title = "Stat Points Allocation"})
+-- [ Tab 3: Stats 📈 ]
+local StatsTab = Window:Tab({Title = "Stats 📈", Icon = "bar-chart"}) do
+    StatsTab:Section({Title = "💡 Auto Upgrade Stats"})
     StatsTab:Toggle({
-        Title = "Auto Add Kagune/Quinque",
+        Title = "🔪 Auto Kagune / Quinque",
         Value = Config.AutoKagune,
         Callback = function(v) Config.AutoKagune = v; SaveConfig() end
     })
     StatsTab:Toggle({
-        Title = "Auto Add Durability",
+        Title = "🛡️ Auto Durability",
         Value = Config.AutoDurability,
         Callback = function(v) Config.AutoDurability = v; SaveConfig() end
     })
 end
 Window:Line()
 
--- [ Tab 4: Auto Gyakusatsu V13 ]
-local GyakuTab = Window:Tab({Title = "Auto Gyakusatsu", Icon = "skull"}) do
-    GyakuTab:Section({Title = "Ultimate Gyaku Farm (V13)"})
+-- [ Tab 4: Gyaku 💀 ]
+local GyakuTab = Window:Tab({Title = "Gyaku 💀", Icon = "skull"}) do
+    GyakuTab:Section({Title = "🔥 Ultimate Gyakusatsu (V13)"})
     GyakuTab:Toggle({
-        Title = "Start Gyakusatsu Farm",
+        Title = "☠️ Start Gyakusatsu Farm",
+        Desc = "Will override Normal Farm",
         Value = Config.GyakuFarm,
         Callback = function(v) Config.GyakuFarm = v; SaveConfig() end
     })
     GyakuTab:Toggle({
-        Title = "New Kajiri Mode (Aimbot & Dodge)",
+        Title = "🎯 Kajiri Mode (Aimbot)",
         Value = Config.KajiriMode,
         Callback = function(v) Config.KajiriMode = v; SaveConfig() end
     })
     GyakuTab:Toggle({
-        Title = "Auto Hop Boss (Low Server)",
+        Title = "🌐 Auto Hop Boss",
         Value = Config.HopBoss,
         Callback = function(v) Config.HopBoss = v; SaveConfig() end
     })
     GyakuTab:Toggle({
-        Title = "Auto Faction Loop",
+        Title = "🔄 Auto Faction Loop",
         Value = Config.AutoFaction,
         Callback = function(v) Config.AutoFaction = v; SaveConfig() end
     })
     GyakuTab:Toggle({
-        Title = "Auto Mask on Spawn",
+        Title = "🎭 Auto Mask on Spawn",
         Value = Config.AutoMask,
         Callback = function(v) Config.AutoMask = v; SaveConfig() end
     })
     GyakuTab:Dropdown({
-        Title = "Faction Choice",
+        Title = "🏳️ Faction Choice",
         List = {"CCG", "GHOUL"},
         Value = Config.FactionChoice,
         Callback = function(v) Config.FactionChoice = v; SaveConfig() end
     })
     GyakuTab:Dropdown({
-        Title = "Equip Stage",
+        Title = "🗡️ Equip Stage",
         List = {"One", "Two", "Three", "Four", "Five", "Six"},
         Value = Config.WeaponStage,
         Callback = function(v) Config.WeaponStage = v; SaveConfig() end
     })
     GyakuTab:Slider({
-        Title = "Distance From Boss (Height)",
+        Title = "📏 Distance From Boss",
         Min = 5, Max = 40, Rounding = 0,
         Value = Config.GyakuDistance,
         Callback = function(v) Config.GyakuDistance = v; SaveConfig() end
@@ -553,29 +570,30 @@ local GyakuTab = Window:Tab({Title = "Auto Gyakusatsu", Icon = "skull"}) do
 end
 Window:Line()
 
--- [ Tab 5: Settings / Auto Execute ]
-local SettingsTab = Window:Tab({Title = "Settings", Icon = "wrench"}) do
-    SettingsTab:Section({Title = "Server Hop Auto Execute"})
+-- [ Tab 5: Settings ⚙️ ]
+local SettingsTab = Window:Tab({Title = "Settings ⚙️", Icon = "wrench"}) do
+    SettingsTab:Section({Title = "🔄 Server Hop Config"})
     SettingsTab:Textbox({
-        Title = "Loadstring Script URL",
-        Desc = "ใส่โค้ด loadstring หรือ URL ที่ต้องการให้รันหลังโดดเซิร์ฟ",
+        Title = "🔗 Loadstring Script URL",
+        Desc = "Put your loadstring() to execute after Server Hop",
         Placeholder = "loadstring(game:HttpGet('URL'))()",
         Value = Config.AutoExecURL,
         ClearTextOnFocus = false,
         Callback = function(text) Config.AutoExecURL = text; SaveConfig() end
     })
+    SettingsTab:Section({Title = "💾 Configuration"})
     SettingsTab:Button({
-        Title = "Save Config Now",
-        Desc = "Forces an immediate save of all settings",
+        Title = "Force Save Config",
+        Desc = "Save current setup to your executor workspace",
         Callback = function()
             SaveConfig()
-            Window:Notify({ Title = "Ark Hub", Desc = "Configuration Saved Successfully!", Time = 3 })
+            Window:Notify({ Title = "Ark Hub", Desc = "✅ Settings Saved Successfully!", Time = 3 })
         end
     })
 end
 
 Window:Notify({
-    Title = "Ark Hub",
-    Desc = "Loaded Successfully! Config restored.",
+    Title = "Welcome to Ark Hub! 🚀",
+    Desc = "Auto-Login successful. Config Restored.",
     Time = 5
 })
