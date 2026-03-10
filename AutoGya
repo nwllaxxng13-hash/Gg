@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
-    UI: x2zu OPEN-SOURCE (Beautified)
-    Features: Auto Bypass Menu, Standard Farm, Bosses, Auto Stats, Gyaku V13, Auto Save & Exec
+    UI: x2zu OPEN-SOURCE 
+    Features: Auto Eat, Advance Kajiri, Farm Pos, Split Distances
 ]]
 
 local player = game.Players.LocalPlayer
@@ -18,11 +18,17 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- ==========================================
 local Config = {
     Key = nil,
+    
+    -- Main Farm
     AutoFarm = false,
     FarmTarget = "GhoulSpawns",
+    FarmPosition = "Above", -- Above, Back, Bottom
+    AutoEatCorpse = false,
     TweenSpeed = 200,
-    DistanceFromNpc = 8,
+    DistanceNPC = 8,
+    DistanceBoss = 15,
     
+    -- Boss
     Boss = {
         ["Gyakusatsu"] = false,
         ["Eto Yoshimura"] = false,
@@ -37,20 +43,21 @@ local Config = {
     },
     Skills = { E = false, R = false, F = false, C = false },
     
+    -- Auto Stats
     AutoKagune = false,
     AutoDurability = false,
     
+    -- Gyaku Farm
     GyakuFarm = false,
     KajiriMode = false,
+    AdvanceKajiri = false, -- [ใหม่] บินวนหัวใจ
     HopBoss = false,
     AutoFaction = false,
     AutoMask = false,
     FactionChoice = "CCG",
     WeaponStage = "One",
     GyakuDistance = 15,
-    HasMasked = false,
-    
-    AutoExecURL = "" 
+    HasMasked = false
 }
 
 local TargetMap = {
@@ -63,9 +70,7 @@ local SaveFileName = "ArkHub_SavedConfig.json"
 
 local function SaveConfig()
     pcall(function()
-        if writefile then
-            writefile(SaveFileName, HttpService:JSONEncode(Config))
-        end
+        if writefile then writefile(SaveFileName, HttpService:JSONEncode(Config)) end
     end)
 end
 
@@ -84,7 +89,6 @@ local function LoadConfig()
     end)
 end
 
--- โหลด Config เป็นสิ่งแรกสุด เพื่อดูว่าตั้งฝั่งอะไรไว้
 LoadConfig()
 
 -- ==========================================
@@ -92,7 +96,6 @@ LoadConfig()
 -- ==========================================
 task.spawn(function()
     pcall(function()
-        -- รอให้ Remote โหลดแปบนึง แล้วส่งคำสั่งเลือกฝั่งและเข้าเกมทันที
         local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
         if remotes and remotes:FindFirstChild("Race") then
             remotes.Race.Chose:InvokeServer(Config.FactionChoice)
@@ -100,7 +103,6 @@ task.spawn(function()
     end)
 end)
 
--- รอจนกว่าระบบเกมจะสร้างตัวละครและโฟลเดอร์เสร็จ (หลุดจากหน้าเมนูแล้ว)
 repeat task.wait() until player:FindFirstChild("PlayerFolder")
 
 -- ==========================================
@@ -123,7 +125,6 @@ task.spawn(function()
         end
         task.wait(1)
     until Config.Key
-    print("Ark Hub: Remote Key Grabbed!")
 end)
 
 -- ==========================================
@@ -144,7 +145,8 @@ local function pressKey(keyToPress, aimPosition)
     fireEvent(player.Character.Remotes.KeyEvent, Config.Key, keyToPress, "Down", hit, nil, camCFrame)
 end
 
-local function tp(targetCFrame)
+-- [อัปเดต] tp รองรับ Advance Kajiri (Spam F ระหว่างบิน)
+local function tp(targetCFrame, aimPos, isAdvanceKajiri)
     if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
     local hrp = player.Character.HumanoidRootPart
     local val = Instance.new("CFrameValue")
@@ -168,6 +170,12 @@ local function tp(targetCFrame)
         if player.Character:FindFirstChild("HumanoidRootPart") then
             player.Character.HumanoidRootPart.CFrame = val.Value
             player.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+            
+            -- บินไปยิงไป (Advance Kajiri)
+            if isAdvanceKajiri and aimPos then
+                workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos)
+                pressKey("F", aimPos)
+            end
         end
         task.wait()
     end
@@ -175,12 +183,11 @@ local function tp(targetCFrame)
 end
 
 -- ==========================================
--- 5. Standard Farm Logic
+-- 5. Standard Farm Logic (Pos & Distance Separated)
 -- ==========================================
 local function getStandardNPC()
     local nearestnpc, nearest = nil, math.huge
     local pLevel = tonumber(player.PlayerFolder.Stats.Level.Value) or 0
-
     local npcSpawns = workspace:FindFirstChild("NPCSpawns")
     if not npcSpawns then return nil end
 
@@ -196,6 +203,21 @@ local function getStandardNPC()
         end
     end
     return nearestnpc
+end
+
+local function getFarmCFrame(npc, isBoss)
+    local root = npc.HumanoidRootPart
+    local dist = isBoss and Config.DistanceBoss or Config.DistanceNPC
+    
+    if Config.FarmPosition == "Above" then
+        return CFrame.lookAt(root.Position + Vector3.new(0, dist, 0), root.Position)
+    elseif Config.FarmPosition == "Bottom" then
+        return CFrame.lookAt(root.Position + Vector3.new(0, -dist, 0), root.Position)
+    elseif Config.FarmPosition == "Back" then
+        local backPos = root.CFrame * CFrame.new(0, 0, dist)
+        return CFrame.lookAt(backPos.Position, root.Position)
+    end
+    return root.CFrame
 end
 
 local function collectCorpse(npc)
@@ -229,13 +251,7 @@ task.spawn(function()
                     local npc = getStandardNPC()
                     if npc then
                         local isBoss = Config.Boss[npc.Name]
-                        local targetCF
-                        if isBoss then
-                            targetCF = npc.HumanoidRootPart.CFrame * CFrame.Angles(math.rad(90),0,0) + Vector3.new(0, Config.GyakuDistance, 0)
-                        else
-                            targetCF = npc.HumanoidRootPart.CFrame + npc.HumanoidRootPart.CFrame.lookVector * Config.DistanceFromNpc
-                        end
-                        
+                        local targetCF = getFarmCFrame(npc, isBoss)
                         local dist = (char.HumanoidRootPart.Position - targetCF.Position).Magnitude
                         
                         if dist > 15 then
@@ -254,8 +270,11 @@ task.spawn(function()
                             end
                         end
                         
+                        -- [ใหม่] ระบบกินศพอัตโนมัติ (เฉพาะมอนสเตอร์ธรรมดา)
                         if npc.Humanoid.Health <= 0 and not isBoss then
-                            collectCorpse(npc)
+                            if Config.AutoEatCorpse then
+                                collectCorpse(npc)
+                            end
                         end
                     end
                 end
@@ -265,13 +284,13 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 6. Gyaku V13 Logic & Auto Hop
+-- 6. Gyaku V13 Logic (Advance Kajiri & Hop)
 -- ==========================================
 local function getGyakuTarget()
     local spawnFolder = workspace:FindFirstChild("NPCSpawns")
-    if not spawnFolder then return nil, nil, false end
+    if not spawnFolder then return nil, nil, false, nil, nil end
     local gyakuSpawn = spawnFolder:FindFirstChild("GyakusatsuSpawn")
-    if not gyakuSpawn then return nil, nil, false end
+    if not gyakuSpawn then return nil, nil, false, nil, nil end
 
     local hearts = {}
     local boss = nil
@@ -294,26 +313,19 @@ local function getGyakuTarget()
     elseif boss then
         warpObj = boss; aimPos = boss.HumanoidRootPart.Position; shouldLockCam = false
     end
-    return warpObj, aimPos, shouldLockCam
+    return warpObj, aimPos, shouldLockCam, hearts, boss
 end
 
 local isHopping = false
 local function ServerHop()
     if isHopping then return end
     isHopping = true
-    
     local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
     pcall(function()
         local result = HttpService:JSONDecode(game:HttpGet(url))
         if result and result.data then
             for _, server in ipairs(result.data) do
                 if server.playing > 0 and server.playing < server.maxPlayers - 2 and server.id ~= game.JobId then
-                    
-                    local qot = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
-                    if qot and Config.AutoExecURL ~= "" then
-                        qot(Config.AutoExecURL)
-                    end
-
                     TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, player)
                     task.wait(5)
                 end
@@ -326,12 +338,12 @@ end
 task.spawn(function()
     while task.wait(5) do
         if Config.GyakuFarm and Config.AutoFaction then
-            pcall(function()
-                ReplicatedStorage.Remotes.Race.Chose:InvokeServer(Config.FactionChoice)
-            end)
+            pcall(function() ReplicatedStorage.Remotes.Race.Chose:InvokeServer(Config.FactionChoice) end)
         end
     end
 end)
+
+local advanceIndex = 1
 
 task.spawn(function()
     task.wait(3)
@@ -352,26 +364,52 @@ task.spawn(function()
                         task.wait(0.5)
                     end
 
-                    local warpNpc, aimPos, shouldLockCam = getGyakuTarget()
+                    local warpNpc, aimPos, shouldLockCam, heartsList, bossObj = getGyakuTarget()
 
                     if warpNpc and aimPos then
-                        local standPos = warpNpc.HumanoidRootPart.Position + Vector3.new(0, Config.GyakuDistance, 0)
-                        local distance = (char.HumanoidRootPart.Position - standPos).Magnitude
-
-                        if distance > 25 then
-                            local lookCFrame = CFrame.lookAt(standPos, aimPos)
-                            tp(lookCFrame)
-                        else
-                            char.Humanoid.AutoRotate = not Config.KajiriMode
-                            char.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
-                            char.HumanoidRootPart.CFrame = CFrame.lookAt(standPos, aimPos)
+                        
+                        -- [ใหม่] ระบบ Advance Kajiri (บินวนหัวใจทีละดวง)
+                        if Config.AdvanceKajiri and heartsList and #heartsList >= 2 then
+                            if advanceIndex > #heartsList then advanceIndex = 1 end
                             
-                            if shouldLockCam then workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos) end
-
-                            if Config.KajiriMode then
-                                pressKey("F", aimPos); pressKey("Mouse1", aimPos)
+                            local targetHeart = heartsList[advanceIndex]
+                            local nextIndex = (advanceIndex % #heartsList) + 1
+                            local aimHeart = heartsList[nextIndex]
+                            
+                            local targetAimPos = aimHeart.HumanoidRootPart.Position
+                            local standPos = targetHeart.HumanoidRootPart.Position + Vector3.new(0, Config.GyakuDistance, 0)
+                            
+                            local dist = (char.HumanoidRootPart.Position - standPos).Magnitude
+                            
+                            if dist > 5 then
+                                -- บินไปหาหัวใจนี้ พร้อมเล็งหัวใจหน้า และสแปมสกิล F (ไม่มีคลิกปกติ)
+                                local lookCFrame = CFrame.lookAt(standPos, targetAimPos)
+                                tp(lookCFrame, targetAimPos, true)
                             else
-                                pressKey("Mouse1", aimPos)
+                                -- ถึงจุดแล้ว เปลี่ยนเป้าหมายไปดวงต่อไปทันที
+                                advanceIndex = nextIndex
+                            end
+                            
+                        else
+                            -- ระบบ Gyaku V13 แบบปกติ (ยืนนิ่งล็อคเป้า)
+                            local standPos = warpNpc.HumanoidRootPart.Position + Vector3.new(0, Config.GyakuDistance, 0)
+                            local distance = (char.HumanoidRootPart.Position - standPos).Magnitude
+
+                            if distance > 25 then
+                                local lookCFrame = CFrame.lookAt(standPos, aimPos)
+                                tp(lookCFrame)
+                            else
+                                char.Humanoid.AutoRotate = not Config.KajiriMode
+                                char.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+                                char.HumanoidRootPart.CFrame = CFrame.lookAt(standPos, aimPos)
+                                
+                                if shouldLockCam then workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos) end
+
+                                if Config.KajiriMode then
+                                    pressKey("F", aimPos); pressKey("Mouse1", aimPos)
+                                else
+                                    pressKey("Mouse1", aimPos)
+                                end
                             end
                         end
                     else
@@ -437,7 +475,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 9. x2zu UI Library Integration (Premium Look)
+-- 9. x2zu UI Library Integration (No Settings Tab)
 -- ==========================================
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/x2zu/OPEN-SOURCE-UI-ROBLOX/refs/heads/main/X2ZU%20UI%20ROBLOX%20OPEN%20SOURCE/DummyUi-leak-by-x2zu/fetching-main/Tools/Framework.luau"))()
 
@@ -461,7 +499,7 @@ SidebarLine.Parent = CoreGui:FindFirstChild("✨ Ark Hub Premium | Ro-Ghoul") or
 
 -- [ Tab 1: Main 🏠 ]
 local MainTab = Window:Tab({Title = "Main 🏠", Icon = "home"}) do
-    MainTab:Section({Title = "⚔️ Auto Farm Settings"})
+    MainTab:Section({Title = "⚔️ Auto Farm Target & Position"})
     
     local defaultTargetName = "Aogiri member"
     for k, v in pairs(TargetMap) do if v == Config.FarmTarget then defaultTargetName = k break end end
@@ -471,6 +509,26 @@ local MainTab = Window:Tab({Title = "Main 🏠", Icon = "home"}) do
         List = {"Humans", "Investigation", "Aogiri member"},
         Value = defaultTargetName,
         Callback = function(v) Config.FarmTarget = TargetMap[v]; SaveConfig() end
+    })
+    MainTab:Dropdown({
+        Title = "📍 Farm Position",
+        List = {"Above", "Bottom", "Back"},
+        Value = Config.FarmPosition,
+        Callback = function(v) Config.FarmPosition = v; SaveConfig() end
+    })
+    MainTab:Slider({
+        Title = "📏 Distance From Monster",
+        Min = 5, Max = 40, Rounding = 0,
+        Value = Config.DistanceNPC,
+        Callback = function(v) Config.DistanceNPC = v; SaveConfig() end
+    })
+    
+    MainTab:Section({Title = "⚙️ Actions & Toggles"})
+    MainTab:Toggle({
+        Title = "🦴 Auto Eat Corpse",
+        Desc = "Eat the body after killing monster",
+        Value = Config.AutoEatCorpse,
+        Callback = function(v) Config.AutoEatCorpse = v; SaveConfig() end
     })
     MainTab:Toggle({
         Title = "⚡ Start Farm",
@@ -496,6 +554,12 @@ local BossTab = Window:Tab({Title = "Boss 👹", Icon = "swords"}) do
             Callback = function(v) Config.Boss[bossName] = v; SaveConfig() end
         })
     end
+    BossTab:Slider({
+        Title = "📏 Distance From Boss",
+        Min = 5, Max = 40, Rounding = 0,
+        Value = Config.DistanceBoss,
+        Callback = function(v) Config.DistanceBoss = v; SaveConfig() end
+    })
     BossTab:Section({Title = "✨ Auto Skills"})
     BossTab:Toggle({ Title = "Use E Skill", Value = Config.Skills.E, Callback = function(v) Config.Skills.E = v; SaveConfig() end })
     BossTab:Toggle({ Title = "Use R Skill", Value = Config.Skills.R, Callback = function(v) Config.Skills.R = v; SaveConfig() end })
@@ -530,9 +594,15 @@ local GyakuTab = Window:Tab({Title = "Gyaku 💀", Icon = "skull"}) do
         Callback = function(v) Config.GyakuFarm = v; SaveConfig() end
     })
     GyakuTab:Toggle({
-        Title = "🎯 Kajiri Mode (Aimbot)",
+        Title = "🎯 Kajiri Mode (Aimbot + Attack)",
         Value = Config.KajiriMode,
         Callback = function(v) Config.KajiriMode = v; SaveConfig() end
+    })
+    GyakuTab:Toggle({
+        Title = "🌀 Advance Farming Kajiri",
+        Desc = "Tween to all hearts & spam F (No Mouse1)",
+        Value = Config.AdvanceKajiri,
+        Callback = function(v) Config.AdvanceKajiri = v; SaveConfig() end
     })
     GyakuTab:Toggle({
         Title = "🌐 Auto Hop Boss",
@@ -562,35 +632,13 @@ local GyakuTab = Window:Tab({Title = "Gyaku 💀", Icon = "skull"}) do
         Callback = function(v) Config.WeaponStage = v; SaveConfig() end
     })
     GyakuTab:Slider({
-        Title = "📏 Distance From Boss",
+        Title = "📏 Gyaku Distance",
         Min = 5, Max = 40, Rounding = 0,
         Value = Config.GyakuDistance,
         Callback = function(v) Config.GyakuDistance = v; SaveConfig() end
     })
 end
 Window:Line()
-
--- [ Tab 5: Settings ⚙️ ]
-local SettingsTab = Window:Tab({Title = "Settings ⚙️", Icon = "wrench"}) do
-    SettingsTab:Section({Title = "🔄 Server Hop Config"})
-    SettingsTab:Textbox({
-        Title = "🔗 Loadstring Script URL",
-        Desc = "Put your loadstring() to execute after Server Hop",
-        Placeholder = "loadstring(game:HttpGet('URL'))()",
-        Value = Config.AutoExecURL,
-        ClearTextOnFocus = false,
-        Callback = function(text) Config.AutoExecURL = text; SaveConfig() end
-    })
-    SettingsTab:Section({Title = "💾 Configuration"})
-    SettingsTab:Button({
-        Title = "Force Save Config",
-        Desc = "Save current setup to your executor workspace",
-        Callback = function()
-            SaveConfig()
-            Window:Notify({ Title = "Ark Hub", Desc = "✅ Settings Saved Successfully!", Time = 3 })
-        end
-    })
-end
 
 Window:Notify({
     Title = "Welcome to Ark Hub! 🚀",
