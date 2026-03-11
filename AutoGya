@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: Old Solid Hold F System, Boss Hop Fix, Advance Kajiri
+    Features: F Spam Logic (Normal Kajiri Style) for Advance Kajiri & Boss
 ]]
 
 local player = game.Players.LocalPlayer
@@ -65,7 +65,6 @@ local TargetMap = {
 
 local SaveFileName = "ArkHub_SavedConfig.json"
 local oldCashoutTick = 0
-local isHoldingF = false -- ใช้ระบบเก่า (True/False แบบชัวร์ๆ)
 
 local function SaveConfig()
     pcall(function()
@@ -174,11 +173,8 @@ local function tp(targetCFrame, aimPos, isAdvanceKajiri, targetObj, earlyStopDis
             
             if isAdvanceKajiri and aimPos then
                 workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos)
-                -- [ระบบเก่า] เช็คแค่ isHoldingF สั่งกด F ค้างแค่ครั้งแรกพอ
-                if not isHoldingF then
-                    pressKey("F", aimPos, "Down")
-                    isHoldingF = true
-                end
+                -- [ใช้ระบบเดียวกับ Normal Kajiri] ยิงคำสั่ง F รัวๆ ตามลูป
+                pressKey("F", aimPos, "Down")
             end
         end
         task.wait()
@@ -400,7 +396,6 @@ local isHopping = false
 local function ServerHop()
     if isHopping then return end
     isHopping = true
-    if isHoldingF then pressKey("F", nil, "Up"); isHoldingF = false end
     resetCamera()
     local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
     pcall(function()
@@ -447,20 +442,6 @@ task.spawn(function()
                     local isMainBoss = (warpNpc and warpNpc.Name == "Gyakusatsu")
 
                     if warpNpc and aimPos then
-                        
-                        -- โหมด Advance Kajiri หรือ เหลือแต่บอสใหญ่ บังคับกด F ค้าง (ระบบเก่าชัวร์ๆ)
-                        if Config.AdvanceKajiri or isMainBoss then
-                            if not isHoldingF then
-                                pressKey("F", aimPos, "Down")
-                                isHoldingF = true
-                            end
-                        else
-                            -- ถ้าไม่ใช่ (ฟาร์มหัวใจธรรมดา) ให้ปล่อยปุ่ม F
-                            if isHoldingF then
-                                pressKey("F", nil, "Up")
-                                isHoldingF = false
-                            end
-                        end
 
                         -- บินเป็นวงกลม ตอนที่เหลือหัวใจ >= 2 ดวง
                         if Config.AdvanceKajiri and heartsList and #heartsList >= 2 and not isMainBoss then
@@ -502,20 +483,18 @@ task.spawn(function()
                                     workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos) 
                                 end
 
-                                -- ถ้าไม่ใช่โหมดเลเซอร์ค้าง (Kajiri ธรรมดาที่ไม่ใช่บอส) ให้คลิกปกติ
-                                if not (Config.AdvanceKajiri or isMainBoss) then
-                                    if Config.KajiriMode then
-                                        pressKey("F", aimPos, "Down")
-                                        pressKey("Mouse1", aimPos, "Down")
-                                    else
-                                        pressKey("Mouse1", aimPos, "Down")
-                                    end
+                                -- [อัปเดต] ใช้ระบบกดเดียวกับ Normal Kajiri
+                                if Config.AdvanceKajiri or isMainBoss then
+                                    pressKey("F", aimPos, "Down")
+                                elseif Config.KajiriMode then
+                                    pressKey("F", aimPos, "Down")
+                                    pressKey("Mouse1", aimPos, "Down")
+                                else
+                                    pressKey("Mouse1", aimPos, "Down")
                                 end
                             end
                         end
                     else
-                        -- ปล่อย F
-                        if isHoldingF then pressKey("F", nil, "Up"); isHoldingF = false end
                         if char:FindFirstChild("Humanoid") then char.Humanoid.AutoRotate = true end
                         resetCamera()
                         
@@ -530,12 +509,10 @@ task.spawn(function()
                     end
                 else
                     Config.HasMasked = false; resetCamera()
-                    if isHoldingF then pressKey("F", nil, "Up"); isHoldingF = false end
                 end
             end)
         else
             Config.HasMasked = false; resetCamera()
-            if isHoldingF then pressKey("F", nil, "Up"); isHoldingF = false end
         end
     end
 end)
