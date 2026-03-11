@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: Non-Stop Advance Kajiri (Circular Tracking), Boss F Spam
+    Features: Fixed Boss Tweening, Non-Stop Advance Kajiri
 ]]
 
 local player = game.Players.LocalPlayer
@@ -136,7 +136,6 @@ local function pressKey(keyToPress, aimPosition)
     fireEvent(player.Character.Remotes.KeyEvent, Config.Key, keyToPress, "Down", hit, nil, camCFrame)
 end
 
--- [อัปเดต] เพิ่ม earlyStopDist เพื่อยกเลิกการบินเมื่อเข้าใกล้เป้าหมาย ทำให้ตัวละครไม่เบรคและหักหัวไปเป้าหมายต่อไปได้ทันที
 local function tp(targetCFrame, aimPos, isAdvanceKajiri, targetObj, earlyStopDist)
     if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
     local hrp = player.Character.HumanoidRootPart
@@ -163,7 +162,6 @@ local function tp(targetCFrame, aimPos, isAdvanceKajiri, targetObj, earlyStopDis
             tween:Cancel() break
         end
         
-        -- [บินต่อเนื่อง] หากเข้าใกล้เป้าหมายในระยะที่กำหนด ให้ยกเลิก Tween ทันทีเพื่อให้สคริปต์ไปดึงเป้าหมายต่อไป
         if earlyStopDist and (player.Character.HumanoidRootPart.Position - targetCFrame.Position).Magnitude <= earlyStopDist then
             tween:Cancel() break
         end
@@ -346,7 +344,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 7. Gyaku V13 Logic (Continuous Flight Fix)
+-- 7. Gyaku V13 Logic
 -- ==========================================
 local function getGyakuTarget()
     local spawnFolder = workspace:FindFirstChild("NPCSpawns")
@@ -445,10 +443,8 @@ task.spawn(function()
 
                     if warpNpc and aimPos then
                         
-                        -- [ใหม่ล่าสุด] บินวนไม่มีวันหยุด (Stateless Continuous Tracking)
                         if Config.AdvanceKajiri and heartsList and #heartsList >= 2 and not isMainBoss then
                             
-                            -- หาหัวใจที่อยู่ใกล้ตัวเรามากที่สุด ณ ตอนนี้
                             local nearestIdx = 1
                             local minDst = math.huge
                             for i, h in ipairs(heartsList) do
@@ -457,8 +453,6 @@ task.spawn(function()
                                 if dst < minDst then minDst = dst; nearestIdx = i end
                             end
                             
-                            -- เป้าหมายที่จะบินไปคือ "ดวงปัจจุบันที่ใกล้ที่สุด" 
-                            -- แต่ถ้าเข้าใกล้เกิน 15 Studs ให้ดึงเป้าหมายเป็น "ดวงต่อไป" ทันที เพื่อให้หักเลี้ยวแบบไม่หยุดบิน
                             local targetIdx = nearestIdx
                             if minDst < 15 then targetIdx = (nearestIdx % #heartsList) + 1 end
                             
@@ -470,7 +464,6 @@ task.spawn(function()
                             local standPos = targetHeart.HumanoidRootPart.Position + Vector3.new(0, Config.GyakuDistance, 0)
                             local lookCFrame = CFrame.lookAt(standPos, targetAimPos)
                             
-                            -- สั่งบิน และส่งค่า 15 Studs เข้าไปเพื่อให้ยกเลิกการบินก่อนถึงตัว และส่ง loop ทำงานใหม่ทันที
                             tp(lookCFrame, targetAimPos, true, targetHeart, 15)
                             
                         else
@@ -479,6 +472,8 @@ task.spawn(function()
                             local distance = (char.HumanoidRootPart.Position - standPos).Magnitude
 
                             if distance > 25 then
+                                -- [แก้บั๊กบอสไม่ Tween] เติม CFrame.lookAt ให้มันบินไปหาบอส
+                                local lookCFrame = CFrame.lookAt(standPos, aimPos)
                                 tp(lookCFrame, nil, false, warpNpc)
                             else
                                 char.Humanoid.AutoRotate = not Config.KajiriMode
