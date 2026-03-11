@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: Fixed Boss Tweening, Non-Stop Advance Kajiri
+    Features: Hold F System (No Spam), Advance Kajiri Non-Stop, Boss Fix
 ]]
 
 local player = game.Players.LocalPlayer
@@ -65,6 +65,7 @@ local TargetMap = {
 
 local SaveFileName = "ArkHub_SavedConfig.json"
 local oldCashoutTick = 0
+local isHoldingF = false -- [ใหม่] ตัวแปรเช็คสถานะกด F ค้าง
 
 local function SaveConfig()
     pcall(function()
@@ -121,7 +122,9 @@ end)
 -- ==========================================
 -- 4. Core Functions (Shared)
 -- ==========================================
-local function pressKey(keyToPress, aimPosition)
+-- [อัปเดต] รองรับการส่งค่า keyState (Down = กดลง, Up = ปล่อย)
+local function pressKey(keyToPress, aimPosition, keyState)
+    keyState = keyState or "Down"
     if not Config.Key or not player.Character or not player.Character:FindFirstChild("Remotes") then return end
     
     local hit = player:GetMouse().Hit
@@ -133,7 +136,7 @@ local function pressKey(keyToPress, aimPosition)
     end
     
     local fireEvent = Instance.new("RemoteEvent").FireServer
-    fireEvent(player.Character.Remotes.KeyEvent, Config.Key, keyToPress, "Down", hit, nil, camCFrame)
+    fireEvent(player.Character.Remotes.KeyEvent, Config.Key, keyToPress, keyState, hit, nil, camCFrame)
 end
 
 local function tp(targetCFrame, aimPos, isAdvanceKajiri, targetObj, earlyStopDist)
@@ -172,7 +175,11 @@ local function tp(targetCFrame, aimPos, isAdvanceKajiri, targetObj, earlyStopDis
             
             if isAdvanceKajiri and aimPos then
                 workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos)
-                pressKey("F", aimPos)
+                -- [ใหม่] กด F ค้างครั้งเดียวตอนบิน
+                if not isHoldingF then
+                    pressKey("F", aimPos, "Down")
+                    isHoldingF = true
+                end
             end
         end
         task.wait()
@@ -321,10 +328,10 @@ task.spawn(function()
                             char.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
                             char.HumanoidRootPart.CFrame = targetCF
                             if player.PlayerFolder.CanAct.Value then
-                                pressKey("Mouse1")
+                                pressKey("Mouse1", nil, "Down")
                                 if isBoss then
                                     for keyName, isEnabled in pairs(Config.Skills) do
-                                        if isEnabled then pressKey(keyName) end
+                                        if isEnabled then pressKey(keyName, aimPos, "Down") end
                                     end
                                 end
                             end
@@ -368,11 +375,9 @@ local function getGyakuTarget()
     if #hearts >= 2 then
         local cx, cz = 0, 0
         for _, h in ipairs(hearts) do
-            cx = cx + h.HumanoidRootPart.Position.X
-            cz = cz + h.HumanoidRootPart.Position.Z
+            cx = cx + h.HumanoidRootPart.Position.X; cz = cz + h.HumanoidRootPart.Position.Z
         end
-        cx = cx / #hearts
-        cz = cz / #hearts
+        cx = cx / #hearts; cz = cz / #hearts
 
         table.sort(hearts, function(a, b)
             local angleA = math.atan2(a.HumanoidRootPart.Position.Z - cz, a.HumanoidRootPart.Position.X - cx)
@@ -396,6 +401,7 @@ local isHopping = false
 local function ServerHop()
     if isHopping then return end
     isHopping = true
+    if isHoldingF then pressKey("F", nil, "Up"); isHoldingF = false end
     resetCamera()
     local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
     pcall(function()
@@ -467,12 +473,10 @@ task.spawn(function()
                             tp(lookCFrame, targetAimPos, true, targetHeart, 15)
                             
                         else
-                            -- ตีบอสปกติ / ตีหัวใจดวงสุดท้าย
                             local standPos = warpNpc.HumanoidRootPart.Position + Vector3.new(0, Config.GyakuDistance, 0)
                             local distance = (char.HumanoidRootPart.Position - standPos).Magnitude
 
                             if distance > 25 then
-                                -- [แก้บั๊กบอสไม่ Tween] เติม CFrame.lookAt ให้มันบินไปหาบอส
                                 local lookCFrame = CFrame.lookAt(standPos, aimPos)
                                 tp(lookCFrame, nil, false, warpNpc)
                             else
@@ -483,25 +487,37 @@ task.spawn(function()
                                 if shouldLockCam then workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos) end
 
                                 if isMainBoss then
-                                    pressKey("F", aimPos)
-                                elseif Config.KajiriMode then
-                                    pressKey("F", aimPos); pressKey("Mouse1", aimPos)
+                                    -- [ใหม่] กด F ค้างใส่บอสใหญ่ครั้งเดียว
+                                    if not isHoldingF then
+                                        pressKey("F", aimPos, "Down")
+                                        isHoldingF = true
+                                    end
                                 else
-                                    pressKey("Mouse1", aimPos)
+                                    -- ถ้าตีหัวใจธรรมดา ปล่อย F แล้วสแปมคลิก
+                                    if isHoldingF then pressKey("F", aimPos, "Up"); isHoldingF = false end
+                                    if Config.KajiriMode then
+                                        pressKey("F", aimPos, "Down")
+                                        pressKey("Mouse1", aimPos, "Down")
+                                    else
+                                        pressKey("Mouse1", aimPos, "Down")
+                                    end
                                 end
                             end
                         end
                     else
+                        if isHoldingF then pressKey("F", nil, "Up"); isHoldingF = false end
                         if char:FindFirstChild("Humanoid") then char.Humanoid.AutoRotate = true end
                         resetCamera()
                         if Config.HopBoss then ServerHop() end
                     end
                 else
                     Config.HasMasked = false; resetCamera()
+                    if isHoldingF then pressKey("F", nil, "Up"); isHoldingF = false end
                 end
             end)
         else
             Config.HasMasked = false; resetCamera()
+            if isHoldingF then pressKey("F", nil, "Up"); isHoldingF = false end
         end
     end
 end)
