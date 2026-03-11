@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: Fixed Server Hop Bug, Absolute F Hold for Last Heart & Boss
+    Features: Smart Hold F (No Spam, Cooldown Sync), Boss & Hop Fix
 ]]
 
 local player = game.Players.LocalPlayer
@@ -120,7 +120,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 4. Core Functions (Shared)
+-- 4. Core Functions & Smart Hold F
 -- ==========================================
 local function pressKey(keyToPress, aimPosition, keyState)
     keyState = keyState or "Down"
@@ -136,6 +136,30 @@ local function pressKey(keyToPress, aimPosition, keyState)
     
     local fireEvent = Instance.new("RemoteEvent").FireServer
     fireEvent(player.Character.Remotes.KeyEvent, Config.Key, keyToPress, keyState, hit, nil, camCFrame)
+end
+
+-- [ใหม่] ระบบกด F ค้างอัจฉริยะ ซิงค์กับหลอดคูลดาวน์ของเกม ป้องกันการ Spam
+local function handleSmartHoldF(aimPos)
+    if not Config.Key then return end
+    local fCD = player.PlayerFolder:FindFirstChild("Special3CD")
+    
+    if fCD then
+        local isOnCooldown = (tostring(fCD.Value) == "DownTime") or (tonumber(fCD.Value) ~= nil and tonumber(fCD.Value) > 0)
+        
+        if isOnCooldown then
+            -- ถ้าติดคูลดาวน์ ให้ปล่อยปุ่ม F
+            if isHoldingF then
+                pressKey("F", aimPos, "Up")
+                isHoldingF = false
+            end
+        else
+            -- ถ้าสกิลพร้อมใช้ และยังไม่ได้กดค้าง ให้กดค้างแค่ครั้งเดียว
+            if not isHoldingF then
+                pressKey("F", aimPos, "Down")
+                isHoldingF = true
+            end
+        end
+    end
 end
 
 local function tp(targetCFrame, aimPos, isAdvanceKajiri, targetObj, earlyStopDist)
@@ -174,10 +198,7 @@ local function tp(targetCFrame, aimPos, isAdvanceKajiri, targetObj, earlyStopDis
             
             if isAdvanceKajiri and aimPos then
                 workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos)
-                if not isHoldingF then
-                    pressKey("F", aimPos, "Down")
-                    isHoldingF = true
-                end
+                handleSmartHoldF(aimPos) -- โหมดบินวน เรียกใช้ Smart Hold
             end
         end
         task.wait()
@@ -447,13 +468,11 @@ task.spawn(function()
 
                     if warpNpc and aimPos then
                         
-                        -- [อัปเดตแก้อาการไม่กด F] ถ้าเราเปิดโหมด Advance Kajiri หรือตัวเป้าหมายเป็นบอสใหญ่ บังคับกด F ค้างทุกกรณี
+                        -- โหมด Advance Kajiri หรือเหลือแค่บอสใหญ่ บังคับใช้ Smart Hold F เสมอ!
                         if Config.AdvanceKajiri or isMainBoss then
-                            if not isHoldingF then
-                                pressKey("F", aimPos, "Down")
-                                isHoldingF = true
-                            end
+                            handleSmartHoldF(aimPos)
                         else
+                            -- ถ้าไม่ใช่ ให้ปล่อยปุ่ม F
                             if isHoldingF then
                                 pressKey("F", aimPos, "Up")
                                 isHoldingF = false
@@ -500,7 +519,7 @@ task.spawn(function()
                                     workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos) 
                                 end
 
-                                -- ถ้าไม่ใช่โหมดเลเซอร์ค้าง (Kajiri ธรรมดา) ให้คลิกปกติ
+                                -- ถ้าไม่ใช่โหมดเลเซอร์ค้าง (Kajiri ธรรมดาที่ไม่ใช่บอส) ให้คลิกปกติ
                                 if not (Config.AdvanceKajiri or isMainBoss) then
                                     if Config.KajiriMode then
                                         pressKey("F", aimPos, "Down")
@@ -512,11 +531,11 @@ task.spawn(function()
                             end
                         end
                     else
-                        -- [อัปเดตแก้บั๊กโดดเซิร์ฟเร็วเกิน] เมื่อหาเป้าหมายไม่เจอ (บอสกำลังเปลี่ยนร่าง) ให้รอ 2.5 วิแล้วเช็คอีกครั้ง
                         if isHoldingF then pressKey("F", nil, "Up"); isHoldingF = false end
                         if char:FindFirstChild("Humanoid") then char.Humanoid.AutoRotate = true end
                         resetCamera()
                         
+                        -- ถ้าหาบอสไม่เจอ รอให้ชัวร์ 2.5 วิก่อนโดดเซิร์ฟ ป้องกันบั๊กช่วงบอสเปลี่ยนร่าง
                         if Config.HopBoss then 
                             task.wait(2.5)
                             local checkAgainWarpNpc = getGyakuTarget()
