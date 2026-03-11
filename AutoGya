@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: F Spam Logic (Normal Kajiri Style) for Advance Kajiri & Boss
+    Features: 100% Hardware-Level Hold F (VIM), Boss & Hop Fix, Advance Kajiri
 ]]
 
 local player = game.Players.LocalPlayer
@@ -12,6 +12,7 @@ local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VIM = game:GetService("VirtualInputManager")
 
 -- ==========================================
 -- 1. Global Configurations & Auto Save
@@ -65,6 +66,7 @@ local TargetMap = {
 
 local SaveFileName = "ArkHub_SavedConfig.json"
 local oldCashoutTick = 0
+local isHoldingF = false 
 
 local function SaveConfig()
     pcall(function()
@@ -119,7 +121,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 4. Core Functions
+-- 4. Core Functions & VIM Hold System
 -- ==========================================
 local function pressKey(keyToPress, aimPosition, keyState)
     keyState = keyState or "Down"
@@ -135,6 +137,19 @@ local function pressKey(keyToPress, aimPosition, keyState)
     
     local fireEvent = Instance.new("RemoteEvent").FireServer
     fireEvent(player.Character.Remotes.KeyEvent, Config.Key, keyToPress, keyState, hit, nil, camCFrame)
+end
+
+-- [ใหม่ล่าสุด] ระบบสั่งการปุ่มเสมือนจริง (Virtual Input Manager) มั่นใจ 100% ว่ากดค้าง
+local function HoldFSkill(state, aimPos)
+    if state and not isHoldingF then
+        isHoldingF = true
+        pcall(function() VIM:SendKeyEvent(true, Enum.KeyCode.F, false, game) end)
+        pressKey("F", aimPos, "Down")
+    elseif not state and isHoldingF then
+        isHoldingF = false
+        pcall(function() VIM:SendKeyEvent(false, Enum.KeyCode.F, false, game) end)
+        pressKey("F", aimPos, "Up")
+    end
 end
 
 local function tp(targetCFrame, aimPos, isAdvanceKajiri, targetObj, earlyStopDist)
@@ -173,8 +188,7 @@ local function tp(targetCFrame, aimPos, isAdvanceKajiri, targetObj, earlyStopDis
             
             if isAdvanceKajiri and aimPos then
                 workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos)
-                -- [ใช้ระบบเดียวกับ Normal Kajiri] ยิงคำสั่ง F รัวๆ ตามลูป
-                pressKey("F", aimPos, "Down")
+                HoldFSkill(true, aimPos)
             end
         end
         task.wait()
@@ -396,6 +410,7 @@ local isHopping = false
 local function ServerHop()
     if isHopping then return end
     isHopping = true
+    HoldFSkill(false)
     resetCamera()
     local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
     pcall(function()
@@ -443,7 +458,6 @@ task.spawn(function()
 
                     if warpNpc and aimPos then
 
-                        -- บินเป็นวงกลม ตอนที่เหลือหัวใจ >= 2 ดวง
                         if Config.AdvanceKajiri and heartsList and #heartsList >= 2 and not isMainBoss then
                             local nearestIdx = 1
                             local minDst = math.huge
@@ -467,7 +481,6 @@ task.spawn(function()
                             tp(lookCFrame, targetAimPos, true, targetHeart, 15)
                             
                         else
-                            -- กรณีเหลือหัวใจ 1 ดวง หรือ เข้าสู่บอสใหญ่
                             local standPos = warpNpc.HumanoidRootPart.Position + Vector3.new(0, Config.GyakuDistance, 0)
                             local distance = (char.HumanoidRootPart.Position - standPos).Magnitude
 
@@ -483,36 +496,35 @@ task.spawn(function()
                                     workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos) 
                                 end
 
-                                -- [อัปเดต] ใช้ระบบกดเดียวกับ Normal Kajiri
                                 if Config.AdvanceKajiri or isMainBoss then
-                                    pressKey("F", aimPos, "Down")
+                                    HoldFSkill(true, aimPos)
                                 elseif Config.KajiriMode then
+                                    HoldFSkill(false, aimPos)
                                     pressKey("F", aimPos, "Down")
                                     pressKey("Mouse1", aimPos, "Down")
                                 else
+                                    HoldFSkill(false, aimPos)
                                     pressKey("Mouse1", aimPos, "Down")
                                 end
                             end
                         end
                     else
+                        HoldFSkill(false)
                         if char:FindFirstChild("Humanoid") then char.Humanoid.AutoRotate = true end
                         resetCamera()
                         
-                        -- รอเช็คอีก 2.5 วินาที ป้องกันบั๊กโดดเซิร์ฟหนีบอสใหญ่ตอนมันกำลังเกิด
                         if Config.HopBoss then 
                             task.wait(2.5)
                             local checkAgainWarpNpc = getGyakuTarget()
-                            if not checkAgainWarpNpc then
-                                ServerHop() 
-                            end
+                            if not checkAgainWarpNpc then ServerHop() end
                         end
                     end
                 else
-                    Config.HasMasked = false; resetCamera()
+                    Config.HasMasked = false; HoldFSkill(false); resetCamera()
                 end
             end)
         else
-            Config.HasMasked = false; resetCamera()
+            Config.HasMasked = false; HoldFSkill(false); resetCamera()
         end
     end
 end)
