@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: Hold F System (No Spam), Advance Kajiri Non-Stop, Boss Fix
+    Features: Fixed Server Hop Bug, Absolute F Hold for Last Heart & Boss
 ]]
 
 local player = game.Players.LocalPlayer
@@ -65,7 +65,7 @@ local TargetMap = {
 
 local SaveFileName = "ArkHub_SavedConfig.json"
 local oldCashoutTick = 0
-local isHoldingF = false -- [ใหม่] ตัวแปรเช็คสถานะกด F ค้าง
+local isHoldingF = false
 
 local function SaveConfig()
     pcall(function()
@@ -122,7 +122,6 @@ end)
 -- ==========================================
 -- 4. Core Functions (Shared)
 -- ==========================================
--- [อัปเดต] รองรับการส่งค่า keyState (Down = กดลง, Up = ปล่อย)
 local function pressKey(keyToPress, aimPosition, keyState)
     keyState = keyState or "Down"
     if not Config.Key or not player.Character or not player.Character:FindFirstChild("Remotes") then return end
@@ -175,7 +174,6 @@ local function tp(targetCFrame, aimPos, isAdvanceKajiri, targetObj, earlyStopDis
             
             if isAdvanceKajiri and aimPos then
                 workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos)
-                -- [ใหม่] กด F ค้างครั้งเดียวตอนบิน
                 if not isHoldingF then
                     pressKey("F", aimPos, "Down")
                     isHoldingF = true
@@ -449,8 +447,21 @@ task.spawn(function()
 
                     if warpNpc and aimPos then
                         
+                        -- [อัปเดตแก้อาการไม่กด F] ถ้าเราเปิดโหมด Advance Kajiri หรือตัวเป้าหมายเป็นบอสใหญ่ บังคับกด F ค้างทุกกรณี
+                        if Config.AdvanceKajiri or isMainBoss then
+                            if not isHoldingF then
+                                pressKey("F", aimPos, "Down")
+                                isHoldingF = true
+                            end
+                        else
+                            if isHoldingF then
+                                pressKey("F", aimPos, "Up")
+                                isHoldingF = false
+                            end
+                        end
+
                         if Config.AdvanceKajiri and heartsList and #heartsList >= 2 and not isMainBoss then
-                            
+                            -- บินเป็นวงกลม
                             local nearestIdx = 1
                             local minDst = math.huge
                             for i, h in ipairs(heartsList) do
@@ -473,28 +484,24 @@ task.spawn(function()
                             tp(lookCFrame, targetAimPos, true, targetHeart, 15)
                             
                         else
+                            -- กรณีเหลือหัวใจ 1 ดวง หรือ เข้าสู่บอสใหญ่
                             local standPos = warpNpc.HumanoidRootPart.Position + Vector3.new(0, Config.GyakuDistance, 0)
                             local distance = (char.HumanoidRootPart.Position - standPos).Magnitude
 
                             if distance > 25 then
                                 local lookCFrame = CFrame.lookAt(standPos, aimPos)
-                                tp(lookCFrame, nil, false, warpNpc)
+                                tp(lookCFrame, aimPos, (Config.AdvanceKajiri or isMainBoss), warpNpc)
                             else
-                                char.Humanoid.AutoRotate = not Config.KajiriMode
+                                char.Humanoid.AutoRotate = not (Config.AdvanceKajiri or Config.KajiriMode or isMainBoss)
                                 char.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
                                 char.HumanoidRootPart.CFrame = CFrame.lookAt(standPos, aimPos)
                                 
-                                if shouldLockCam then workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos) end
+                                if Config.AdvanceKajiri or shouldLockCam or isMainBoss then 
+                                    workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos) 
+                                end
 
-                                if isMainBoss then
-                                    -- [ใหม่] กด F ค้างใส่บอสใหญ่ครั้งเดียว
-                                    if not isHoldingF then
-                                        pressKey("F", aimPos, "Down")
-                                        isHoldingF = true
-                                    end
-                                else
-                                    -- ถ้าตีหัวใจธรรมดา ปล่อย F แล้วสแปมคลิก
-                                    if isHoldingF then pressKey("F", aimPos, "Up"); isHoldingF = false end
+                                -- ถ้าไม่ใช่โหมดเลเซอร์ค้าง (Kajiri ธรรมดา) ให้คลิกปกติ
+                                if not (Config.AdvanceKajiri or isMainBoss) then
                                     if Config.KajiriMode then
                                         pressKey("F", aimPos, "Down")
                                         pressKey("Mouse1", aimPos, "Down")
@@ -505,10 +512,18 @@ task.spawn(function()
                             end
                         end
                     else
+                        -- [อัปเดตแก้บั๊กโดดเซิร์ฟเร็วเกิน] เมื่อหาเป้าหมายไม่เจอ (บอสกำลังเปลี่ยนร่าง) ให้รอ 2.5 วิแล้วเช็คอีกครั้ง
                         if isHoldingF then pressKey("F", nil, "Up"); isHoldingF = false end
                         if char:FindFirstChild("Humanoid") then char.Humanoid.AutoRotate = true end
                         resetCamera()
-                        if Config.HopBoss then ServerHop() end
+                        
+                        if Config.HopBoss then 
+                            task.wait(2.5)
+                            local checkAgainWarpNpc = getGyakuTarget()
+                            if not checkAgainWarpNpc then
+                                ServerHop() 
+                            end
+                        end
                     end
                 else
                     Config.HasMasked = false; resetCamera()
