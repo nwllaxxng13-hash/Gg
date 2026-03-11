@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: Auto Quest/Cashout, Advance Kajiri, Gyaku Boss 'F' Spam
+    Features: Sky Bug Fixed, Advance Kajiri (Circular Path), Camera Reset
 ]]
 
 local player = game.Players.LocalPlayer
@@ -24,8 +24,8 @@ local Config = {
     FarmTarget = "GhoulSpawns",
     FarmPosition = "Above",
     AutoEatCorpse = false,
-    AutoTask = false,      -- [ใหม่]
-    AutoCashOut = false,   -- [ใหม่]
+    AutoTask = false,
+    AutoCashOut = false,
     TweenSpeed = 200,
     DistanceNPC = 8,
     DistanceBoss = 15,
@@ -69,7 +69,7 @@ local TargetMap = {
 }
 
 local SaveFileName = "ArkHub_SavedConfig.json"
-local oldCashoutTick = 0 -- ตัวนับเวลาเบิกเงิน
+local oldCashoutTick = 0
 
 local function SaveConfig()
     pcall(function()
@@ -131,7 +131,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 4. Core Functions (Shared)
+-- 4. Core Functions (Shared & Sky Bug Fix)
 -- ==========================================
 local function pressKey(keyToPress, aimPosition)
     if not Config.Key or not player.Character or not player.Character:FindFirstChild("Remotes") then return end
@@ -148,7 +148,8 @@ local function pressKey(keyToPress, aimPosition)
     fireEvent(player.Character.Remotes.KeyEvent, Config.Key, keyToPress, "Down", hit, nil, camCFrame)
 end
 
-local function tp(targetCFrame, aimPos, isAdvanceKajiri)
+-- [อัปเดตแก้จอมองฟ้า] เพิ่มการตรวจเช็ค targetObj ถ้าเป้าหมายตายหรือหายไประหว่างบิน ให้ยกเลิก Tween ทันที
+local function tp(targetCFrame, aimPos, isAdvanceKajiri, targetObj)
     if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
     local hrp = player.Character.HumanoidRootPart
     local val = Instance.new("CFrameValue")
@@ -169,6 +170,12 @@ local function tp(targetCFrame, aimPos, isAdvanceKajiri)
         if not (Config.AutoFarm or Config.GyakuFarm) or not player.Character or player.Character.Humanoid.Health <= 0 then 
             tween:Cancel() break 
         end
+        
+        -- ป้องกันบินทะลุแมพ: ถ้าบอสหรือหัวใจโดนลบไประหว่างบิน ให้หยุดบินทันที
+        if targetObj and (not targetObj.Parent or (targetObj:FindFirstChild("Humanoid") and targetObj.Humanoid.Health <= 0)) then
+            tween:Cancel() break
+        end
+
         if player.Character:FindFirstChild("HumanoidRootPart") then
             player.Character.HumanoidRootPart.CFrame = val.Value
             player.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
@@ -183,6 +190,16 @@ local function tp(targetCFrame, aimPos, isAdvanceKajiri)
     val:Destroy()
 end
 
+-- [ฟังก์ชันเคลียร์กล้อง] ป้องกันกล้องค้างบนฟ้า
+local function resetCamera()
+    if workspace.CurrentCamera.CameraType ~= Enum.CameraType.Custom then
+        workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            workspace.CurrentCamera.CameraSubject = player.Character.Humanoid
+        end
+    end
+end
+
 -- ==========================================
 -- 5. Quest & Cashout Logic
 -- ==========================================
@@ -192,12 +209,11 @@ local function needQuest()
     local comp = qFolder:FindFirstChild("Complete")
     if not comp then return true end
     
-    -- เช็คว่ามีเควสค้างอยู่หรือไม่ ถ้าเควสครบแล้ว หรือไม่มีเลย ให้คืนค่า true
     for _, q in pairs(comp:GetChildren()) do
         if q:IsA("IntValue") or q:IsA("NumberValue") then
             local max = q:FindFirstChild("Max")
             if max and q.Value < max.Value then
-                return false -- เควสยังไม่เสร็จ ไม่ต้องไปรับใหม่
+                return false
             end
         end
     end
@@ -206,7 +222,7 @@ end
 
 local function handleQuestAndCashout()
     local doQuest = Config.AutoTask and needQuest()
-    local doCashout = Config.AutoCashOut and (tick() - oldCashoutTick > 7200) -- เบิกทุกๆ 2 ชม.
+    local doCashout = Config.AutoCashOut and (tick() - oldCashoutTick > 7200)
     
     if not doQuest and not doCashout then return false end
     
@@ -224,8 +240,8 @@ local function handleQuestAndCashout()
     local dist = (player.Character.HumanoidRootPart.Position - targetCF.Position).Magnitude
     
     if dist > 15 then
-        tp(targetCF)
-        return true -- ขัดจังหวะการตีมอนสเตอร์
+        tp(targetCF, nil, false, npc)
+        return true
     else
         pcall(function()
             ReplicatedStorage.Remotes.Ally.AllyInfo:InvokeServer()
@@ -309,7 +325,6 @@ task.spawn(function()
                 local char = player.Character
                 if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
                     
-                    -- เช็คเควสก่อน ถ้ากำลังเดินไปรับเควส ให้ข้ามลอจิกตีมอนรอบนี้ไป
                     if handleQuestAndCashout() then return end
                     
                     if not char:FindFirstChild("Kagune") and not char:FindFirstChild("Quinque") then
@@ -324,7 +339,7 @@ task.spawn(function()
                         local dist = (char.HumanoidRootPart.Position - targetCF.Position).Magnitude
                         
                         if dist > 15 then
-                            tp(targetCF)
+                            tp(targetCF, nil, false, npc)
                         else
                             char.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
                             char.HumanoidRootPart.CFrame = targetCF
@@ -344,7 +359,11 @@ task.spawn(function()
                                 collectCorpse(npc)
                             end
                         end
+                    else
+                        resetCamera()
                     end
+                else
+                    resetCamera()
                 end
             end)
         end
@@ -352,7 +371,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 7. Gyaku V13 Logic (Boss F Spam Fix)
+-- 7. Gyaku V13 Logic (Fix Cross-Tween + Camera Bug)
 -- ==========================================
 local function getGyakuTarget()
     local spawnFolder = workspace:FindFirstChild("NPCSpawns")
@@ -373,6 +392,23 @@ local function getGyakuTarget()
         end
     end
 
+    -- [แก้บินผ่ากลางดงบอส] นำหัวใจทั้งหมดมาเรียงองศาเป็นวงกลม
+    if #hearts >= 2 then
+        local cx, cz = 0, 0
+        for _, h in ipairs(hearts) do
+            cx = cx + h.HumanoidRootPart.Position.X
+            cz = cz + h.HumanoidRootPart.Position.Z
+        end
+        cx = cx / #hearts
+        cz = cz / #hearts
+
+        table.sort(hearts, function(a, b)
+            local angleA = math.atan2(a.HumanoidRootPart.Position.Z - cz, a.HumanoidRootPart.Position.X - cx)
+            local angleB = math.atan2(b.HumanoidRootPart.Position.Z - cz, b.HumanoidRootPart.Position.X - cx)
+            return angleA < angleB
+        end)
+    end
+
     local warpObj, aimPos, shouldLockCam
     if #hearts >= 2 then
         warpObj = hearts[1]; aimPos = hearts[2].HumanoidRootPart.Position; shouldLockCam = true
@@ -388,6 +424,7 @@ local isHopping = false
 local function ServerHop()
     if isHopping then return end
     isHopping = true
+    resetCamera() -- ปลดกล้องก่อน Hop เพื่อให้เกมไม่บั๊กตอนจอโหลด
     local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
     pcall(function()
         local result = HttpService:JSONDecode(game:HttpGet(url))
@@ -450,7 +487,7 @@ task.spawn(function()
                             
                             if dist > 5 then
                                 local lookCFrame = CFrame.lookAt(standPos, targetAimPos)
-                                tp(lookCFrame, targetAimPos, true)
+                                tp(lookCFrame, targetAimPos, true, targetHeart) -- ผ่านเป้าหมายไปตรวจเช็คเพื่อป้องกันจอมองฟ้า
                             else
                                 advanceIndex = nextIndex
                             end
@@ -461,7 +498,7 @@ task.spawn(function()
 
                             if distance > 25 then
                                 local lookCFrame = CFrame.lookAt(standPos, aimPos)
-                                tp(lookCFrame)
+                                tp(lookCFrame, nil, false, warpNpc)
                             else
                                 char.Humanoid.AutoRotate = not Config.KajiriMode
                                 char.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
@@ -469,7 +506,6 @@ task.spawn(function()
                                 
                                 if shouldLockCam then workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos) end
 
-                                -- [อัปเดต] ถ้าเป็นบอสใหญ่ บังคับสแปมสกิล F อย่างเดียว (ไม่คลิกปกติ)
                                 if isMainBoss then
                                     pressKey("F", aimPos)
                                 elseif Config.KajiriMode then
@@ -481,14 +517,17 @@ task.spawn(function()
                         end
                     else
                         if char:FindFirstChild("Humanoid") then char.Humanoid.AutoRotate = true end
+                        resetCamera() -- เมื่อบอสตาย หรือหาไม่เจอ ให้เคลียร์กล้องทันที
                         if Config.HopBoss then ServerHop() end
                     end
                 else
                     Config.HasMasked = false
+                    resetCamera() -- ถ้าตาย ก็เคลียร์กล้อง
                 end
             end)
         else
             Config.HasMasked = false
+            resetCamera() -- ถ้าปิดฟาร์ม ก็เคลียร์กล้องกลับมามองตัวละครปกติ
         end
     end
 end)
@@ -581,7 +620,6 @@ local MainTab = Window:Tab({Title = "Main 🏠", Icon = "home"}) do
     })
     
     MainTab:Section({Title = "⚔️ Auto Farm Target & Position"})
-    
     local defaultTargetName = "Aogiri member"
     for k, v in pairs(TargetMap) do if v == Config.FarmTarget then defaultTargetName = k break end end
     
@@ -681,7 +719,7 @@ local GyakuTab = Window:Tab({Title = "Gyaku 💀", Icon = "skull"}) do
     })
     GyakuTab:Toggle({
         Title = "🌀 Advance Farming Kajiri",
-        Desc = "Tween to all hearts & spam F (No Mouse1)",
+        Desc = "Tween along perimeter & spam F",
         Value = Config.AdvanceKajiri,
         Callback = function(v) Config.AdvanceKajiri = v; SaveConfig() end
     })
