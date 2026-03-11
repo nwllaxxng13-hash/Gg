@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: Smart Hold F (No Spam, Cooldown Sync), Boss & Hop Fix
+    Features: Old Solid Hold F System, Boss Hop Fix, Advance Kajiri
 ]]
 
 local player = game.Players.LocalPlayer
@@ -65,7 +65,7 @@ local TargetMap = {
 
 local SaveFileName = "ArkHub_SavedConfig.json"
 local oldCashoutTick = 0
-local isHoldingF = false
+local isHoldingF = false -- ใช้ระบบเก่า (True/False แบบชัวร์ๆ)
 
 local function SaveConfig()
     pcall(function()
@@ -120,7 +120,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 4. Core Functions & Smart Hold F
+-- 4. Core Functions
 -- ==========================================
 local function pressKey(keyToPress, aimPosition, keyState)
     keyState = keyState or "Down"
@@ -136,30 +136,6 @@ local function pressKey(keyToPress, aimPosition, keyState)
     
     local fireEvent = Instance.new("RemoteEvent").FireServer
     fireEvent(player.Character.Remotes.KeyEvent, Config.Key, keyToPress, keyState, hit, nil, camCFrame)
-end
-
--- [ใหม่] ระบบกด F ค้างอัจฉริยะ ซิงค์กับหลอดคูลดาวน์ของเกม ป้องกันการ Spam
-local function handleSmartHoldF(aimPos)
-    if not Config.Key then return end
-    local fCD = player.PlayerFolder:FindFirstChild("Special3CD")
-    
-    if fCD then
-        local isOnCooldown = (tostring(fCD.Value) == "DownTime") or (tonumber(fCD.Value) ~= nil and tonumber(fCD.Value) > 0)
-        
-        if isOnCooldown then
-            -- ถ้าติดคูลดาวน์ ให้ปล่อยปุ่ม F
-            if isHoldingF then
-                pressKey("F", aimPos, "Up")
-                isHoldingF = false
-            end
-        else
-            -- ถ้าสกิลพร้อมใช้ และยังไม่ได้กดค้าง ให้กดค้างแค่ครั้งเดียว
-            if not isHoldingF then
-                pressKey("F", aimPos, "Down")
-                isHoldingF = true
-            end
-        end
-    end
 end
 
 local function tp(targetCFrame, aimPos, isAdvanceKajiri, targetObj, earlyStopDist)
@@ -198,7 +174,11 @@ local function tp(targetCFrame, aimPos, isAdvanceKajiri, targetObj, earlyStopDis
             
             if isAdvanceKajiri and aimPos then
                 workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos)
-                handleSmartHoldF(aimPos) -- โหมดบินวน เรียกใช้ Smart Hold
+                -- [ระบบเก่า] เช็คแค่ isHoldingF สั่งกด F ค้างแค่ครั้งแรกพอ
+                if not isHoldingF then
+                    pressKey("F", aimPos, "Down")
+                    isHoldingF = true
+                end
             end
         end
         task.wait()
@@ -468,19 +448,22 @@ task.spawn(function()
 
                     if warpNpc and aimPos then
                         
-                        -- โหมด Advance Kajiri หรือเหลือแค่บอสใหญ่ บังคับใช้ Smart Hold F เสมอ!
+                        -- โหมด Advance Kajiri หรือ เหลือแต่บอสใหญ่ บังคับกด F ค้าง (ระบบเก่าชัวร์ๆ)
                         if Config.AdvanceKajiri or isMainBoss then
-                            handleSmartHoldF(aimPos)
+                            if not isHoldingF then
+                                pressKey("F", aimPos, "Down")
+                                isHoldingF = true
+                            end
                         else
-                            -- ถ้าไม่ใช่ ให้ปล่อยปุ่ม F
+                            -- ถ้าไม่ใช่ (ฟาร์มหัวใจธรรมดา) ให้ปล่อยปุ่ม F
                             if isHoldingF then
-                                pressKey("F", aimPos, "Up")
+                                pressKey("F", nil, "Up")
                                 isHoldingF = false
                             end
                         end
 
+                        -- บินเป็นวงกลม ตอนที่เหลือหัวใจ >= 2 ดวง
                         if Config.AdvanceKajiri and heartsList and #heartsList >= 2 and not isMainBoss then
-                            -- บินเป็นวงกลม
                             local nearestIdx = 1
                             local minDst = math.huge
                             for i, h in ipairs(heartsList) do
@@ -531,11 +514,12 @@ task.spawn(function()
                             end
                         end
                     else
+                        -- ปล่อย F
                         if isHoldingF then pressKey("F", nil, "Up"); isHoldingF = false end
                         if char:FindFirstChild("Humanoid") then char.Humanoid.AutoRotate = true end
                         resetCamera()
                         
-                        -- ถ้าหาบอสไม่เจอ รอให้ชัวร์ 2.5 วิก่อนโดดเซิร์ฟ ป้องกันบั๊กช่วงบอสเปลี่ยนร่าง
+                        -- รอเช็คอีก 2.5 วินาที ป้องกันบั๊กโดดเซิร์ฟหนีบอสใหญ่ตอนมันกำลังเกิด
                         if Config.HopBoss then 
                             task.wait(2.5)
                             local checkAgainWarpNpc = getGyakuTarget()
