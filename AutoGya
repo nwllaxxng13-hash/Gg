@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: Auto Eat, Advance Kajiri, Farm Pos, Split Distances
+    Features: Auto Quest/Cashout, Advance Kajiri, Gyaku Boss 'F' Spam
 ]]
 
 local player = game.Players.LocalPlayer
@@ -22,8 +22,10 @@ local Config = {
     -- Main Farm
     AutoFarm = false,
     FarmTarget = "GhoulSpawns",
-    FarmPosition = "Above", -- Above, Back, Bottom
+    FarmPosition = "Above",
     AutoEatCorpse = false,
+    AutoTask = false,      -- [ใหม่]
+    AutoCashOut = false,   -- [ใหม่]
     TweenSpeed = 200,
     DistanceNPC = 8,
     DistanceBoss = 15,
@@ -50,7 +52,7 @@ local Config = {
     -- Gyaku Farm
     GyakuFarm = false,
     KajiriMode = false,
-    AdvanceKajiri = false, -- [ใหม่] บินวนหัวใจ
+    AdvanceKajiri = false,
     HopBoss = false,
     AutoFaction = false,
     AutoMask = false,
@@ -67,6 +69,7 @@ local TargetMap = {
 }
 
 local SaveFileName = "ArkHub_SavedConfig.json"
+local oldCashoutTick = 0 -- ตัวนับเวลาเบิกเงิน
 
 local function SaveConfig()
     pcall(function()
@@ -92,7 +95,7 @@ end
 LoadConfig()
 
 -- ==========================================
--- 2. Auto Faction On Boot (Bypass Main Menu)
+-- 2. Auto Faction On Boot 
 -- ==========================================
 task.spawn(function()
     pcall(function()
@@ -145,7 +148,6 @@ local function pressKey(keyToPress, aimPosition)
     fireEvent(player.Character.Remotes.KeyEvent, Config.Key, keyToPress, "Down", hit, nil, camCFrame)
 end
 
--- [อัปเดต] tp รองรับ Advance Kajiri (Spam F ระหว่างบิน)
 local function tp(targetCFrame, aimPos, isAdvanceKajiri)
     if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
     local hrp = player.Character.HumanoidRootPart
@@ -171,7 +173,6 @@ local function tp(targetCFrame, aimPos, isAdvanceKajiri)
             player.Character.HumanoidRootPart.CFrame = val.Value
             player.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
             
-            -- บินไปยิงไป (Advance Kajiri)
             if isAdvanceKajiri and aimPos then
                 workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos)
                 pressKey("F", aimPos)
@@ -183,7 +184,72 @@ local function tp(targetCFrame, aimPos, isAdvanceKajiri)
 end
 
 -- ==========================================
--- 5. Standard Farm Logic (Pos & Distance Separated)
+-- 5. Quest & Cashout Logic
+-- ==========================================
+local function needQuest()
+    local qFolder = player.PlayerFolder:FindFirstChild("CurrentQuest")
+    if not qFolder then return false end
+    local comp = qFolder:FindFirstChild("Complete")
+    if not comp then return true end
+    
+    -- เช็คว่ามีเควสค้างอยู่หรือไม่ ถ้าเควสครบแล้ว หรือไม่มีเลย ให้คืนค่า true
+    for _, q in pairs(comp:GetChildren()) do
+        if q:IsA("IntValue") or q:IsA("NumberValue") then
+            local max = q:FindFirstChild("Max")
+            if max and q.Value < max.Value then
+                return false -- เควสยังไม่เสร็จ ไม่ต้องไปรับใหม่
+            end
+        end
+    end
+    return true
+end
+
+local function handleQuestAndCashout()
+    local doQuest = Config.AutoTask and needQuest()
+    local doCashout = Config.AutoCashOut and (tick() - oldCashoutTick > 7200) -- เบิกทุกๆ 2 ชม.
+    
+    if not doQuest and not doCashout then return false end
+    
+    local team = player.PlayerFolder.Customization.Team.Value
+    local npc = nil
+    if team == "Ghoul" then
+        npc = workspace:FindFirstChild("Anteiku") and workspace.Anteiku:FindFirstChild("Yoshimura")
+    else
+        npc = workspace:FindFirstChild("CCGBuilding") and workspace.CCGBuilding:FindFirstChild("Yoshitoki")
+    end
+    
+    if not npc or not npc:FindFirstChild("HumanoidRootPart") then return false end
+    
+    local targetCF = npc.HumanoidRootPart.CFrame
+    local dist = (player.Character.HumanoidRootPart.Position - targetCF.Position).Magnitude
+    
+    if dist > 15 then
+        tp(targetCF)
+        return true -- ขัดจังหวะการตีมอนสเตอร์
+    else
+        pcall(function()
+            ReplicatedStorage.Remotes.Ally.AllyInfo:InvokeServer()
+            if npc:FindFirstChild("TaskIndicator") and npc.TaskIndicator:FindFirstChild("ClickDetector") then
+                fireclickdetector(npc.TaskIndicator.ClickDetector)
+            end
+            
+            if doQuest then
+                ReplicatedStorage.Remotes[npc.Name].Task:InvokeServer()
+                task.wait(0.5)
+                ReplicatedStorage.Remotes[npc.Name].Task:InvokeServer()
+            end
+            
+            if doCashout then
+                ReplicatedStorage.Remotes.ReputationCashOut:InvokeServer()
+                oldCashoutTick = tick()
+            end
+        end)
+        return true
+    end
+end
+
+-- ==========================================
+-- 6. Standard Farm Logic
 -- ==========================================
 local function getStandardNPC()
     local nearestnpc, nearest = nil, math.huge
@@ -243,6 +309,9 @@ task.spawn(function()
                 local char = player.Character
                 if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
                     
+                    -- เช็คเควสก่อน ถ้ากำลังเดินไปรับเควส ให้ข้ามลอจิกตีมอนรอบนี้ไป
+                    if handleQuestAndCashout() then return end
+                    
                     if not char:FindFirstChild("Kagune") and not char:FindFirstChild("Quinque") then
                         pressKey(Config.WeaponStage)
                         task.wait(0.5)
@@ -270,7 +339,6 @@ task.spawn(function()
                             end
                         end
                         
-                        -- [ใหม่] ระบบกินศพอัตโนมัติ (เฉพาะมอนสเตอร์ธรรมดา)
                         if npc.Humanoid.Health <= 0 and not isBoss then
                             if Config.AutoEatCorpse then
                                 collectCorpse(npc)
@@ -284,7 +352,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 6. Gyaku V13 Logic (Advance Kajiri & Hop)
+-- 7. Gyaku V13 Logic (Boss F Spam Fix)
 -- ==========================================
 local function getGyakuTarget()
     local spawnFolder = workspace:FindFirstChild("NPCSpawns")
@@ -365,11 +433,11 @@ task.spawn(function()
                     end
 
                     local warpNpc, aimPos, shouldLockCam, heartsList, bossObj = getGyakuTarget()
+                    local isMainBoss = (warpNpc and warpNpc.Name == "Gyakusatsu")
 
                     if warpNpc and aimPos then
                         
-                        -- [ใหม่] ระบบ Advance Kajiri (บินวนหัวใจทีละดวง)
-                        if Config.AdvanceKajiri and heartsList and #heartsList >= 2 then
+                        if Config.AdvanceKajiri and heartsList and #heartsList >= 2 and not isMainBoss then
                             if advanceIndex > #heartsList then advanceIndex = 1 end
                             
                             local targetHeart = heartsList[advanceIndex]
@@ -378,20 +446,16 @@ task.spawn(function()
                             
                             local targetAimPos = aimHeart.HumanoidRootPart.Position
                             local standPos = targetHeart.HumanoidRootPart.Position + Vector3.new(0, Config.GyakuDistance, 0)
-                            
                             local dist = (char.HumanoidRootPart.Position - standPos).Magnitude
                             
                             if dist > 5 then
-                                -- บินไปหาหัวใจนี้ พร้อมเล็งหัวใจหน้า และสแปมสกิล F (ไม่มีคลิกปกติ)
                                 local lookCFrame = CFrame.lookAt(standPos, targetAimPos)
                                 tp(lookCFrame, targetAimPos, true)
                             else
-                                -- ถึงจุดแล้ว เปลี่ยนเป้าหมายไปดวงต่อไปทันที
                                 advanceIndex = nextIndex
                             end
                             
                         else
-                            -- ระบบ Gyaku V13 แบบปกติ (ยืนนิ่งล็อคเป้า)
                             local standPos = warpNpc.HumanoidRootPart.Position + Vector3.new(0, Config.GyakuDistance, 0)
                             local distance = (char.HumanoidRootPart.Position - standPos).Magnitude
 
@@ -405,7 +469,10 @@ task.spawn(function()
                                 
                                 if shouldLockCam then workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos) end
 
-                                if Config.KajiriMode then
+                                -- [อัปเดต] ถ้าเป็นบอสใหญ่ บังคับสแปมสกิล F อย่างเดียว (ไม่คลิกปกติ)
+                                if isMainBoss then
+                                    pressKey("F", aimPos)
+                                elseif Config.KajiriMode then
                                     pressKey("F", aimPos); pressKey("Mouse1", aimPos)
                                 else
                                     pressKey("Mouse1", aimPos)
@@ -427,7 +494,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 7. Auto Stats Logic
+-- 8. Auto Stats Logic
 -- ==========================================
 task.spawn(function()
     local statRemote = player:WaitForChild("PlayerFolder"):WaitForChild("StatsFunction")
@@ -442,7 +509,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 8. Heart Tracker Overlay
+-- 9. Heart Tracker Overlay
 -- ==========================================
 local OverlayGui = Instance.new("ScreenGui", CoreGui)
 OverlayGui.Name = "ArkHeartTracker"
@@ -475,7 +542,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 9. x2zu UI Library Integration (No Settings Tab)
+-- 10. x2zu UI Library Integration 
 -- ==========================================
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/x2zu/OPEN-SOURCE-UI-ROBLOX/refs/heads/main/X2ZU%20UI%20ROBLOX%20OPEN%20SOURCE/DummyUi-leak-by-x2zu/fetching-main/Tools/Framework.luau"))()
 
@@ -499,6 +566,20 @@ SidebarLine.Parent = CoreGui:FindFirstChild("✨ Ark Hub Premium | Ro-Ghoul") or
 
 -- [ Tab 1: Main 🏠 ]
 local MainTab = Window:Tab({Title = "Main 🏠", Icon = "home"}) do
+    MainTab:Section({Title = "📜 Auto Quest & Rep"})
+    MainTab:Toggle({
+        Title = "📋 Auto Task (Quest)",
+        Desc = "Automatically fetch quests from Yoshimura/Yoshitoki",
+        Value = Config.AutoTask,
+        Callback = function(v) Config.AutoTask = v; SaveConfig() end
+    })
+    MainTab:Toggle({
+        Title = "💰 Auto Cash Out",
+        Desc = "Cash out reputation every 2 hours",
+        Value = Config.AutoCashOut,
+        Callback = function(v) Config.AutoCashOut = v; SaveConfig() end
+    })
+    
     MainTab:Section({Title = "⚔️ Auto Farm Target & Position"})
     
     local defaultTargetName = "Aogiri member"
