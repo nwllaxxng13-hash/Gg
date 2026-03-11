@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: Fixed Server Hop Bug, Absolute F Hold for Last Heart & Boss, Fixed Advance Kajiri F Hold
+    Features: Fixed Server Hop Bug, Absolute F Hold for Last Heart & Boss, Fixed Advance Kajiri (Pure F Hold)
 ]]
 
 local player = game.Players.LocalPlayer
@@ -172,9 +172,10 @@ local function tp(targetCFrame, aimPos, isAdvanceKajiri, targetObj, earlyStopDis
             player.Character.HumanoidRootPart.CFrame = val.Value
             player.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
             
+            -- [Advance Kajiri] ยิง F ค้างระหว่างบิน TP เสมอ ไม่มีคลิกปกติ
             if isAdvanceKajiri and aimPos then
                 workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos)
-                pressKey("F", aimPos, "Down") -- ยิงอัปเดตเป้าหมายตลอดเวลา
+                pressKey("F", aimPos, "Down")
                 isHoldingF = true
             end
         end
@@ -445,11 +446,13 @@ task.spawn(function()
 
                     if warpNpc and aimPos then
                         
-                        -- [อัปเดตแก้อาการไม่กด F] ถ้าเราเปิดโหมด Advance Kajiri หรือตัวเป้าหมายเป็นบอสใหญ่ บังคับกด F ค้างทุกกรณี
+                        -- [Advance Kajiri] ยิง F ค้างและขยับเมาส์ตามตลอด
                         if Config.AdvanceKajiri or isMainBoss then
-                            pressKey("F", aimPos, "Down") -- ยิงสแปมเพื่อให้ F ทำงานและเปลี่ยนเป้าหมายตลอดเวลา
+                            workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos) 
+                            pressKey("F", aimPos, "Down")
                             isHoldingF = true
                         else
+                            -- ปล่อย F กรณีไม่ได้เปิดโหมดเลเซอร์
                             if isHoldingF then
                                 pressKey("F", aimPos, "Up")
                                 isHoldingF = false
@@ -457,7 +460,7 @@ task.spawn(function()
                         end
 
                         if Config.AdvanceKajiri and heartsList and #heartsList >= 2 and not isMainBoss then
-                            -- บินเป็นวงกลม
+                            -- โหมดบินเป็นวงกลม (Advance Kajiri)
                             local nearestIdx = 1
                             local minDst = math.huge
                             for i, h in ipairs(heartsList) do
@@ -477,6 +480,7 @@ task.spawn(function()
                             local standPos = targetHeart.HumanoidRootPart.Position + Vector3.new(0, Config.GyakuDistance, 0)
                             local lookCFrame = CFrame.lookAt(standPos, targetAimPos)
                             
+                            -- เรียกใช้ tp ฟังก์ชัน ซึ่งจะกด F รัวๆ ระหว่างบินให้ด้วย
                             tp(lookCFrame, targetAimPos, true, targetHeart, 15)
                             
                         else
@@ -492,11 +496,7 @@ task.spawn(function()
                                 char.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
                                 char.HumanoidRootPart.CFrame = CFrame.lookAt(standPos, aimPos)
                                 
-                                if Config.AdvanceKajiri or shouldLockCam or isMainBoss then 
-                                    workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos) 
-                                end
-
-                                -- ถ้าไม่ใช่โหมดเลเซอร์ค้าง (Kajiri ธรรมดา) ให้คลิกปกติ
+                                -- ถ้าไม่ใช่ Advance Kajiri / บอสใหญ่ ถึงจะมีการประมวลผลให้ "คลิกเมาส์"
                                 if not (Config.AdvanceKajiri or isMainBoss) then
                                     if Config.KajiriMode then
                                         pressKey("F", aimPos, "Down")
@@ -508,7 +508,6 @@ task.spawn(function()
                             end
                         end
                     else
-                        -- [อัปเดตแก้บั๊กโดดเซิร์ฟเร็วเกิน] เมื่อหาเป้าหมายไม่เจอ (บอสกำลังเปลี่ยนร่าง) ให้รอ 2.5 วิแล้วเช็คอีกครั้ง
                         if isHoldingF then pressKey("F", nil, "Up"); isHoldingF = false end
                         if char:FindFirstChild("Humanoid") then char.Humanoid.AutoRotate = true end
                         resetCamera()
