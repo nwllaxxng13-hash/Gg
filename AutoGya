@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: Smooth Circular Tween (No Stutter), Anti Sky-Camera Bug, Anti-Stun
+    Features: All Boss Farm, Hop Boss, Advance Kosshi, Fixed Boss Skills, Sync Auto Faction
 ]]
 
 local player = game.Players.LocalPlayer
@@ -106,7 +106,7 @@ end
 LoadConfig()
 
 -- ==========================================
--- 2. Auto Faction On Boot 
+-- 2. Auto Faction On Boot (บังคับให้เลือกให้เสร็จก่อนโหลด GUI)
 -- ==========================================
 pcall(function()
     local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
@@ -143,7 +143,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 4. Core Functions, Server Hop & Smooth TP
+-- 4. Core Functions & Server Hop
 -- ==========================================
 local isHopping = false
 local function ServerHop()
@@ -188,8 +188,7 @@ local function resetCamera()
     end
 end
 
--- [อัปเดตแก้อาการกระตุกและกล้องบั๊กฟ้า]
-local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
+local function tp(targetCFrame, aimPos, advanceMode, targetObj)
     if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
     local hrp = player.Character.HumanoidRootPart
     local val = Instance.new("CFrameValue")
@@ -214,37 +213,16 @@ local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
         if targetObj and (not targetObj.Parent or (targetObj:FindFirstChild("Humanoid") and targetObj.Humanoid.Health <= 0)) then
             tween:Cancel() break
         end
-        
-        -- ตัดจบ Tween ล่วงหน้าเมื่อใกล้ถึงจุดหมาย ทำให้บินเข้าโค้งวงกลมได้สมูท ไม่หยุดชะงัก
-        if earlyStop and earlyStop > 0 then
-            if (hrp.Position - targetCFrame.Position).Magnitude <= earlyStop then
-                tween:Cancel()
-                break
-            end
-        end
 
         if player.Character:FindFirstChild("HumanoidRootPart") then
-            local currentHRP = player.Character.HumanoidRootPart
-            currentHRP.CFrame = val.Value
+            player.Character.HumanoidRootPart.CFrame = val.Value
+            player.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
             
-            -- ป้องกันตัวละครเสียจังหวะ/หมุนกระเด็นตอนโดนบอสตี
-            currentHRP.Velocity = Vector3.new(0, 0, 0)
-            currentHRP.RotVelocity = Vector3.new(0, 0, 0) 
-            if player.Character:FindFirstChild("Humanoid") then
-                player.Character.Humanoid.PlatformStand = false
-            end
-            
-            if aimPos then
-                local cam = workspace.CurrentCamera
-                -- เช็คระยะห่าง ป้องกันกล้องบั๊กขึ้นฟ้า (NaN Error) ถ้าระยะทับกัน
-                if (cam.CFrame.Position - aimPos).Magnitude > 1 then 
-                    cam.CFrame = CFrame.lookAt(cam.CFrame.Position, aimPos)
-                end
-            end
-
             if advanceMode == "Kajiri" and aimPos then
+                workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos)
                 pressKey("F", aimPos)
             elseif advanceMode == "Kosshi" and aimPos then
+                workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos)
                 pressKey("E", aimPos)
                 pressKey("R", aimPos)
                 pressKey("F", aimPos)
@@ -535,10 +513,9 @@ task.spawn(function()
                             local standPos = targetHeart.HumanoidRootPart.Position + Vector3.new(0, Config.GyakuDistance, 0)
                             local dist = (char.HumanoidRootPart.Position - standPos).Magnitude
                             
-                            -- ใส่ earlyStop เป็น 15 เพื่อให้โค้งเข้าเป้าหมายถัดไปทันที ช่วยแก้บั๊กบินกระตุก
                             if dist > 5 then
                                 local lookCFrame = CFrame.lookAt(standPos, targetAimPos)
-                                tp(lookCFrame, targetAimPos, advMode, targetHeart, 15) 
+                                tp(lookCFrame, targetAimPos, advMode, targetHeart) 
                             else
                                 advanceIndex = nextIndex
                             end
@@ -555,12 +532,7 @@ task.spawn(function()
                                 char.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
                                 char.HumanoidRootPart.CFrame = CFrame.lookAt(standPos, aimPos)
                                 
-                                if shouldLockCam then 
-                                    local cam = workspace.CurrentCamera
-                                    if (cam.CFrame.Position - aimPos).Magnitude > 1 then 
-                                        cam.CFrame = CFrame.lookAt(cam.CFrame.Position, aimPos) 
-                                    end
-                                end
+                                if shouldLockCam then workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos) end
 
                                 if isMainBoss then
                                     if Config.AdvanceKosshi then
