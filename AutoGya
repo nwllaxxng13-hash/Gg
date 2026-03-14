@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: Advance V3 Farm (Circular Spam Click), All Boss, Anti Stun/Sky Bug
+    Features: Smooth Circular Tween (No Stutter), Anti Sky-Camera Bug, Anti-Stun
 ]]
 
 local player = game.Players.LocalPlayer
@@ -56,7 +56,6 @@ local Config = {
     KajiriMode = false,
     AdvanceKajiri = false,
     AdvanceKosshi = false,
-    AdvanceV3 = false, -- [ใหม่]
     HopBoss = false,
     AutoFaction = false,
     AutoMask = false,
@@ -107,7 +106,7 @@ end
 LoadConfig()
 
 -- ==========================================
--- 2. Auto Faction On Boot
+-- 2. Auto Faction On Boot 
 -- ==========================================
 pcall(function()
     local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
@@ -189,6 +188,7 @@ local function resetCamera()
     end
 end
 
+-- [อัปเดตแก้อาการกระตุกและกล้องบั๊กฟ้า]
 local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
     if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
     local hrp = player.Character.HumanoidRootPart
@@ -215,6 +215,7 @@ local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
             tween:Cancel() break
         end
         
+        -- ตัดจบ Tween ล่วงหน้าเมื่อใกล้ถึงจุดหมาย ทำให้บินเข้าโค้งวงกลมได้สมูท ไม่หยุดชะงัก
         if earlyStop and earlyStop > 0 then
             if (hrp.Position - targetCFrame.Position).Magnitude <= earlyStop then
                 tween:Cancel()
@@ -226,6 +227,7 @@ local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
             local currentHRP = player.Character.HumanoidRootPart
             currentHRP.CFrame = val.Value
             
+            -- ป้องกันตัวละครเสียจังหวะ/หมุนกระเด็นตอนโดนบอสตี
             currentHRP.Velocity = Vector3.new(0, 0, 0)
             currentHRP.RotVelocity = Vector3.new(0, 0, 0) 
             if player.Character:FindFirstChild("Humanoid") then
@@ -234,12 +236,12 @@ local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
             
             if aimPos then
                 local cam = workspace.CurrentCamera
+                -- เช็คระยะห่าง ป้องกันกล้องบั๊กขึ้นฟ้า (NaN Error) ถ้าระยะทับกัน
                 if (cam.CFrame.Position - aimPos).Magnitude > 1 then 
                     cam.CFrame = CFrame.lookAt(cam.CFrame.Position, aimPos)
                 end
             end
 
-            -- [อัปเดต] รองรับระบบ V3 (สแปมคลิกปกติขณะบินวงกลม)
             if advanceMode == "Kajiri" and aimPos then
                 pressKey("F", aimPos)
             elseif advanceMode == "Kosshi" and aimPos then
@@ -247,8 +249,6 @@ local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
                 pressKey("R", aimPos)
                 pressKey("F", aimPos)
                 pressKey("C", aimPos)
-            elseif advanceMode == "V3" and aimPos then
-                pressKey("Mouse1", aimPos)
             end
         end
         task.wait()
@@ -518,11 +518,9 @@ task.spawn(function()
                     local warpNpc, aimPos, shouldLockCam, heartsList, bossObj = getGyakuTarget()
                     local isMainBoss = (warpNpc and warpNpc.Name == "Gyakusatsu")
 
-                    -- [อัปเดต] เลือกระบบ Advance (รวม V3)
                     local advMode = false
                     if Config.AdvanceKajiri then advMode = "Kajiri"
-                    elseif Config.AdvanceKosshi then advMode = "Kosshi"
-                    elseif Config.AdvanceV3 then advMode = "V3" end
+                    elseif Config.AdvanceKosshi then advMode = "Kosshi" end
 
                     if warpNpc and aimPos then
                         
@@ -537,6 +535,7 @@ task.spawn(function()
                             local standPos = targetHeart.HumanoidRootPart.Position + Vector3.new(0, Config.GyakuDistance, 0)
                             local dist = (char.HumanoidRootPart.Position - standPos).Magnitude
                             
+                            -- ใส่ earlyStop เป็น 15 เพื่อให้โค้งเข้าเป้าหมายถัดไปทันที ช่วยแก้บั๊กบินกระตุก
                             if dist > 5 then
                                 local lookCFrame = CFrame.lookAt(standPos, targetAimPos)
                                 tp(lookCFrame, targetAimPos, advMode, targetHeart, 15) 
@@ -563,19 +562,14 @@ task.spawn(function()
                                     end
                                 end
 
-                                -- [อัปเดต] การยิงสกิลใส่บอสใหญ่และสแปมปกติ
                                 if isMainBoss then
                                     if Config.AdvanceKosshi then
                                         pressKey("E", aimPos); pressKey("R", aimPos); pressKey("F", aimPos); pressKey("C", aimPos)
-                                    elseif Config.AdvanceV3 then
-                                        pressKey("Mouse1", aimPos)
                                     else
                                         pressKey("F", aimPos)
                                     end
                                 elseif Config.AdvanceKosshi then
                                     pressKey("E", aimPos); pressKey("R", aimPos); pressKey("F", aimPos); pressKey("C", aimPos)
-                                elseif Config.AdvanceV3 then
-                                    pressKey("Mouse1", aimPos)
                                 elseif Config.KajiriMode then
                                     pressKey("F", aimPos); pressKey("Mouse1", aimPos)
                                 else
@@ -734,16 +728,12 @@ local GyakuTab = Window:Tab({Title = "Gyaku 💀", Icon = "skull"}) do
     GyakuTab:Toggle({ Title = "☠️ Start Gyakusatsu Farm", Value = Config.GyakuFarm, Callback = function(v) Config.GyakuFarm = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🎯 Kajiri Mode (Aimbot + Attack)", Value = Config.KajiriMode, Callback = function(v) Config.KajiriMode = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🌀 Advance Kajiri (Spam F)", Value = Config.AdvanceKajiri, Callback = function(v) Config.AdvanceKajiri = v; SaveConfig() end })
-    GyakuTab:Toggle({ Title = "🌪️ Advance Kosshi Farm", Desc = "Circular move + Spam E,R,F,C", Value = Config.AdvanceKosshi, Callback = function(v) Config.AdvanceKosshi = v; SaveConfig() end })
-    
-    -- [อัปเดต] เพิ่ม Toggle โหมด V3 
     GyakuTab:Toggle({ 
-        Title = "🖱️ Advance V3 Farm (Spam Click)", 
-        Desc = "Circular move + Spam Mouse1",
-        Value = Config.AdvanceV3, 
-        Callback = function(v) Config.AdvanceV3 = v; SaveConfig() end 
+        Title = "🌪️ Advance Kosshi Farm", 
+        Desc = "Circular move + Spam E,R,F,C",
+        Value = Config.AdvanceKosshi, 
+        Callback = function(v) Config.AdvanceKosshi = v; SaveConfig() end 
     })
-    
     GyakuTab:Toggle({ Title = "🌐 Auto Hop Boss", Value = Config.HopBoss, Callback = function(v) Config.HopBoss = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🔄 Auto Faction Loop", Value = Config.AutoFaction, Callback = function(v) Config.AutoFaction = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🎭 Auto Mask on Spawn", Value = Config.AutoMask, Callback = function(v) Config.AutoMask = v; SaveConfig() end })
