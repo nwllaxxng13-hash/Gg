@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: All Boss Farm, Hop Boss, Advance Kosshi, Fixed Boss Skills
+    Features: All Boss Farm, Hop Boss, Advance Kosshi, Fixed Boss Skills, Sync Auto Faction
 ]]
 
 local player = game.Players.LocalPlayer
@@ -31,8 +31,8 @@ local Config = {
     DistanceBoss = 15,
     
     -- Boss
-    AllBossFarm = false, -- [ใหม่]
-    HopAllBoss = false,  -- [ใหม่]
+    AllBossFarm = false,
+    HopAllBoss = false,
     Boss = {
         ["Gyakusatsu"] = false,
         ["Eto Yoshimura"] = false,
@@ -55,7 +55,7 @@ local Config = {
     GyakuFarm = false,
     KajiriMode = false,
     AdvanceKajiri = false,
-    AdvanceKosshi = false, -- [ใหม่]
+    AdvanceKosshi = false,
     HopBoss = false,
     AutoFaction = false,
     AutoMask = false,
@@ -71,14 +71,12 @@ local TargetMap = {
     ["Humans"] = "HumanSpawns"
 }
 
--- [ใหม่] Master Boss List สำหรับเช็คเลเวลโหมด All Boss Farm
 local MasterBossLevels = {
     ["Nishiki Nishio"] = 250,
     ["Koutarou Amon"] = 750,
     ["Eto Yoshimura"] = 1250,
     ["Gyakusatsu"] = 1250,
     ["Kosshi"] = 1250,
-    -- หากมีบอสใหม่ที่ไม่ได้อยู่ในนี้ สคริปต์จะอนุโลมให้ตีได้ทันที (ถือว่า Level Req = 0)
 }
 
 local SaveFileName = "ArkHub_SavedConfig.json"
@@ -108,15 +106,16 @@ end
 LoadConfig()
 
 -- ==========================================
--- 2. Auto Faction On Boot 
+-- 2. Auto Faction On Boot (บังคับให้เลือกให้เสร็จก่อนโหลด GUI)
 -- ==========================================
-task.spawn(function()
-    pcall(function()
-        local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
-        if remotes and remotes:FindFirstChild("Race") then
-            remotes.Race.Chose:InvokeServer(Config.FactionChoice)
+pcall(function()
+    local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+    if remotes then
+        local raceRemote = remotes:WaitForChild("Race", 5)
+        if raceRemote then
+            raceRemote.Chose:InvokeServer(Config.FactionChoice)
         end
-    end)
+    end
 end)
 
 repeat task.wait() until player:FindFirstChild("PlayerFolder")
@@ -189,7 +188,6 @@ local function resetCamera()
     end
 end
 
--- [อัปเดต] รองรับ advanceMode แบบ String ("Kajiri" หรือ "Kosshi")
 local function tp(targetCFrame, aimPos, advanceMode, targetObj)
     if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
     local hrp = player.Character.HumanoidRootPart
@@ -309,11 +307,10 @@ local function getStandardNPC()
             local isTargetMob = (npc.Parent.Name == Config.FarmTarget)
             local isSpecificBoss = Config.Boss[npc.Name]
             
-            -- ค้นหาว่าเป็นบอสหรือไม่ (เช็คจาก Master List หรืออยู่นอกโฟลเดอร์เกิดปกติ)
             local isBossMob = (MasterBossLevels[npc.Name] ~= nil) or (npc.Parent.Name == "NPCSpawns" and npc.Name ~= "Mob" and not TargetMap[npc.Name] and not string.find(npc.Name:lower(), "spawn"))
 
             if npc.Name == "Gyakusatsu" then
-                -- ข้าม Gyakusatsu เพราะมีฟังก์ชั่นของมันเอง
+                -- ข้าม Gyakusatsu
             elseif Config.AllBossFarm and isBossMob then
                 local req = MasterBossLevels[npc.Name] or 0
                 if pLevel >= req then
@@ -380,11 +377,9 @@ task.spawn(function()
 
                     local npc, validBossExists = getStandardNPC()
                     
-                    -- [อัปเดต] ระบบ Hop All Boss
                     if Config.AllBossFarm and Config.HopAllBoss and not validBossExists then
                         resetCamera(); ServerHop()
                     elseif npc then
-                        -- วิเคราะห์สถานะว่าเป้าหมายนี้เป็นบอสหรือไม่
                         local isBoss = Config.Boss[npc.Name] or (Config.AllBossFarm and (MasterBossLevels[npc.Name] ~= nil or npc.Parent.Name == "NPCSpawns"))
                         
                         local targetCF = getFarmCFrame(npc, isBoss)
@@ -399,7 +394,6 @@ task.spawn(function()
                             if player.PlayerFolder.CanAct.Value then
                                 pressKey("Mouse1")
                                 
-                                -- [อัปเดตแก้บั๊ก] โยนตำแหน่ง aimPos ให้กับสคริปต์เพื่อให้สกิลยิงโดนบอส 100%
                                 if isBoss then
                                     for keyName, isEnabled in pairs(Config.Skills) do
                                         if isEnabled then pressKey(keyName, npc.HumanoidRootPart.Position) end
@@ -423,7 +417,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 7. Gyaku V13 Logic (Advance Kosshi Support)
+-- 7. Gyaku V13 Logic
 -- ==========================================
 local function getGyakuTarget()
     local spawnFolder = workspace:FindFirstChild("NPCSpawns")
@@ -502,7 +496,6 @@ task.spawn(function()
                     local warpNpc, aimPos, shouldLockCam, heartsList, bossObj = getGyakuTarget()
                     local isMainBoss = (warpNpc and warpNpc.Name == "Gyakusatsu")
 
-                    -- เลือกระบบ Advance
                     local advMode = false
                     if Config.AdvanceKajiri then advMode = "Kajiri"
                     elseif Config.AdvanceKosshi then advMode = "Kosshi" end
@@ -541,7 +534,6 @@ task.spawn(function()
                                 
                                 if shouldLockCam then workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos) end
 
-                                -- ระบบยิงสกิลใส่บอสใหญ่ และโหมดตีธรรมดา
                                 if isMainBoss then
                                     if Config.AdvanceKosshi then
                                         pressKey("E", aimPos); pressKey("R", aimPos); pressKey("F", aimPos); pressKey("C", aimPos)
