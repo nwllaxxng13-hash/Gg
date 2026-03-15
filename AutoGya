@@ -501,7 +501,7 @@ task.spawn(function()
                     if not char:FindFirstChild("Kagune") and not char:FindFirstChild("Quinque") then
                         pressKey(Config.WeaponStage)
                         if Config.AdvanceHinami then
-                            task.wait(4) -- รอ 4 วิให้แอนิเมชันสวมใส่เสร็จ
+                            task.wait(2) -- รอ 4 วิให้แอนิเมชันสวมใส่เสร็จ
                             pressKey("F", aimPos) -- กด F 1 ที
                         else
                             task.wait(0.5)
