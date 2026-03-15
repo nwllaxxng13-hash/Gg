@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: All Boss Farm, Hop Boss, Advance Kosshi, Fixed Boss Skills, Sync Auto Faction
+    Features: Advance Hinami (Equip -> F -> Hold E), V3 Farm, Anti Stun/Sky Bug
 ]]
 
 local player = game.Players.LocalPlayer
@@ -56,6 +56,8 @@ local Config = {
     KajiriMode = false,
     AdvanceKajiri = false,
     AdvanceKosshi = false,
+    AdvanceV3 = false,
+    AdvanceHinami = false, -- [ใหม่]
     HopBoss = false,
     AutoFaction = false,
     AutoMask = false,
@@ -106,7 +108,7 @@ end
 LoadConfig()
 
 -- ==========================================
--- 2. Auto Faction On Boot (บังคับให้เลือกให้เสร็จก่อนโหลด GUI)
+-- 2. Auto Faction On Boot
 -- ==========================================
 pcall(function()
     local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
@@ -143,7 +145,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 4. Core Functions & Server Hop
+-- 4. Core Functions, Server Hop & Smooth TP
 -- ==========================================
 local isHopping = false
 local function ServerHop()
@@ -188,7 +190,7 @@ local function resetCamera()
     end
 end
 
-local function tp(targetCFrame, aimPos, advanceMode, targetObj)
+local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
     if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
     local hrp = player.Character.HumanoidRootPart
     local val = Instance.new("CFrameValue")
@@ -213,20 +215,43 @@ local function tp(targetCFrame, aimPos, advanceMode, targetObj)
         if targetObj and (not targetObj.Parent or (targetObj:FindFirstChild("Humanoid") and targetObj.Humanoid.Health <= 0)) then
             tween:Cancel() break
         end
+        
+        if earlyStop and earlyStop > 0 then
+            if (hrp.Position - targetCFrame.Position).Magnitude <= earlyStop then
+                tween:Cancel()
+                break
+            end
+        end
 
         if player.Character:FindFirstChild("HumanoidRootPart") then
-            player.Character.HumanoidRootPart.CFrame = val.Value
-            player.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+            local currentHRP = player.Character.HumanoidRootPart
+            currentHRP.CFrame = val.Value
             
+            currentHRP.Velocity = Vector3.new(0, 0, 0)
+            currentHRP.RotVelocity = Vector3.new(0, 0, 0) 
+            if player.Character:FindFirstChild("Humanoid") then
+                player.Character.Humanoid.PlatformStand = false
+            end
+            
+            if aimPos then
+                local cam = workspace.CurrentCamera
+                if (cam.CFrame.Position - aimPos).Magnitude > 1 then 
+                    cam.CFrame = CFrame.lookAt(cam.CFrame.Position, aimPos)
+                end
+            end
+
+            -- [อัปเดต] รองรับระบบ Advance Hinami
             if advanceMode == "Kajiri" and aimPos then
-                workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos)
                 pressKey("F", aimPos)
             elseif advanceMode == "Kosshi" and aimPos then
-                workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos)
                 pressKey("E", aimPos)
                 pressKey("R", aimPos)
                 pressKey("F", aimPos)
                 pressKey("C", aimPos)
+            elseif advanceMode == "V3" and aimPos then
+                pressKey("Mouse1", aimPos)
+            elseif advanceMode == "Hinami" and aimPos then
+                pressKey("E", aimPos) -- กด E รัวๆ เพื่อป้องกันสกิลหลุด (เปรียบเสมือนกด E ค้างไว้)
             end
         end
         task.wait()
@@ -474,6 +499,7 @@ task.spawn(function()
 end)
 
 local advanceIndex = 1
+local hasPressedHinamiF = false -- [ตัวแปรเช็คการกด F 1 ครั้งของโหมด Hinami]
 
 task.spawn(function()
     task.wait(3)
@@ -489,8 +515,10 @@ task.spawn(function()
                         task.wait(0.5)
                     end
 
+                    -- เช็คการใส่อาวุธ
                     if not char:FindFirstChild("Kagune") and not char:FindFirstChild("Quinque") then
                         pressKey(Config.WeaponStage); task.wait(0.5)
+                        hasPressedHinamiF = false -- รีเซ็ตเมื่อทำการใส่อาวุธใหม่ (เช่นเพิ่งเกิด)
                     end
 
                     local warpNpc, aimPos, shouldLockCam, heartsList, bossObj = getGyakuTarget()
@@ -498,7 +526,16 @@ task.spawn(function()
 
                     local advMode = false
                     if Config.AdvanceKajiri then advMode = "Kajiri"
-                    elseif Config.AdvanceKosshi then advMode = "Kosshi" end
+                    elseif Config.AdvanceKosshi then advMode = "Kosshi"
+                    elseif Config.AdvanceV3 then advMode = "V3"
+                    elseif Config.AdvanceHinami then advMode = "Hinami" end -- [เพิ่ม Hinami]
+
+                    -- [สำคัญ] เมื่อใส่ Kagune/Quinque เสร็จปุ๊บ สคริปต์จะกด F 1 ที
+                    if advMode == "Hinami" and not hasPressedHinamiF and aimPos and (char:FindFirstChild("Kagune") or char:FindFirstChild("Quinque")) then
+                        task.wait(0.3) -- รออนิเมชั่นหยิบอาวุธนิดนึง
+                        pressKey("F", aimPos)
+                        hasPressedHinamiF = true
+                    end
 
                     if warpNpc and aimPos then
                         
@@ -515,7 +552,7 @@ task.spawn(function()
                             
                             if dist > 5 then
                                 local lookCFrame = CFrame.lookAt(standPos, targetAimPos)
-                                tp(lookCFrame, targetAimPos, advMode, targetHeart) 
+                                tp(lookCFrame, targetAimPos, advMode, targetHeart, 15) 
                             else
                                 advanceIndex = nextIndex
                             end
@@ -532,16 +569,30 @@ task.spawn(function()
                                 char.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
                                 char.HumanoidRootPart.CFrame = CFrame.lookAt(standPos, aimPos)
                                 
-                                if shouldLockCam then workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos) end
+                                if shouldLockCam then 
+                                    local cam = workspace.CurrentCamera
+                                    if (cam.CFrame.Position - aimPos).Magnitude > 1 then 
+                                        cam.CFrame = CFrame.lookAt(cam.CFrame.Position, aimPos) 
+                                    end
+                                end
 
+                                -- เลือกว่าจะกดอะไรเวลาตียืนบวก
                                 if isMainBoss then
                                     if Config.AdvanceKosshi then
                                         pressKey("E", aimPos); pressKey("R", aimPos); pressKey("F", aimPos); pressKey("C", aimPos)
+                                    elseif Config.AdvanceV3 then
+                                        pressKey("Mouse1", aimPos)
+                                    elseif Config.AdvanceHinami then
+                                        pressKey("E", aimPos) -- กด E ค้าง (สแปม)
                                     else
                                         pressKey("F", aimPos)
                                     end
                                 elseif Config.AdvanceKosshi then
                                     pressKey("E", aimPos); pressKey("R", aimPos); pressKey("F", aimPos); pressKey("C", aimPos)
+                                elseif Config.AdvanceV3 then
+                                    pressKey("Mouse1", aimPos)
+                                elseif Config.AdvanceHinami then
+                                    pressKey("E", aimPos)
                                 elseif Config.KajiriMode then
                                     pressKey("F", aimPos); pressKey("Mouse1", aimPos)
                                 else
@@ -556,10 +607,12 @@ task.spawn(function()
                     end
                 else
                     Config.HasMasked = false; resetCamera() 
+                    hasPressedHinamiF = false -- ถ้าตาย ให้รีเซ็ตค่ากลับเป็น false
                 end
             end)
         else
             Config.HasMasked = false; resetCamera() 
+            hasPressedHinamiF = false
         end
     end
 end)
@@ -700,12 +753,17 @@ local GyakuTab = Window:Tab({Title = "Gyaku 💀", Icon = "skull"}) do
     GyakuTab:Toggle({ Title = "☠️ Start Gyakusatsu Farm", Value = Config.GyakuFarm, Callback = function(v) Config.GyakuFarm = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🎯 Kajiri Mode (Aimbot + Attack)", Value = Config.KajiriMode, Callback = function(v) Config.KajiriMode = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🌀 Advance Kajiri (Spam F)", Value = Config.AdvanceKajiri, Callback = function(v) Config.AdvanceKajiri = v; SaveConfig() end })
+    GyakuTab:Toggle({ Title = "🌪️ Advance Kosshi Farm", Desc = "Circular move + Spam E,R,F,C", Value = Config.AdvanceKosshi, Callback = function(v) Config.AdvanceKosshi = v; SaveConfig() end })
+    GyakuTab:Toggle({ Title = "🖱️ Advance V3 Farm (Spam Click)", Desc = "Circular move + Spam Mouse1", Value = Config.AdvanceV3, Callback = function(v) Config.AdvanceV3 = v; SaveConfig() end })
+    
+    -- [อัปเดต] เพิ่ม Toggle โหมด Hinami
     GyakuTab:Toggle({ 
-        Title = "🌪️ Advance Kosshi Farm", 
-        Desc = "Circular move + Spam E,R,F,C",
-        Value = Config.AdvanceKosshi, 
-        Callback = function(v) Config.AdvanceKosshi = v; SaveConfig() end 
+        Title = "🌸 Advance Hinami Farm", 
+        Desc = "Equip -> F once -> Spam Hold E",
+        Value = Config.AdvanceHinami, 
+        Callback = function(v) Config.AdvanceHinami = v; SaveConfig() end 
     })
+    
     GyakuTab:Toggle({ Title = "🌐 Auto Hop Boss", Value = Config.HopBoss, Callback = function(v) Config.HopBoss = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🔄 Auto Faction Loop", Value = Config.AutoFaction, Callback = function(v) Config.AutoFaction = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🎭 Auto Mask on Spawn", Value = Config.AutoMask, Callback = function(v) Config.AutoMask = v; SaveConfig() end })
