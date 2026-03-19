@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: Scorpion Farm (1-by-1 Target), Smart Boss Skills, Deep Scan, Smooth Orbit
+    Features: Gyaku Hop Fix (Wait for Boss Spawn), Scorpion Farm, Boss Queue
 ]]
 
 local player = game.Players.LocalPlayer
@@ -65,7 +65,7 @@ local Config = {
     AdvanceKosshi = false,
     AdvanceV3 = false,
     AdvanceHinami = false,
-    ScorpionFarm = false, -- [ใหม่]
+    ScorpionFarm = false,
     HopBoss = false,
     AutoFaction = false,
     AutoMask = false,
@@ -172,7 +172,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 4. Core Functions & Smooth Orbit TP
+-- 4. Core Functions & TP
 -- ==========================================
 local isHopping = false
 local function ServerHop()
@@ -223,7 +223,7 @@ local function resetCamera()
 end
 
 local lastKajiriHold = 0
-local gyakuSkillTick = 0 -- [ตัวแปรจัดการคิวสกิลสำหรับ Scorpion Farm]
+local gyakuSkillTick = 0
 
 local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
     if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
@@ -296,7 +296,6 @@ local function triggerAttack(mode, aimPos)
     if mode == "Kosshi" then
         pressKey("E", aimPos); pressKey("R", aimPos); pressKey("F", aimPos); pressKey("C", aimPos)
     elseif mode == "Scorpion" then
-        -- [แก้ไข] คิวสกิลสำหรับ Scorpion Farm ฆ่าทีละดวง + กันสกิลแคนเซิล
         if tick() - gyakuSkillTick > 2.5 then
             gyakuSkillTick = tick()
             task.spawn(function()
@@ -377,7 +376,7 @@ local function handleQuestAndCashout()
 end
 
 -- ==========================================
--- 6. Standard Farm Logic (Deep Scan & Boss Fix)
+-- 6. Standard Farm Logic
 -- ==========================================
 local function getStandardNPC()
     local nearestnpc, nearest = nil, math.huge
@@ -408,7 +407,7 @@ local function getStandardNPC()
         local isSpecificBoss = Config.Boss[npcName]
         local isBossMob = (MasterBossLevels[npcName] ~= nil) or (npc.Parent and npc.Parent.Name == "NPCSpawns" and not TargetMap[npcName] and not string.find(npcName:lower(), "spawn"))
 
-        if npcName == "Gyakusatsu" then
+        if string.find(npcName, "Gyakusatsu") then
             -- ข้าม Gyakusatsu
         elseif isSpecificBoss then
             validBossExists = true
@@ -521,7 +520,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 7. Gyaku V13 Logic
+-- 7. Gyaku V13 Logic (Fixed Transition Wait)
 -- ==========================================
 local function getGyakuTarget()
     local spawnFolder = workspace:FindFirstChild("NPCSpawns")
@@ -537,7 +536,11 @@ local function getGyakuTarget()
             local hum = v:FindFirstChild("Humanoid")
             local hrp = v:FindFirstChild("HumanoidRootPart")
             if hum and hrp and hum.Health > 0 then
-                if v.Name == "Gyakusatsu" then boss = v else table.insert(hearts, v) end
+                if string.find(v.Name, "Gyakusatsu") then 
+                    boss = v 
+                else 
+                    table.insert(hearts, v) 
+                end
             end
         end
     end
@@ -571,6 +574,7 @@ end)
 
 local advanceIndex = 1
 local hasPressedHinamiF = false 
+local gyakuHopWaitTick = 0 -- [ตัวแปรใหม่] จัดการดีเลย์ 10 วิ ก่อน Hop ออก
 
 task.spawn(function()
     task.wait(3)
@@ -598,7 +602,7 @@ task.spawn(function()
                     elseif Config.AdvanceKosshi then advMode = "Kosshi"
                     elseif Config.AdvanceV3 then advMode = "V3"
                     elseif Config.AdvanceHinami then advMode = "Hinami"
-                    elseif Config.ScorpionFarm then advMode = "Scorpion" end -- [เพิ่มโหมด Scorpion]
+                    elseif Config.ScorpionFarm then advMode = "Scorpion" end 
 
                     if advMode == "Hinami" and not hasPressedHinamiF and (char:FindFirstChild("Kagune") or char:FindFirstChild("Quinque")) then
                         task.wait(0.3) 
@@ -606,21 +610,23 @@ task.spawn(function()
                         hasPressedHinamiF = true
                     end
 
-                    -- [ระบบแยก] สำหรับ Scorpion Farm (ฆ่าทีละดวง ไม่บินทะลุ)
+                    local isTargetActive = false
+
+                    -- [Scorpion Logic]
                     if advMode == "Scorpion" then
                         local targetObj = nil
                         for _, h in ipairs(heartsList) do
                             if h and h.Parent and h.Humanoid.Health > 0 then
                                 targetObj = h
-                                break -- เจอหัวใจดวงแรกที่รอด ให้ล็อคเป้าเลย
+                                break 
                             end
                         end
-                        -- ถ้าหัวใจตายหมด ให้ตีบอสใหญ่
                         if not targetObj and bossObj and bossObj.Parent and bossObj.Humanoid.Health > 0 then
                             targetObj = bossObj
                         end
 
                         if targetObj then
+                            isTargetActive = true
                             local aimPos = targetObj.HumanoidRootPart.Position
                             local standPos = aimPos + Vector3.new(0, Config.GyakuDistance, 0)
                             local dist = (char.HumanoidRootPart.Position - standPos).Magnitude
@@ -634,14 +640,11 @@ task.spawn(function()
                                 char.HumanoidRootPart.CFrame = CFrame.lookAt(standPos, aimPos)
                                 triggerAttack(advMode, aimPos)
                             end
-                        else
-                            if char:FindFirstChild("Humanoid") then char.Humanoid.AutoRotate = true end
-                            resetCamera()
-                            if Config.HopBoss then ServerHop() end
                         end
 
-                    -- [ระบบเดิม] สำหรับ Advance Farm (บินเป็นวงกลม)
+                    -- [Advance Logic]
                     elseif #heartsList > 0 and advMode then
+                        isTargetActive = true
                         if advanceIndex > #heartsList then advanceIndex = 1 end
                         local targetHeart = heartsList[advanceIndex]
                         
@@ -669,7 +672,9 @@ task.spawn(function()
                             advanceIndex = advanceIndex + 1
                         end
 
+                    -- [Orbit Boss Logic]
                     elseif bossObj and bossObj.Parent and bossObj.Humanoid.Health > 0 then
+                        isTargetActive = true
                         local aimPos = bossObj.HumanoidRootPart.Position
                         local orbitTime = tick() * 1.5
                         local standPos = aimPos + Vector3.new(math.sin(orbitTime) * Config.GyakuDistance, 5, math.cos(orbitTime) * Config.GyakuDistance)
@@ -677,11 +682,25 @@ task.spawn(function()
                         local lookCFrame = CFrame.lookAt(standPos, aimPos)
                         tp(lookCFrame, aimPos, advMode, bossObj, 5) 
                         triggerAttack(advMode, aimPos)
+                    end
+
+                    -- [ระบบเช็คชัวร์ 10 วิ ก่อน Hop (Transition Validator)]
+                    if isTargetActive then
+                        gyakuHopWaitTick = 0 -- ถ้าตีบอสหรือหัวใจอยู่ รีเซ็ตเวลารอทิ้งไป
                     else
                         if char:FindFirstChild("Humanoid") then char.Humanoid.AutoRotate = true end
                         resetCamera()
-                        if Config.HopBoss then ServerHop() end
+                        if Config.HopBoss then 
+                            if gyakuHopWaitTick == 0 then
+                                gyakuHopWaitTick = tick() -- เริ่มนับถอยหลัง 10 วิ
+                            elseif tick() - gyakuHopWaitTick > 10 then 
+                                -- ถ้าผ่านไป 10 วิแล้วบอสไม่เกิด ค่อย Hop
+                                ServerHop()
+                                gyakuHopWaitTick = tick()
+                            end
+                        end
                     end
+
                 else
                     Config.HasMasked = false; resetCamera() 
                     hasPressedHinamiF = false 
@@ -692,6 +711,7 @@ task.spawn(function()
             Config.HasMasked = false; resetCamera() 
             hasPressedHinamiF = false
             lastKajiriHold = 0
+            gyakuHopWaitTick = 0
         end
     end
 end)
