@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: Gyaku Hop Fix (Wait for Boss Spawn), Scorpion Farm, Boss Queue
+    Features: 0s Gyaku Hop Fix (Corpse Validator), Scorpion Farm, Smart Queue Boss Skills
 ]]
 
 local player = game.Players.LocalPlayer
@@ -311,7 +311,7 @@ local function triggerAttack(mode, aimPos)
     elseif mode == "Hinami" then
         pressKey("E", aimPos)
     elseif mode == "Kajiri" then
-        if tick() - lastKajiriHold > 3 then
+        if tick() - lastKajiriHold > 1.5 then
             pressKey("F", aimPos)
             lastKajiriHold = tick()
         end
@@ -574,7 +574,7 @@ end)
 
 local advanceIndex = 1
 local hasPressedHinamiF = false 
-local gyakuHopWaitTick = 0 -- [ตัวแปรใหม่] จัดการดีเลย์ 10 วิ ก่อน Hop ออก
+local gyakuHopWaitTick = 0 
 
 task.spawn(function()
     task.wait(3)
@@ -684,19 +684,25 @@ task.spawn(function()
                         triggerAttack(advMode, aimPos)
                     end
 
-                    -- [ระบบเช็คชัวร์ 10 วิ ก่อน Hop (Transition Validator)]
+                    -- [ระบบเช็คชัวร์ 0 วินาที ฆ่าบอสใหญ่เสร็จ 100% ก่อน Hop]
                     if isTargetActive then
-                        gyakuHopWaitTick = 0 -- ถ้าตีบอสหรือหัวใจอยู่ รีเซ็ตเวลารอทิ้งไป
+                        gyakuHopWaitTick = 0 
                     else
                         if char:FindFirstChild("Humanoid") then char.Humanoid.AutoRotate = true end
                         resetCamera()
                         if Config.HopBoss then 
-                            if gyakuHopWaitTick == 0 then
-                                gyakuHopWaitTick = tick() -- เริ่มนับถอยหลัง 10 วิ
-                            elseif tick() - gyakuHopWaitTick > 1 then 
-                                -- ถ้าผ่านไป 10 วิแล้วบอสไม่เกิด ค่อย Hop
+                            -- เช็คว่ามีศพของบอสตกอยู่ไหม ถ้ามี = ฆ่าบอสตัวจริงเสร็จแล้ว 100% -> Hop ทันที! (0 วินาที)
+                            local corpse = workspace:FindFirstChild("Gyakusatsu Corpse", true)
+                            if corpse then
                                 ServerHop()
-                                gyakuHopWaitTick = tick()
+                            else
+                                -- ถ้าไม่มีศพบอส (หัวใจพังแล้ว แต่บอสกำลังเกิด) ให้เวลาเซิร์ฟโหลดบอส 1.5 วิ
+                                if gyakuHopWaitTick == 0 then
+                                    gyakuHopWaitTick = tick()
+                                elseif tick() - gyakuHopWaitTick > 1.5 then 
+                                    ServerHop()
+                                    gyakuHopWaitTick = tick()
+                                end
                             end
                         end
                     end
