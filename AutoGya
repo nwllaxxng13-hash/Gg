@@ -311,7 +311,7 @@ local function triggerAttack(mode, aimPos)
     elseif mode == "Hinami" then
         pressKey("E", aimPos)
     elseif mode == "Kajiri" then
-        if tick() - lastKajiriHold > 1.5 then
+        if tick() - lastKajiriHold > 3 then
             pressKey("F", aimPos)
             lastKajiriHold = tick()
         end
@@ -693,7 +693,7 @@ task.spawn(function()
                         if Config.HopBoss then 
                             if gyakuHopWaitTick == 0 then
                                 gyakuHopWaitTick = tick() -- เริ่มนับถอยหลัง 10 วิ
-                            elseif tick() - gyakuHopWaitTick > 10 then 
+                            elseif tick() - gyakuHopWaitTick > 2 then 
                                 -- ถ้าผ่านไป 10 วิแล้วบอสไม่เกิด ค่อย Hop
                                 ServerHop()
                                 gyakuHopWaitTick = tick()
