@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: Free Camera, Smooth Orbit Tween, Kajiri Hold F, Auto Boss Hop, Fixed Boss Skills
+    Features: Fixed Boss Skills Queue, Added Young Eto & Touka, Smart Hop, Smooth Orbit
 ]]
 
 local player = game.Players.LocalPlayer
@@ -33,20 +33,24 @@ local Config = {
     -- Boss
     AllBossFarm = false,
     HopAllBoss = false,
-    HopSelectedBoss = false,
+    HopSelectedBoss = false, 
     Boss = {
         ["Gyakusatsu"] = false,
         ["Eto Yoshimura"] = false,
+        ["Young Eto Yoshimura"] = false, -- [ใหม่]
         ["Koutarou Amon"] = false,
         ["Nishiki Nishio"] = false,
-        ["Fighter"] = false
+        ["Touka Kirishima"] = false,   -- [ใหม่]
+        ["Fighter"] = false 
     },
     BossLevels = {
         ["Gyakusatsu"] = 1250,
         ["Eto Yoshimura"] = 1250,
+        ["Young Eto Yoshimura"] = 0,
         ["Koutarou Amon"] = 750,
         ["Nishiki Nishio"] = 250,
-        ["Fighter"] = 50
+        ["Touka Kirishima"] = 0,
+        ["Fighter"] = 0 
     },
     Skills = { E = false, R = false, F = false, C = false },
     
@@ -80,9 +84,11 @@ local MasterBossLevels = {
     ["Nishiki Nishio"] = 250,
     ["Koutarou Amon"] = 750,
     ["Eto Yoshimura"] = 1250,
+    ["Young Eto Yoshimura"] = 0,
     ["Gyakusatsu"] = 1250,
     ["Kosshi"] = 1250,
-    ["Fighter"] = 50
+    ["Touka Kirishima"] = 0,
+    ["Fighter"] = 0
 }
 
 local CodesList = {
@@ -186,6 +192,7 @@ local function ServerHop()
     task.wait(3); isHopping = false
 end
 
+-- [แก้ไข] เพิ่มการหน่วงเวลาปล่อยปุ่ม (KeyUp) ให้เกมรับคำสั่งสมบูรณ์ 
 local function pressKey(keyToPress, aimPosition)
     if not Config.Key or not player.Character or not player.Character:FindFirstChild("Remotes") then return end
     local hit = player:GetMouse().Hit
@@ -194,8 +201,16 @@ local function pressKey(keyToPress, aimPosition)
         hit = CFrame.new(aimPosition)
         camCFrame = CFrame.lookAt(player.Character.HumanoidRootPart.Position, aimPosition)
     end
+    
     local fireEvent = Instance.new("RemoteEvent").FireServer
     fireEvent(player.Character.Remotes.KeyEvent, Config.Key, keyToPress, "Down", hit, nil, camCFrame)
+    
+    task.spawn(function()
+        task.wait(0.1)
+        pcall(function()
+            fireEvent(player.Character.Remotes.KeyEvent, Config.Key, keyToPress, "Up", hit, nil, camCFrame)
+        end)
+    end)
 end
 
 local function resetCamera()
@@ -256,7 +271,7 @@ local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
             end
             
             if advanceMode == "Kajiri" and aimPos then
-                if tick() - lastKajiriHold > 0.1 then
+                if tick() - lastKajiriHold > 1.5 then
                     pressKey("F", aimPos)
                     lastKajiriHold = tick()
                 end
@@ -281,7 +296,7 @@ local function triggerAttack(mode, aimPos)
     elseif mode == "Hinami" then
         pressKey("E", aimPos)
     elseif mode == "Kajiri" then
-        if tick() - lastKajiriHold > 0.1 then
+        if tick() - lastKajiriHold > 1.5 then
             pressKey("F", aimPos)
             lastKajiriHold = tick()
         end
@@ -346,7 +361,7 @@ local function handleQuestAndCashout()
 end
 
 -- ==========================================
--- 6. Standard Farm Logic (Boss Fix & Hop Selected)
+-- 6. Standard Farm Logic (Deep Scan & Boss Fix)
 -- ==========================================
 local function getStandardNPC()
     local nearestnpc, nearest = nil, math.huge
@@ -363,44 +378,39 @@ local function getStandardNPC()
     end
 
     local npcs = {}
-    for _, v in pairs(npcSpawns:GetChildren()) do
-        if v:IsA("Model") and v:FindFirstChild("Humanoid") then
-            table.insert(npcs, v)
-        elseif v:IsA("Folder") or v:IsA("Model") then
-            for _, sub in pairs(v:GetChildren()) do
-                if sub:IsA("Model") and sub:FindFirstChild("Humanoid") then
-                    table.insert(npcs, sub)
-                end
+    for _, v in pairs(npcSpawns:GetDescendants()) do
+        if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
+            if v.Humanoid.Health > 0 and not v:FindFirstChild("AC") and v.Name ~= "Mob" then
+                table.insert(npcs, v)
             end
         end
     end
 
     for _, npc in ipairs(npcs) do
-        if npc:FindFirstChild("Head") and not npc:FindFirstChild("AC") and npc.Humanoid.Health > 0 then
-            local npcName = npc.Name
-            local isTargetMob = (npc.Parent.Name == Config.FarmTarget)
-            local isSpecificBoss = Config.Boss[npcName]
-            local isBossMob = (MasterBossLevels[npcName] ~= nil) or (npc.Parent.Name == "NPCSpawns" and npcName ~= "Mob" and not TargetMap[npcName] and not string.find(npcName:lower(), "spawn"))
+        local npcName = npc.Name
+        local isTargetMob = (npc.Parent and npc.Parent.Name == Config.FarmTarget)
+        local isSpecificBoss = Config.Boss[npcName]
+        local isBossMob = (MasterBossLevels[npcName] ~= nil) or (npc.Parent and npc.Parent.Name == "NPCSpawns" and not TargetMap[npcName] and not string.find(npcName:lower(), "spawn"))
 
-            if npcName == "Gyakusatsu" then
-            elseif isSpecificBoss and pLevel >= (Config.BossLevels[npcName] or 0) then
+        if npcName == "Gyakusatsu" then
+            -- ข้าม Gyakusatsu
+        elseif isSpecificBoss then
+            validBossExists = true
+            targetBossFound = true
+            local magnitude = (npc.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
+            if magnitude < nearest then nearestnpc, nearest = npc, magnitude end
+        elseif Config.AllBossFarm and isBossMob then
+            local req = MasterBossLevels[npcName] or 0
+            if pLevel >= req then
                 validBossExists = true
-                targetBossFound = true
-                local magnitude = (npc.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
-                if magnitude < nearest then nearestnpc, nearest = npc, magnitude end
-            elseif Config.AllBossFarm and isBossMob then
-                local req = MasterBossLevels[npcName] or 0
-                if pLevel >= req then
-                    validBossExists = true
-                    if not Config.HopSelectedBoss then
-                        local magnitude = (npc.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
-                        if magnitude < nearest then nearestnpc, nearest = npc, magnitude end
-                    end
+                if not Config.HopSelectedBoss then
+                    local magnitude = (npc.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
+                    if magnitude < nearest then nearestnpc, nearest = npc, magnitude end
                 end
-            elseif not Config.AllBossFarm and not Config.HopSelectedBoss and isTargetMob then
-                local magnitude = (npc.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
-                if magnitude < nearest then nearestnpc, nearest = npc, magnitude end
             end
+        elseif not Config.AllBossFarm and not Config.HopSelectedBoss and isTargetMob then
+            local magnitude = (npc.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
+            if magnitude < nearest then nearestnpc, nearest = npc, magnitude end
         end
     end
 
@@ -468,15 +478,18 @@ task.spawn(function()
                             char.HumanoidRootPart.CFrame = targetCF
                             
                             if player.PlayerFolder.CanAct.Value then
-                                if isBoss and tick() - bossSkillTick > 0.8 then
-                                    for keyName, isEnabled in pairs(Config.Skills) do
-                                        if isEnabled then 
-                                            pressKey(keyName, npc.HumanoidRootPart.Position) 
-                                            task.wait(0.1) 
-                                        end
-                                    end
+                                
+                                -- [แก้ไข] ระบบเรียงคิวสกิลบอสแบบมี Delay 0.6 วิ ป้องกัน Animation Cancel (เกมรับคีย์ครบทุกปุ่ม)
+                                if isBoss and tick() - bossSkillTick > 3 then 
                                     bossSkillTick = tick()
+                                    task.spawn(function()
+                                        if Config.Skills.E and npc.Parent then pressKey("E", npc.HumanoidRootPart.Position); task.wait(0.6) end
+                                        if Config.Skills.R and npc.Parent then pressKey("R", npc.HumanoidRootPart.Position); task.wait(0.6) end
+                                        if Config.Skills.F and npc.Parent then pressKey("F", npc.HumanoidRootPart.Position); task.wait(0.6) end
+                                        if Config.Skills.C and npc.Parent then pressKey("C", npc.HumanoidRootPart.Position); task.wait(0.6) end
+                                    end)
                                 end
+                                
                                 pressKey("Mouse1", npc.HumanoidRootPart.Position)
                             end
                         end
@@ -495,7 +508,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 7. Gyaku V13 Logic (Fix Loop & Boss Kill)
+-- 7. Gyaku V13 Logic
 -- ==========================================
 local function getGyakuTarget()
     local spawnFolder = workspace:FindFirstChild("NPCSpawns")
@@ -609,31 +622,16 @@ task.spawn(function()
 
                     elseif bossObj and bossObj.Parent and bossObj.Humanoid.Health > 0 then
                         local aimPos = bossObj.HumanoidRootPart.Position
-                        local hrp = char.HumanoidRootPart
-                        local dist = (hrp.Position - aimPos).Magnitude
+                        local orbitTime = tick() * 1.5
+                        local standPos = aimPos + Vector3.new(math.sin(orbitTime) * Config.GyakuDistance, 5, math.cos(orbitTime) * Config.GyakuDistance)
                         
-                        if dist > Config.GyakuDistance + 15 then
-                            local approachPos = aimPos + Vector3.new(0, 5, Config.GyakuDistance)
-                            tp(CFrame.lookAt(approachPos, aimPos), aimPos, advMode, bossObj, 5)
-                        else
-                            local orbitTime = tick() * 2
-                            local orbitPos = aimPos + Vector3.new(math.sin(orbitTime) * Config.GyakuDistance, 5, math.cos(orbitTime) * Config.GyakuDistance)
-                            
-                            hrp.CFrame = CFrame.lookAt(orbitPos, aimPos)
-                            hrp.Velocity = Vector3.new(0, 0, 0)
-                            
-                            triggerAttack(advMode, aimPos)
-                        end
+                        local lookCFrame = CFrame.lookAt(standPos, aimPos)
+                        tp(lookCFrame, aimPos, advMode, bossObj, 5) 
+                        triggerAttack(advMode, aimPos)
                     else
                         if char:FindFirstChild("Humanoid") then char.Humanoid.AutoRotate = true end
                         resetCamera()
-                        if Config.HopBoss then 
-                            task.wait(1.5)
-                            local verifyHearts, verifyBoss = getGyakuTarget()
-                            if #verifyHearts == 0 and not verifyBoss then
-                                ServerHop() 
-                            end
-                        end
+                        if Config.HopBoss then ServerHop() end
                     end
                 else
                     Config.HasMasked = false; resetCamera() 
@@ -768,14 +766,12 @@ local BossTab = Window:Tab({Title = "Boss 👹", Icon = "swords"}) do
         Value = Config.AllBossFarm,
         Callback = function(v) Config.AllBossFarm = v; SaveConfig() end
     })
-    
     BossTab:Toggle({
         Title = "🌐 Hop Selected Bosses Only",
         Desc = "Stops normal farming and server hops for selected bosses",
         Value = Config.HopSelectedBoss,
         Callback = function(v) Config.HopSelectedBoss = v; SaveConfig() end
     })
-    
     BossTab:Toggle({
         Title = "🌐 Hop All Boss Farming",
         Desc = "Server Hop if no bosses found (Req: All Boss Farm)",
