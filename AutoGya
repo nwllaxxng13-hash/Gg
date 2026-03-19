@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: All Boss Farm, Hop Boss, Advance Kosshi, Advance Hinami, Fixed Boss Skills, Sync Auto Faction
+    Features: Fixed Boss Skills Queue, Added Young Eto & Touka, Smart Hop, Smooth Orbit
 ]]
 
 local player = game.Players.LocalPlayer
@@ -33,17 +33,24 @@ local Config = {
     -- Boss
     AllBossFarm = false,
     HopAllBoss = false,
+    HopSelectedBoss = false, 
     Boss = {
         ["Gyakusatsu"] = false,
         ["Eto Yoshimura"] = false,
+        ["Young Eto Yoshimura"] = false, -- [ใหม่]
         ["Koutarou Amon"] = false,
-        ["Nishiki Nishio"] = false
+        ["Nishiki Nishio"] = false,
+        ["Touka Kirishima"] = false,   -- [ใหม่]
+        ["Fighter"] = false 
     },
     BossLevels = {
         ["Gyakusatsu"] = 1250,
         ["Eto Yoshimura"] = 1250,
+        ["Young Eto Yoshimura"] = 0,
         ["Koutarou Amon"] = 750,
-        ["Nishiki Nishio"] = 250
+        ["Nishiki Nishio"] = 250,
+        ["Touka Kirishima"] = 0,
+        ["Fighter"] = 0 
     },
     Skills = { E = false, R = false, F = false, C = false },
     
@@ -56,7 +63,8 @@ local Config = {
     KajiriMode = false,
     AdvanceKajiri = false,
     AdvanceKosshi = false,
-    AdvanceHinami = false, -- [NEW] Hinami Toggle
+    AdvanceV3 = false,
+    AdvanceHinami = false,
     HopBoss = false,
     AutoFaction = false,
     AutoMask = false,
@@ -76,8 +84,27 @@ local MasterBossLevels = {
     ["Nishiki Nishio"] = 250,
     ["Koutarou Amon"] = 750,
     ["Eto Yoshimura"] = 1250,
+    ["Young Eto Yoshimura"] = 0,
     ["Gyakusatsu"] = 1250,
     ["Kosshi"] = 1250,
+    ["Touka Kirishima"] = 0,
+    ["Fighter"] = 0
+}
+
+local CodesList = {
+    "03/04/26 upd", "ReReKura1", "02/26/26 upd", "PKKen PR", "Shuu2!", 
+    "Valentines26", "02/07/26 upd", "Taki Face", "02/02/26 upd", "YoungEtoBoss", 
+    "01/31/26 upd", "01/29/26 upd", "ArimaBoss", "01/14/26 upd", "EyepatchK1", 
+    "HNY26", "FurutaK1", "Xmas25", "Winter25", "12/12/25 teaser", "SoftReCode YamoK1", 
+    "Grateful25", "11/22/25 upd", "11/22/25 teaser", "11/15/25 upd", "11/15/25 teaser", 
+    "11/10/25 upd", "ReKaika1", "11/2/25 upd", "TT@/chimittle", "TT@/iwantaucf20", 
+    "TT@/paxrico", "YT@/2ythe", "YT@/Blacky_Roghoul", "YT@/BloodOnRedRoses", "YT@/Caeravri", 
+    "YT@/Coffexo", "YT@/JustSouth", "YT@/KeizoHaHa", "YT@/LordRD", "YT@/Reapz8888", 
+    "YT@/Roball1", "YT@/ShadowHXD", "YT@/SuperCatHeroes", "YT@/THETRUECRE3TOR", "YT@/UzyUzy", 
+    "YT@/Zierar", "YT@/ZteMxRoD3", "YT@/dazedyarou", "YT@/factlysify", "YT@/ibemaine", 
+    "YT@/kopanda-yt", "YT@/rogueghoul", "YT@/slazuken", "YT@/kontlith", "1BV", 
+    "ANNIVERSARY-7", "FakeCode", "AllIWantForChristmasIsCodes", "BoysARunner", 
+    "TY FOR PLAYING 🙂", "Gullible", "1M-GROUP-MEMBERS"
 }
 
 local SaveFileName = "ArkHub_SavedConfig.json"
@@ -144,7 +171,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 4. Core Functions & Server Hop
+-- 4. Core Functions & Smooth Orbit TP
 -- ==========================================
 local isHopping = false
 local function ServerHop()
@@ -165,12 +192,11 @@ local function ServerHop()
     task.wait(3); isHopping = false
 end
 
+-- [แก้ไข] เพิ่มการหน่วงเวลาปล่อยปุ่ม (KeyUp) ให้เกมรับคำสั่งสมบูรณ์ 
 local function pressKey(keyToPress, aimPosition)
     if not Config.Key or not player.Character or not player.Character:FindFirstChild("Remotes") then return end
-    
     local hit = player:GetMouse().Hit
     local camCFrame = workspace.CurrentCamera.CFrame
-    
     if aimPosition and player.Character:FindFirstChild("HumanoidRootPart") then
         hit = CFrame.new(aimPosition)
         camCFrame = CFrame.lookAt(player.Character.HumanoidRootPart.Position, aimPosition)
@@ -178,6 +204,13 @@ local function pressKey(keyToPress, aimPosition)
     
     local fireEvent = Instance.new("RemoteEvent").FireServer
     fireEvent(player.Character.Remotes.KeyEvent, Config.Key, keyToPress, "Down", hit, nil, camCFrame)
+    
+    task.spawn(function()
+        task.wait(0.1)
+        pcall(function()
+            fireEvent(player.Character.Remotes.KeyEvent, Config.Key, keyToPress, "Up", hit, nil, camCFrame)
+        end)
+    end)
 end
 
 local function resetCamera()
@@ -189,7 +222,8 @@ local function resetCamera()
     end
 end
 
-local function tp(targetCFrame, aimPos, advanceMode, targetObj)
+local lastKajiriHold = 0
+local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
     if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
     local hrp = player.Character.HumanoidRootPart
     local val = Instance.new("CFrameValue")
@@ -214,29 +248,61 @@ local function tp(targetCFrame, aimPos, advanceMode, targetObj)
         if targetObj and (not targetObj.Parent or (targetObj:FindFirstChild("Humanoid") and targetObj.Humanoid.Health <= 0)) then
             tween:Cancel() break
         end
+        
+        if earlyStop and earlyStop > 0 then
+            if (hrp.Position - targetCFrame.Position).Magnitude <= earlyStop then
+                tween:Cancel()
+                break
+            end
+        end
 
         if player.Character:FindFirstChild("HumanoidRootPart") then
-            player.Character.HumanoidRootPart.CFrame = val.Value
-            player.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+            local currentHRP = player.Character.HumanoidRootPart
+            currentHRP.CFrame = val.Value
+            
+            if aimPos then
+                currentHRP.CFrame = CFrame.lookAt(val.Value.Position, aimPos)
+            end
+
+            currentHRP.Velocity = Vector3.new(0, 0, 0)
+            currentHRP.RotVelocity = Vector3.new(0, 0, 0) 
+            if player.Character:FindFirstChild("Humanoid") then
+                player.Character.Humanoid.PlatformStand = false
+            end
             
             if advanceMode == "Kajiri" and aimPos then
-                workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos)
-                pressKey("F", aimPos)
+                if tick() - lastKajiriHold > 1.5 then
+                    pressKey("F", aimPos)
+                    lastKajiriHold = tick()
+                end
             elseif advanceMode == "Kosshi" and aimPos then
-                workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos)
-                pressKey("E", aimPos)
-                pressKey("R", aimPos)
-                pressKey("F", aimPos)
-                pressKey("C", aimPos)
+                pressKey("E", aimPos); pressKey("R", aimPos); pressKey("F", aimPos); pressKey("C", aimPos)
+            elseif advanceMode == "V3" and aimPos then
+                pressKey("Mouse1", aimPos)
             elseif advanceMode == "Hinami" and aimPos then
-                -- [NEW] Hinami Tween Combat
-                workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos)
-                pressKey("E", aimPos) -- Spamming E keeps it held/reconnects
+                pressKey("E", aimPos)
             end
         end
         task.wait()
     end
     val:Destroy()
+end
+
+local function triggerAttack(mode, aimPos)
+    if mode == "Kosshi" then
+        pressKey("E", aimPos); pressKey("R", aimPos); pressKey("F", aimPos); pressKey("C", aimPos)
+    elseif mode == "V3" then
+        pressKey("Mouse1", aimPos)
+    elseif mode == "Hinami" then
+        pressKey("E", aimPos)
+    elseif mode == "Kajiri" then
+        if tick() - lastKajiriHold > 1.5 then
+            pressKey("F", aimPos)
+            lastKajiriHold = tick()
+        end
+    else
+        pressKey("Mouse1", aimPos)
+    end
 end
 
 -- ==========================================
@@ -295,59 +361,73 @@ local function handleQuestAndCashout()
 end
 
 -- ==========================================
--- 6. Standard Farm Logic (With All Boss Farm)
+-- 6. Standard Farm Logic (Deep Scan & Boss Fix)
 -- ==========================================
 local function getStandardNPC()
     local nearestnpc, nearest = nil, math.huge
     local pLevel = tonumber(player.PlayerFolder.Stats.Level.Value) or 0
     local npcSpawns = workspace:FindFirstChild("NPCSpawns")
-    if not npcSpawns then return nil, false end
+    if not npcSpawns then return nil, false, false end
 
     local validBossExists = false
+    local targetBossFound = false
+    local anySelectedBoss = false
+    
+    for name, isSelected in pairs(Config.Boss) do
+        if isSelected then anySelectedBoss = true break end
+    end
 
-    for _, v in pairs(npcSpawns:GetChildren()) do
-        local npc = v:IsA("Model") and v or v:FindFirstChildOfClass("Model")
-        if npc and npc:FindFirstChild("Head") and not npc:FindFirstChild("AC") then
-            
-            local isTargetMob = (npc.Parent.Name == Config.FarmTarget)
-            local isSpecificBoss = Config.Boss[npc.Name]
-            
-            local isBossMob = (MasterBossLevels[npc.Name] ~= nil) or (npc.Parent.Name == "NPCSpawns" and npc.Name ~= "Mob" and not TargetMap[npc.Name] and not string.find(npc.Name:lower(), "spawn"))
-
-            if npc.Name == "Gyakusatsu" then
-                -- ข้าม Gyakusatsu
-            elseif Config.AllBossFarm and isBossMob then
-                local req = MasterBossLevels[npc.Name] or 0
-                if pLevel >= req then
-                    validBossExists = true
-                    local magnitude = (npc.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
-                    if magnitude < nearest then nearestnpc, nearest = npc, magnitude end
-                end
-            elseif isSpecificBoss and pLevel >= Config.BossLevels[npc.Name] then
-                validBossExists = true
-                local magnitude = (npc.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
-                if magnitude < nearest then nearestnpc, nearest = npc, magnitude end
-            elseif not Config.AllBossFarm and isTargetMob then
-                local magnitude = (npc.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
-                if magnitude < nearest then nearestnpc, nearest = npc, magnitude end
+    local npcs = {}
+    for _, v in pairs(npcSpawns:GetDescendants()) do
+        if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
+            if v.Humanoid.Health > 0 and not v:FindFirstChild("AC") and v.Name ~= "Mob" then
+                table.insert(npcs, v)
             end
         end
     end
-    return nearestnpc, validBossExists
+
+    for _, npc in ipairs(npcs) do
+        local npcName = npc.Name
+        local isTargetMob = (npc.Parent and npc.Parent.Name == Config.FarmTarget)
+        local isSpecificBoss = Config.Boss[npcName]
+        local isBossMob = (MasterBossLevels[npcName] ~= nil) or (npc.Parent and npc.Parent.Name == "NPCSpawns" and not TargetMap[npcName] and not string.find(npcName:lower(), "spawn"))
+
+        if npcName == "Gyakusatsu" then
+            -- ข้าม Gyakusatsu
+        elseif isSpecificBoss then
+            validBossExists = true
+            targetBossFound = true
+            local magnitude = (npc.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
+            if magnitude < nearest then nearestnpc, nearest = npc, magnitude end
+        elseif Config.AllBossFarm and isBossMob then
+            local req = MasterBossLevels[npcName] or 0
+            if pLevel >= req then
+                validBossExists = true
+                if not Config.HopSelectedBoss then
+                    local magnitude = (npc.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
+                    if magnitude < nearest then nearestnpc, nearest = npc, magnitude end
+                end
+            end
+        elseif not Config.AllBossFarm and not Config.HopSelectedBoss and isTargetMob then
+            local magnitude = (npc.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
+            if magnitude < nearest then nearestnpc, nearest = npc, magnitude end
+        end
+    end
+
+    local shouldHop = false
+    if Config.HopSelectedBoss and anySelectedBoss and not targetBossFound then
+        shouldHop = true
+    end
+
+    return nearestnpc, validBossExists, shouldHop
 end
 
 local function getFarmCFrame(npc, isBoss)
     local root = npc.HumanoidRootPart
     local dist = isBoss and Config.DistanceBoss or Config.DistanceNPC
-    
-    if Config.FarmPosition == "Above" then
-        return CFrame.lookAt(root.Position + Vector3.new(0, dist, 0), root.Position)
-    elseif Config.FarmPosition == "Bottom" then
-        return CFrame.lookAt(root.Position + Vector3.new(0, -dist, 0), root.Position)
-    elseif Config.FarmPosition == "Back" then
-        local backPos = root.CFrame * CFrame.new(0, 0, dist)
-        return CFrame.lookAt(backPos.Position, root.Position)
-    end
+    if Config.FarmPosition == "Above" then return CFrame.lookAt(root.Position + Vector3.new(0, dist, 0), root.Position)
+    elseif Config.FarmPosition == "Bottom" then return CFrame.lookAt(root.Position + Vector3.new(0, -dist, 0), root.Position)
+    elseif Config.FarmPosition == "Back" then return CFrame.lookAt((root.CFrame * CFrame.new(0, 0, dist)).Position, root.Position) end
     return root.CFrame
 end
 
@@ -367,26 +447,27 @@ local function collectCorpse(npc)
     until not model.Parent or not model.Parent.Parent or not Config.AutoFarm or player.Character.Humanoid.Health <= 0
 end
 
+local bossSkillTick = 0
+
 task.spawn(function()
     while task.wait() do
         if Config.AutoFarm and not Config.GyakuFarm then
             pcall(function()
                 local char = player.Character
                 if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
-                    
                     if handleQuestAndCashout() then return end
-                    
                     if not char:FindFirstChild("Kagune") and not char:FindFirstChild("Quinque") then
                         pressKey(Config.WeaponStage); task.wait(0.5)
                     end
 
-                    local npc, validBossExists = getStandardNPC()
+                    local npc, validBossExists, shouldHop = getStandardNPC()
                     
-                    if Config.AllBossFarm and Config.HopAllBoss and not validBossExists then
+                    if shouldHop then
+                        resetCamera(); ServerHop()
+                    elseif Config.AllBossFarm and Config.HopAllBoss and not validBossExists then
                         resetCamera(); ServerHop()
                     elseif npc then
                         local isBoss = Config.Boss[npc.Name] or (Config.AllBossFarm and (MasterBossLevels[npc.Name] ~= nil or npc.Parent.Name == "NPCSpawns"))
-                        
                         local targetCF = getFarmCFrame(npc, isBoss)
                         local dist = (char.HumanoidRootPart.Position - targetCF.Position).Magnitude
                         
@@ -397,16 +478,21 @@ task.spawn(function()
                             char.HumanoidRootPart.CFrame = targetCF
                             
                             if player.PlayerFolder.CanAct.Value then
-                                pressKey("Mouse1")
                                 
-                                if isBoss then
-                                    for keyName, isEnabled in pairs(Config.Skills) do
-                                        if isEnabled then pressKey(keyName, npc.HumanoidRootPart.Position) end
-                                    end
+                                -- [แก้ไข] ระบบเรียงคิวสกิลบอสแบบมี Delay 0.6 วิ ป้องกัน Animation Cancel (เกมรับคีย์ครบทุกปุ่ม)
+                                if isBoss and tick() - bossSkillTick > 3 then 
+                                    bossSkillTick = tick()
+                                    task.spawn(function()
+                                        if Config.Skills.E and npc.Parent then pressKey("E", npc.HumanoidRootPart.Position); task.wait(0.6) end
+                                        if Config.Skills.R and npc.Parent then pressKey("R", npc.HumanoidRootPart.Position); task.wait(0.6) end
+                                        if Config.Skills.F and npc.Parent then pressKey("F", npc.HumanoidRootPart.Position); task.wait(0.6) end
+                                        if Config.Skills.C and npc.Parent then pressKey("C", npc.HumanoidRootPart.Position); task.wait(0.6) end
+                                    end)
                                 end
+                                
+                                pressKey("Mouse1", npc.HumanoidRootPart.Position)
                             end
                         end
-                        
                         if npc.Humanoid.Health <= 0 and not isBoss then
                             if Config.AutoEatCorpse then collectCorpse(npc) end
                         end
@@ -426,9 +512,9 @@ end)
 -- ==========================================
 local function getGyakuTarget()
     local spawnFolder = workspace:FindFirstChild("NPCSpawns")
-    if not spawnFolder then return nil, nil, false, nil, nil end
+    if not spawnFolder then return {}, nil end
     local gyakuSpawn = spawnFolder:FindFirstChild("GyakusatsuSpawn")
-    if not gyakuSpawn then return nil, nil, false, nil, nil end
+    if not gyakuSpawn then return {}, nil end
 
     local hearts = {}
     local boss = nil
@@ -459,15 +545,7 @@ local function getGyakuTarget()
         end)
     end
 
-    local warpObj, aimPos, shouldLockCam
-    if #hearts >= 2 then
-        warpObj = hearts[1]; aimPos = hearts[2].HumanoidRootPart.Position; shouldLockCam = true
-    elseif #hearts == 1 then
-        warpObj = hearts[1]; aimPos = boss and boss.HumanoidRootPart.Position or warpObj.HumanoidRootPart.Position; shouldLockCam = false
-    elseif boss then
-        warpObj = boss; aimPos = boss.HumanoidRootPart.Position; shouldLockCam = false
-    end
-    return warpObj, aimPos, shouldLockCam, hearts, boss
+    return hearts, boss
 end
 
 task.spawn(function()
@@ -479,6 +557,7 @@ task.spawn(function()
 end)
 
 local advanceIndex = 1
+local hasPressedHinamiF = false 
 
 task.spawn(function()
     task.wait(3)
@@ -494,79 +573,61 @@ task.spawn(function()
                         task.wait(0.5)
                     end
 
-                    -- ดึงเป้าหมายออกมาก่อนเพื่อให้มี aimPos สำหรับ F ของ Hinami (ถ้าเป้าหมายเกิดแล้ว)
-                    local warpNpc, aimPos, shouldLockCam, heartsList, bossObj = getGyakuTarget()
-
-                    -- [NEW] Hinami Equip & Setup Logic
                     if not char:FindFirstChild("Kagune") and not char:FindFirstChild("Quinque") then
-                        pressKey(Config.WeaponStage)
-                        if Config.AdvanceHinami then
-                            task.wait(4) -- รอ 4 วิให้แอนิเมชันสวมใส่เสร็จ
-                            pressKey("F", aimPos) -- กด F 1 ที
-                        else
-                            task.wait(0.5)
-                        end
+                        pressKey(Config.WeaponStage); task.wait(0.5)
+                        hasPressedHinamiF = false 
+                        lastKajiriHold = 0
                     end
 
+                    local heartsList, bossObj = getGyakuTarget()
                     local advMode = false
                     if Config.AdvanceKajiri then advMode = "Kajiri"
                     elseif Config.AdvanceKosshi then advMode = "Kosshi"
-                    elseif Config.AdvanceHinami then advMode = "Hinami" end -- [NEW] Set Advance Mode
+                    elseif Config.AdvanceV3 then advMode = "V3"
+                    elseif Config.AdvanceHinami then advMode = "Hinami" end 
 
-                    if warpNpc and aimPos then
+                    if advMode == "Hinami" and not hasPressedHinamiF and (char:FindFirstChild("Kagune") or char:FindFirstChild("Quinque")) then
+                        task.wait(0.3) 
+                        pressKey("F", char.HumanoidRootPart.Position)
+                        hasPressedHinamiF = true
+                    end
+
+                    if #heartsList > 0 and advMode then
+                        if advanceIndex > #heartsList then advanceIndex = 1 end
+                        local targetHeart = heartsList[advanceIndex]
                         
-                        if advMode and heartsList and #heartsList >= 2 and not (warpNpc.Name == "Gyakusatsu") then
-                            if advanceIndex > #heartsList then advanceIndex = 1 end
-                            
-                            local targetHeart = heartsList[advanceIndex]
+                        if targetHeart and targetHeart.Parent and targetHeart.Humanoid.Health > 0 then
                             local nextIndex = (advanceIndex % #heartsList) + 1
                             local aimHeart = heartsList[nextIndex]
                             
-                            local targetAimPos = aimHeart.HumanoidRootPart.Position
-                            local standPos = targetHeart.HumanoidRootPart.Position + Vector3.new(0, Config.GyakuDistance, 0)
+                            local aimPos = targetHeart.HumanoidRootPart.Position
+                            local nextAimPos = (aimHeart and aimHeart.HumanoidRootPart.Position) or aimPos
+                            
+                            local standPos = aimPos + Vector3.new(0, Config.GyakuDistance, 0)
                             local dist = (char.HumanoidRootPart.Position - standPos).Magnitude
                             
-                            if dist > 5 then
-                                local lookCFrame = CFrame.lookAt(standPos, targetAimPos)
-                                tp(lookCFrame, targetAimPos, advMode, targetHeart) 
+                            if dist > 18 then
+                                local lookCFrame = CFrame.lookAt(standPos, nextAimPos)
+                                tp(lookCFrame, nextAimPos, advMode, targetHeart, 15) 
                             else
-                                advanceIndex = nextIndex
-                            end
-                            
-                        else
-                            local standPos = warpNpc.HumanoidRootPart.Position + Vector3.new(0, Config.GyakuDistance, 0)
-                            local distance = (char.HumanoidRootPart.Position - standPos).Magnitude
-                            local isMainBoss = (warpNpc.Name == "Gyakusatsu")
-
-                            if distance > 25 then
-                                local lookCFrame = CFrame.lookAt(standPos, aimPos)
-                                tp(lookCFrame, nil, false, warpNpc)
-                            else
+                                advanceIndex = advanceIndex + 1
                                 char.Humanoid.AutoRotate = not Config.KajiriMode
-                                char.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
-                                char.HumanoidRootPart.CFrame = CFrame.lookAt(standPos, aimPos)
-                                
-                                if shouldLockCam then workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, aimPos) end
-
-                                if isMainBoss then
-                                    if Config.AdvanceKosshi then
-                                        pressKey("E", aimPos); pressKey("R", aimPos); pressKey("F", aimPos); pressKey("C", aimPos)
-                                    elseif Config.AdvanceHinami then
-                                        pressKey("E", aimPos) -- [NEW] Hinami กด E ค้าง (ส่งคำสั่งรัวๆ)
-                                    else
-                                        pressKey("F", aimPos)
-                                    end
-                                elseif Config.AdvanceKosshi then
-                                    pressKey("E", aimPos); pressKey("R", aimPos); pressKey("F", aimPos); pressKey("C", aimPos)
-                                elseif Config.AdvanceHinami then
-                                    pressKey("E", aimPos) -- [NEW] Hinami กด E ค้าง
-                                elseif Config.KajiriMode then
-                                    pressKey("F", aimPos); pressKey("Mouse1", aimPos)
-                                else
-                                    pressKey("Mouse1", aimPos)
-                                end
+                                char.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
+                                char.HumanoidRootPart.CFrame = CFrame.lookAt(standPos, nextAimPos)
+                                triggerAttack(advMode, nextAimPos)
                             end
+                        else
+                            advanceIndex = advanceIndex + 1
                         end
+
+                    elseif bossObj and bossObj.Parent and bossObj.Humanoid.Health > 0 then
+                        local aimPos = bossObj.HumanoidRootPart.Position
+                        local orbitTime = tick() * 1.5
+                        local standPos = aimPos + Vector3.new(math.sin(orbitTime) * Config.GyakuDistance, 5, math.cos(orbitTime) * Config.GyakuDistance)
+                        
+                        local lookCFrame = CFrame.lookAt(standPos, aimPos)
+                        tp(lookCFrame, aimPos, advMode, bossObj, 5) 
+                        triggerAttack(advMode, aimPos)
                     else
                         if char:FindFirstChild("Humanoid") then char.Humanoid.AutoRotate = true end
                         resetCamera()
@@ -574,10 +635,14 @@ task.spawn(function()
                     end
                 else
                     Config.HasMasked = false; resetCamera() 
+                    hasPressedHinamiF = false 
+                    lastKajiriHold = 0
                 end
             end)
         else
             Config.HasMasked = false; resetCamera() 
+            hasPressedHinamiF = false
+            lastKajiriHold = 0
         end
     end
 end)
@@ -655,6 +720,24 @@ SidebarLine.Parent = CoreGui:FindFirstChild("✨ Ark Hub Premium | Ro-Ghoul") or
 
 -- [ Tab 1: Main 🏠 ]
 local MainTab = Window:Tab({Title = "Main 🏠", Icon = "home"}) do
+    
+    MainTab:Section({Title = "🎉 Codes & Rewards"})
+    MainTab:Button({
+        Title = "🎁 Redeem All Codes",
+        Desc = "Auto redeem all available codes instantly",
+        Callback = function()
+            task.spawn(function()
+                for _, code in ipairs(CodesList) do
+                    pcall(function()
+                        game:GetService("ReplicatedStorage").Remotes.Code:InvokeServer("Submit Code", code)
+                    end)
+                    task.wait(0.2)
+                end
+                Window:Notify({ Title = "Success!", Desc = "All codes have been submitted.", Time = 4 })
+            end)
+        end
+    })
+
     MainTab:Section({Title = "📜 Auto Quest & Rep"})
     MainTab:Toggle({ Title = "📋 Auto Task (Quest)", Value = Config.AutoTask, Callback = function(v) Config.AutoTask = v; SaveConfig() end })
     MainTab:Toggle({ Title = "💰 Auto Cash Out", Value = Config.AutoCashOut, Callback = function(v) Config.AutoCashOut = v; SaveConfig() end })
@@ -682,6 +765,12 @@ local BossTab = Window:Tab({Title = "Boss 👹", Icon = "swords"}) do
         Desc = "Auto checks level and hunts all active bosses.",
         Value = Config.AllBossFarm,
         Callback = function(v) Config.AllBossFarm = v; SaveConfig() end
+    })
+    BossTab:Toggle({
+        Title = "🌐 Hop Selected Bosses Only",
+        Desc = "Stops normal farming and server hops for selected bosses",
+        Value = Config.HopSelectedBoss,
+        Callback = function(v) Config.HopSelectedBoss = v; SaveConfig() end
     })
     BossTab:Toggle({
         Title = "🌐 Hop All Boss Farming",
@@ -717,20 +806,10 @@ local GyakuTab = Window:Tab({Title = "Gyaku 💀", Icon = "skull"}) do
     GyakuTab:Section({Title = "🔥 Ultimate Gyakusatsu (V13)"})
     GyakuTab:Toggle({ Title = "☠️ Start Gyakusatsu Farm", Value = Config.GyakuFarm, Callback = function(v) Config.GyakuFarm = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🎯 Kajiri Mode (Aimbot + Attack)", Value = Config.KajiriMode, Callback = function(v) Config.KajiriMode = v; SaveConfig() end })
-    GyakuTab:Toggle({ Title = "🌀 Advance Kajiri (Spam F)", Value = Config.AdvanceKajiri, Callback = function(v) Config.AdvanceKajiri = v; SaveConfig() end })
-    GyakuTab:Toggle({ 
-        Title = "🌪️ Advance Kosshi Farm", 
-        Desc = "Circular move + Spam E,R,F,C",
-        Value = Config.AdvanceKosshi, 
-        Callback = function(v) Config.AdvanceKosshi = v; SaveConfig() end 
-    })
-    -- [NEW] Advance Hinami Toggle
-    GyakuTab:Toggle({ 
-        Title = "🩸 Advance Hinami", 
-        Desc = "Wait 4s > Press F > Hold E",
-        Value = Config.AdvanceHinami, 
-        Callback = function(v) Config.AdvanceHinami = v; SaveConfig() end 
-    })
+    GyakuTab:Toggle({ Title = "🌀 Advance Kajiri (Hold F)", Value = Config.AdvanceKajiri, Callback = function(v) Config.AdvanceKajiri = v; SaveConfig() end })
+    GyakuTab:Toggle({ Title = "🌪️ Advance Kosshi Farm", Desc = "Circular move + Spam E,R,F,C", Value = Config.AdvanceKosshi, Callback = function(v) Config.AdvanceKosshi = v; SaveConfig() end })
+    GyakuTab:Toggle({ Title = "🖱️ Advance V3 Farm (Spam Click)", Desc = "Circular move + Spam Mouse1", Value = Config.AdvanceV3, Callback = function(v) Config.AdvanceV3 = v; SaveConfig() end })
+    GyakuTab:Toggle({ Title = "🌸 Advance Hinami Farm", Desc = "Equip -> F once -> Spam Hold E", Value = Config.AdvanceHinami, Callback = function(v) Config.AdvanceHinami = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🌐 Auto Hop Boss", Value = Config.HopBoss, Callback = function(v) Config.HopBoss = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🔄 Auto Faction Loop", Value = Config.AutoFaction, Callback = function(v) Config.AutoFaction = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🎭 Auto Mask on Spawn", Value = Config.AutoMask, Callback = function(v) Config.AutoMask = v; SaveConfig() end })
@@ -741,20 +820,3 @@ end
 Window:Line()
 
 Window:Notify({ Title = "Welcome to Ark Hub! 🚀", Desc = "Auto-Login successful. Config Restored.", Time = 5 })
-
--- ==========================================
--- 11. Auto Hide GUI On Execute
--- ==========================================
-task.spawn(function()
-    task.wait(1.5) 
-    local VirtualInputManager = game:GetService("VirtualInputManager")
-    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.LeftControl, false, game)
-    task.wait()
-    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.LeftControl, false, game)
-    
-    Window:Notify({ 
-        Title = "Ark Hub", 
-        Desc = "GUI auto-hidden. Press LCtrl to open.", 
-        Time = 3 
-    })
-end)
