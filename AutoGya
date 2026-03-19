@@ -693,7 +693,7 @@ task.spawn(function()
                         if Config.HopBoss then 
                             if gyakuHopWaitTick == 0 then
                                 gyakuHopWaitTick = tick() -- เริ่มนับถอยหลัง 10 วิ
-                            elseif tick() - gyakuHopWaitTick > 2 then 
+                            elseif tick() - gyakuHopWaitTick > 1 then 
                                 -- ถ้าผ่านไป 10 วิแล้วบอสไม่เกิด ค่อย Hop
                                 ServerHop()
                                 gyakuHopWaitTick = tick()
