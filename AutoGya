@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: 0s Gyaku Hop Fix (Corpse Validator), Scorpion Farm, Smart Queue Boss Skills
+    Features: Kajiri Hold F Fix, 0s Gyaku Hop, Scorpion Farm, Boss Skill Queue
 ]]
 
 local player = game.Players.LocalPlayer
@@ -193,7 +193,8 @@ local function ServerHop()
     task.wait(3); isHopping = false
 end
 
-local function pressKey(keyToPress, aimPosition)
+-- [อัปเดต] เพิ่ม isHold เพื่อเช็คว่าเป็นการกดแช่หรือไม่ ถ้า isHold = true จะไม่ส่งคำสั่งปล่อยปุ่ม
+local function pressKey(keyToPress, aimPosition, isHold)
     if not Config.Key or not player.Character or not player.Character:FindFirstChild("Remotes") then return end
     local hit = player:GetMouse().Hit
     local camCFrame = workspace.CurrentCamera.CFrame
@@ -203,8 +204,13 @@ local function pressKey(keyToPress, aimPosition)
     end
     
     local fireEvent = Instance.new("RemoteEvent").FireServer
+    -- ส่งคำสั่งกดปุ่มลง
     fireEvent(player.Character.Remotes.KeyEvent, Config.Key, keyToPress, "Down", hit, nil, camCFrame)
     
+    -- ถ้าสั่งให้ Hold (กดค้าง) ให้หยุดการทำงานแค่นี้ ไม่ต้องส่งคำสั่งปล่อยปุ่ม
+    if isHold then return end 
+    
+    -- ถ้าไม่ได้สั่ง Hold ให้ปล่อยปุ่มตามปกติ
     task.spawn(function()
         task.wait(0.1)
         pcall(function()
@@ -272,9 +278,10 @@ local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
                 player.Character.Humanoid.PlatformStand = false
             end
             
+            -- [อัปเดต] ยิง Hold True เข้าไปที่ Kajiri และอัปเดตเป้าทุก 0.5 วิ
             if advanceMode == "Kajiri" and aimPos then
-                if tick() - lastKajiriHold > 1.5 then
-                    pressKey("F", aimPos)
+                if tick() - lastKajiriHold > 0.5 then
+                    pressKey("F", aimPos, true)
                     lastKajiriHold = tick()
                 end
             elseif advanceMode == "Kosshi" and aimPos then
@@ -282,7 +289,7 @@ local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
             elseif advanceMode == "V3" and aimPos then
                 pressKey("Mouse1", aimPos)
             elseif advanceMode == "Hinami" and aimPos then
-                pressKey("E", aimPos)
+                pressKey("E", aimPos, true)
             elseif advanceMode == "Scorpion" and aimPos then
                 pressKey("Mouse1", aimPos)
             end
@@ -309,10 +316,11 @@ local function triggerAttack(mode, aimPos)
     elseif mode == "V3" then
         pressKey("Mouse1", aimPos)
     elseif mode == "Hinami" then
-        pressKey("E", aimPos)
+        pressKey("E", aimPos, true)
     elseif mode == "Kajiri" then
-        if tick() - lastKajiriHold > 1.5 then
-            pressKey("F", aimPos)
+        -- [อัปเดต] ใช้คำสั่งส่ง Hold แบบเดียวกับตอนลอย
+        if tick() - lastKajiriHold > 0.5 then
+            pressKey("F", aimPos, true)
             lastKajiriHold = tick()
         end
     else
@@ -520,7 +528,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 7. Gyaku V13 Logic (Fixed Transition Wait)
+-- 7. Gyaku V13 Logic
 -- ==========================================
 local function getGyakuTarget()
     local spawnFolder = workspace:FindFirstChild("NPCSpawns")
@@ -691,12 +699,10 @@ task.spawn(function()
                         if char:FindFirstChild("Humanoid") then char.Humanoid.AutoRotate = true end
                         resetCamera()
                         if Config.HopBoss then 
-                            -- เช็คว่ามีศพของบอสตกอยู่ไหม ถ้ามี = ฆ่าบอสตัวจริงเสร็จแล้ว 100% -> Hop ทันที! (0 วินาที)
                             local corpse = workspace:FindFirstChild("Gyakusatsu Corpse", true)
                             if corpse then
                                 ServerHop()
                             else
-                                -- ถ้าไม่มีศพบอส (หัวใจพังแล้ว แต่บอสกำลังเกิด) ให้เวลาเซิร์ฟโหลดบอส 1.5 วิ
                                 if gyakuHopWaitTick == 0 then
                                     gyakuHopWaitTick = tick()
                                 elseif tick() - gyakuHopWaitTick > 1.5 then 
