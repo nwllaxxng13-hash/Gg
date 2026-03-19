@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: Kajiri Hold F Fix, 0s Gyaku Hop, Scorpion Farm, Boss Skill Queue
+    Features: TRUE Kajiri Hold (VIM/Keypress), 0s Gyaku Hop, Scorpion Farm
 ]]
 
 local player = game.Players.LocalPlayer
@@ -193,8 +193,8 @@ local function ServerHop()
     task.wait(3); isHopping = false
 end
 
--- [อัปเดต] เพิ่ม isHold เพื่อเช็คว่าเป็นการกดแช่หรือไม่ ถ้า isHold = true จะไม่ส่งคำสั่งปล่อยปุ่ม
-local function pressKey(keyToPress, aimPosition, isHold)
+-- ระบบเก่าสำหรับสกิลกดครั้งเดียว
+local function pressKey(keyToPress, aimPosition)
     if not Config.Key or not player.Character or not player.Character:FindFirstChild("Remotes") then return end
     local hit = player:GetMouse().Hit
     local camCFrame = workspace.CurrentCamera.CFrame
@@ -204,17 +204,38 @@ local function pressKey(keyToPress, aimPosition, isHold)
     end
     
     local fireEvent = Instance.new("RemoteEvent").FireServer
-    -- ส่งคำสั่งกดปุ่มลง
     fireEvent(player.Character.Remotes.KeyEvent, Config.Key, keyToPress, "Down", hit, nil, camCFrame)
     
-    -- ถ้าสั่งให้ Hold (กดค้าง) ให้หยุดการทำงานแค่นี้ ไม่ต้องส่งคำสั่งปล่อยปุ่ม
-    if isHold then return end 
-    
-    -- ถ้าไม่ได้สั่ง Hold ให้ปล่อยปุ่มตามปกติ
     task.spawn(function()
         task.wait(0.1)
         pcall(function()
             fireEvent(player.Character.Remotes.KeyEvent, Config.Key, keyToPress, "Up", hit, nil, camCFrame)
+        end)
+    end)
+end
+
+-- [ระบบใหม่] Physical Key Simulator สำหรับ "กดค้างที่แท้จริง" โดยไม่พึ่งรีโมท
+local isHoldingKajiri = false
+local function toggleKajiriHold(state)
+    if isHoldingKajiri == state then return end
+    isHoldingKajiri = state
+    task.spawn(function()
+        pcall(function()
+            if state then
+                -- กด F ลงไปค้างไว้
+                if keypress then 
+                    keypress(0x46) 
+                else 
+                    game:GetService("VirtualInputManager"):SendKeyEvent(true, Enum.KeyCode.F, false, game) 
+                end
+            else
+                -- ปล่อยปุ่ม F
+                if keyrelease then 
+                    keyrelease(0x46) 
+                else 
+                    game:GetService("VirtualInputManager"):SendKeyEvent(false, Enum.KeyCode.F, false, game) 
+                end
+            end
         end)
     end)
 end
@@ -228,7 +249,6 @@ local function resetCamera()
     end
 end
 
-local lastKajiriHold = 0
 local gyakuSkillTick = 0
 
 local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
@@ -268,6 +288,7 @@ local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
             local currentHRP = player.Character.HumanoidRootPart
             currentHRP.CFrame = val.Value
             
+            -- หันหน้าใส่เป้าหมายตลอดเวลา (Aimbot)
             if aimPos then
                 currentHRP.CFrame = CFrame.lookAt(val.Value.Position, aimPos)
             end
@@ -278,18 +299,12 @@ local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
                 player.Character.Humanoid.PlatformStand = false
             end
             
-            -- [อัปเดต] ยิง Hold True เข้าไปที่ Kajiri และอัปเดตเป้าทุก 0.5 วิ
-            if advanceMode == "Kajiri" and aimPos then
-                if tick() - lastKajiriHold > 0.5 then
-                    pressKey("F", aimPos, true)
-                    lastKajiriHold = tick()
-                end
-            elseif advanceMode == "Kosshi" and aimPos then
+            if advanceMode == "Kosshi" and aimPos then
                 pressKey("E", aimPos); pressKey("R", aimPos); pressKey("F", aimPos); pressKey("C", aimPos)
             elseif advanceMode == "V3" and aimPos then
                 pressKey("Mouse1", aimPos)
             elseif advanceMode == "Hinami" and aimPos then
-                pressKey("E", aimPos, true)
+                pressKey("E", aimPos)
             elseif advanceMode == "Scorpion" and aimPos then
                 pressKey("Mouse1", aimPos)
             end
@@ -316,13 +331,7 @@ local function triggerAttack(mode, aimPos)
     elseif mode == "V3" then
         pressKey("Mouse1", aimPos)
     elseif mode == "Hinami" then
-        pressKey("E", aimPos, true)
-    elseif mode == "Kajiri" then
-        -- [อัปเดต] ใช้คำสั่งส่ง Hold แบบเดียวกับตอนลอย
-        if tick() - lastKajiriHold > 0.5 then
-            pressKey("F", aimPos, true)
-            lastKajiriHold = tick()
-        end
+        pressKey("E", aimPos)
     else
         pressKey("Mouse1", aimPos)
     end
@@ -601,7 +610,7 @@ task.spawn(function()
                     if not char:FindFirstChild("Kagune") and not char:FindFirstChild("Quinque") then
                         pressKey(Config.WeaponStage); task.wait(0.5)
                         hasPressedHinamiF = false 
-                        lastKajiriHold = 0
+                        toggleKajiriHold(false) -- อาวุธหลุด ปล่อย F
                     end
 
                     local heartsList, bossObj = getGyakuTarget()
@@ -692,10 +701,17 @@ task.spawn(function()
                         triggerAttack(advMode, aimPos)
                     end
 
-                    -- [ระบบเช็คชัวร์ 0 วินาที ฆ่าบอสใหญ่เสร็จ 100% ก่อน Hop]
+                    -- ตรวจสอบและควบคุมการกด F ค้าง (สั่งให้ทำงานเฉพาะตอนมีเป้าหมาย)
                     if isTargetActive then
                         gyakuHopWaitTick = 0 
+                        if advMode == "Kajiri" then
+                            toggleKajiriHold(true) -- ล็อคเป้าและกด F ค้างตลอดเวลา
+                        else
+                            toggleKajiriHold(false)
+                        end
                     else
+                        toggleKajiriHold(false) -- ไม่มีเป้าหมาย ปล่อยปุ่ม F ทันที
+                        
                         if char:FindFirstChild("Humanoid") then char.Humanoid.AutoRotate = true end
                         resetCamera()
                         if Config.HopBoss then 
@@ -716,13 +732,13 @@ task.spawn(function()
                 else
                     Config.HasMasked = false; resetCamera() 
                     hasPressedHinamiF = false 
-                    lastKajiriHold = 0
+                    toggleKajiriHold(false) -- ตัวแตก ปล่อยปุ่ม F
                 end
             end)
         else
             Config.HasMasked = false; resetCamera() 
             hasPressedHinamiF = false
-            lastKajiriHold = 0
+            toggleKajiriHold(false) -- ปิดโหมดฟาร์ม ปล่อยปุ่ม F
             gyakuHopWaitTick = 0
         end
     end
