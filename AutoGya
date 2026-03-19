@@ -33,20 +33,20 @@ local Config = {
     -- Boss
     AllBossFarm = false,
     HopAllBoss = false,
-    HopSelectedBoss = false, -- [ใหม่]
+    HopSelectedBoss = false,
     Boss = {
         ["Gyakusatsu"] = false,
         ["Eto Yoshimura"] = false,
         ["Koutarou Amon"] = false,
         ["Nishiki Nishio"] = false,
-        ["Fighter"] = false -- [ใหม่]
+        ["Fighter"] = false
     },
     BossLevels = {
         ["Gyakusatsu"] = 1250,
         ["Eto Yoshimura"] = 1250,
         ["Koutarou Amon"] = 750,
         ["Nishiki Nishio"] = 250,
-        ["Fighter"] = 50 -- [ใหม่]
+        ["Fighter"] = 50
     },
     Skills = { E = false, R = false, F = false, C = false },
     
@@ -245,7 +245,6 @@ local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
             local currentHRP = player.Character.HumanoidRootPart
             currentHRP.CFrame = val.Value
             
-            -- บังคับให้หน้าตัวละครหันเข้าเป้าหมายตลอดเวลา
             if aimPos then
                 currentHRP.CFrame = CFrame.lookAt(val.Value.Position, aimPos)
             end
@@ -256,9 +255,8 @@ local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
                 player.Character.Humanoid.PlatformStand = false
             end
             
-            -- กดสกิลขณะบิน (Orbit Loop)
             if advanceMode == "Kajiri" and aimPos then
-                if tick() - lastKajiriHold > 1.5 then
+                if tick() - lastKajiriHold > 0.1 then
                     pressKey("F", aimPos)
                     lastKajiriHold = tick()
                 end
@@ -283,7 +281,7 @@ local function triggerAttack(mode, aimPos)
     elseif mode == "Hinami" then
         pressKey("E", aimPos)
     elseif mode == "Kajiri" then
-        if tick() - lastKajiriHold > 1.5 then
+        if tick() - lastKajiriHold > 0.1 then
             pressKey("F", aimPos)
             lastKajiriHold = tick()
         end
@@ -364,7 +362,6 @@ local function getStandardNPC()
         if isSelected then anySelectedBoss = true break end
     end
 
-    -- [ใหม่] ดึง NPC ทั้งหมด (รองรับ Fighter ใน Folder)
     local npcs = {}
     for _, v in pairs(npcSpawns:GetChildren()) do
         if v:IsA("Model") and v:FindFirstChild("Humanoid") then
@@ -386,7 +383,6 @@ local function getStandardNPC()
             local isBossMob = (MasterBossLevels[npcName] ~= nil) or (npc.Parent.Name == "NPCSpawns" and npcName ~= "Mob" and not TargetMap[npcName] and not string.find(npcName:lower(), "spawn"))
 
             if npcName == "Gyakusatsu" then
-                -- ข้ามไป (มีโหมดแยก)
             elseif isSpecificBoss and pLevel >= (Config.BossLevels[npcName] or 0) then
                 validBossExists = true
                 targetBossFound = true
@@ -396,7 +392,6 @@ local function getStandardNPC()
                 local req = MasterBossLevels[npcName] or 0
                 if pLevel >= req then
                     validBossExists = true
-                    -- ถ้าเปิด HopSelectedBoss จะข้ามมอน/บอสตัวอื่นที่ไม่ตรงกับที่เลือก
                     if not Config.HopSelectedBoss then
                         local magnitude = (npc.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
                         if magnitude < nearest then nearestnpc, nearest = npc, magnitude end
@@ -473,7 +468,6 @@ task.spawn(function()
                             char.HumanoidRootPart.CFrame = targetCF
                             
                             if player.PlayerFolder.CanAct.Value then
-                                -- [แก้ไข] ทำระบบคิวสกิลบอส กดแบบมี Delay เพื่อให้คำสั่งลงเซิร์ฟเวอร์ครบ 100%
                                 if isBoss and tick() - bossSkillTick > 0.8 then
                                     for keyName, isEnabled in pairs(Config.Skills) do
                                         if isEnabled then 
@@ -594,13 +588,11 @@ task.spawn(function()
                             local aimHeart = heartsList[nextIndex]
                             
                             local aimPos = targetHeart.HumanoidRootPart.Position
-                            -- หันหน้าไปหาเป้าถัดไปตามคำขอ
                             local nextAimPos = (aimHeart and aimHeart.HumanoidRootPart.Position) or aimPos
                             
                             local standPos = aimPos + Vector3.new(0, Config.GyakuDistance, 0)
                             local dist = (char.HumanoidRootPart.Position - standPos).Magnitude
                             
-                            -- [แก้ไข] ทำการบินข้ามหัวใจแบบสมูท ไม่ชะงักรอ 
                             if dist > 18 then
                                 local lookCFrame = CFrame.lookAt(standPos, nextAimPos)
                                 tp(lookCFrame, nextAimPos, advMode, targetHeart, 15) 
@@ -616,18 +608,32 @@ task.spawn(function()
                         end
 
                     elseif bossObj and bossObj.Parent and bossObj.Humanoid.Health > 0 then
-                        -- [แก้ไข] เมื่อเหลือบอสตัวเดียว ให้ Orbit (บินวนรอบบอส) ไม่หยุดนิ่ง
                         local aimPos = bossObj.HumanoidRootPart.Position
-                        local orbitTime = tick() * 1.5
-                        local standPos = aimPos + Vector3.new(math.sin(orbitTime) * Config.GyakuDistance, 5, math.cos(orbitTime) * Config.GyakuDistance)
+                        local hrp = char.HumanoidRootPart
+                        local dist = (hrp.Position - aimPos).Magnitude
                         
-                        local lookCFrame = CFrame.lookAt(standPos, aimPos)
-                        tp(lookCFrame, aimPos, advMode, bossObj, 5) -- ใส่ early stop สั้นๆ เพื่อให้อัปเดตจุด Orbit ตลอดเวลา 
-                        triggerAttack(advMode, aimPos)
+                        if dist > Config.GyakuDistance + 15 then
+                            local approachPos = aimPos + Vector3.new(0, 5, Config.GyakuDistance)
+                            tp(CFrame.lookAt(approachPos, aimPos), aimPos, advMode, bossObj, 5)
+                        else
+                            local orbitTime = tick() * 2
+                            local orbitPos = aimPos + Vector3.new(math.sin(orbitTime) * Config.GyakuDistance, 5, math.cos(orbitTime) * Config.GyakuDistance)
+                            
+                            hrp.CFrame = CFrame.lookAt(orbitPos, aimPos)
+                            hrp.Velocity = Vector3.new(0, 0, 0)
+                            
+                            triggerAttack(advMode, aimPos)
+                        end
                     else
                         if char:FindFirstChild("Humanoid") then char.Humanoid.AutoRotate = true end
                         resetCamera()
-                        if Config.HopBoss then ServerHop() end
+                        if Config.HopBoss then 
+                            task.wait(1.5)
+                            local verifyHearts, verifyBoss = getGyakuTarget()
+                            if #verifyHearts == 0 and not verifyBoss then
+                                ServerHop() 
+                            end
+                        end
                     end
                 else
                     Config.HasMasked = false; resetCamera() 
@@ -717,7 +723,6 @@ SidebarLine.Parent = CoreGui:FindFirstChild("✨ Ark Hub Premium | Ro-Ghoul") or
 -- [ Tab 1: Main 🏠 ]
 local MainTab = Window:Tab({Title = "Main 🏠", Icon = "home"}) do
     
-    -- [ใหม่] ปุ่มรับโค้ด
     MainTab:Section({Title = "🎉 Codes & Rewards"})
     MainTab:Button({
         Title = "🎁 Redeem All Codes",
@@ -764,7 +769,6 @@ local BossTab = Window:Tab({Title = "Boss 👹", Icon = "swords"}) do
         Callback = function(v) Config.AllBossFarm = v; SaveConfig() end
     })
     
-    -- [ใหม่] Hop เฉพาะบอสที่เลือก
     BossTab:Toggle({
         Title = "🌐 Hop Selected Bosses Only",
         Desc = "Stops normal farming and server hops for selected bosses",
