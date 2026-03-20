@@ -1,7 +1,7 @@
 --[[
     Ark Hub (Ro-Ghoul) - Premium Ultimate
     UI: x2zu OPEN-SOURCE 
-    Features: Fixed Boss Skills Queue, Added Young Eto & Touka, Smart Hop, Smooth Orbit
+    Features: Scorpion Farm (1-by-1 Target), Smart Boss Skills, Deep Scan, Smooth Orbit
 ]]
 
 local player = game.Players.LocalPlayer
@@ -37,10 +37,10 @@ local Config = {
     Boss = {
         ["Gyakusatsu"] = false,
         ["Eto Yoshimura"] = false,
-        ["Young Eto Yoshimura"] = false, -- [ใหม่]
+        ["Young Eto Yoshimura"] = false,
         ["Koutarou Amon"] = false,
         ["Nishiki Nishio"] = false,
-        ["Touka Kirishima"] = false,   -- [ใหม่]
+        ["Touka Kirishima"] = false,
         ["Fighter"] = false 
     },
     BossLevels = {
@@ -65,6 +65,7 @@ local Config = {
     AdvanceKosshi = false,
     AdvanceV3 = false,
     AdvanceHinami = false,
+    ScorpionFarm = false, -- [ใหม่]
     HopBoss = false,
     AutoFaction = false,
     AutoMask = false,
@@ -192,7 +193,6 @@ local function ServerHop()
     task.wait(3); isHopping = false
 end
 
--- [แก้ไข] เพิ่มการหน่วงเวลาปล่อยปุ่ม (KeyUp) ให้เกมรับคำสั่งสมบูรณ์ 
 local function pressKey(keyToPress, aimPosition)
     if not Config.Key or not player.Character or not player.Character:FindFirstChild("Remotes") then return end
     local hit = player:GetMouse().Hit
@@ -223,6 +223,8 @@ local function resetCamera()
 end
 
 local lastKajiriHold = 0
+local gyakuSkillTick = 0 -- [ตัวแปรจัดการคิวสกิลสำหรับ Scorpion Farm]
+
 local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
     if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
     local hrp = player.Character.HumanoidRootPart
@@ -281,6 +283,8 @@ local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
                 pressKey("Mouse1", aimPos)
             elseif advanceMode == "Hinami" and aimPos then
                 pressKey("E", aimPos)
+            elseif advanceMode == "Scorpion" and aimPos then
+                pressKey("Mouse1", aimPos)
             end
         end
         task.wait()
@@ -291,6 +295,18 @@ end
 local function triggerAttack(mode, aimPos)
     if mode == "Kosshi" then
         pressKey("E", aimPos); pressKey("R", aimPos); pressKey("F", aimPos); pressKey("C", aimPos)
+    elseif mode == "Scorpion" then
+        -- [แก้ไข] คิวสกิลสำหรับ Scorpion Farm ฆ่าทีละดวง + กันสกิลแคนเซิล
+        if tick() - gyakuSkillTick > 2.5 then
+            gyakuSkillTick = tick()
+            task.spawn(function()
+                pressKey("E", aimPos); task.wait(0.5)
+                pressKey("R", aimPos); task.wait(0.5)
+                pressKey("F", aimPos); task.wait(0.5)
+                pressKey("C", aimPos); task.wait(0.5)
+            end)
+        end
+        pressKey("Mouse1", aimPos)
     elseif mode == "V3" then
         pressKey("Mouse1", aimPos)
     elseif mode == "Hinami" then
@@ -478,8 +494,6 @@ task.spawn(function()
                             char.HumanoidRootPart.CFrame = targetCF
                             
                             if player.PlayerFolder.CanAct.Value then
-                                
-                                -- [แก้ไข] ระบบเรียงคิวสกิลบอสแบบมี Delay 0.6 วิ ป้องกัน Animation Cancel (เกมรับคีย์ครบทุกปุ่ม)
                                 if isBoss and tick() - bossSkillTick > 3 then 
                                     bossSkillTick = tick()
                                     task.spawn(function()
@@ -489,7 +503,6 @@ task.spawn(function()
                                         if Config.Skills.C and npc.Parent then pressKey("C", npc.HumanoidRootPart.Position); task.wait(0.6) end
                                     end)
                                 end
-                                
                                 pressKey("Mouse1", npc.HumanoidRootPart.Position)
                             end
                         end
@@ -584,7 +597,8 @@ task.spawn(function()
                     if Config.AdvanceKajiri then advMode = "Kajiri"
                     elseif Config.AdvanceKosshi then advMode = "Kosshi"
                     elseif Config.AdvanceV3 then advMode = "V3"
-                    elseif Config.AdvanceHinami then advMode = "Hinami" end 
+                    elseif Config.AdvanceHinami then advMode = "Hinami"
+                    elseif Config.ScorpionFarm then advMode = "Scorpion" end -- [เพิ่มโหมด Scorpion]
 
                     if advMode == "Hinami" and not hasPressedHinamiF and (char:FindFirstChild("Kagune") or char:FindFirstChild("Quinque")) then
                         task.wait(0.3) 
@@ -592,7 +606,42 @@ task.spawn(function()
                         hasPressedHinamiF = true
                     end
 
-                    if #heartsList > 0 and advMode then
+                    -- [ระบบแยก] สำหรับ Scorpion Farm (ฆ่าทีละดวง ไม่บินทะลุ)
+                    if advMode == "Scorpion" then
+                        local targetObj = nil
+                        for _, h in ipairs(heartsList) do
+                            if h and h.Parent and h.Humanoid.Health > 0 then
+                                targetObj = h
+                                break -- เจอหัวใจดวงแรกที่รอด ให้ล็อคเป้าเลย
+                            end
+                        end
+                        -- ถ้าหัวใจตายหมด ให้ตีบอสใหญ่
+                        if not targetObj and bossObj and bossObj.Parent and bossObj.Humanoid.Health > 0 then
+                            targetObj = bossObj
+                        end
+
+                        if targetObj then
+                            local aimPos = targetObj.HumanoidRootPart.Position
+                            local standPos = aimPos + Vector3.new(0, Config.GyakuDistance, 0)
+                            local dist = (char.HumanoidRootPart.Position - standPos).Magnitude
+                            
+                            if dist > 15 then
+                                local lookCFrame = CFrame.lookAt(standPos, aimPos)
+                                tp(lookCFrame, aimPos, advMode, targetObj, 10) 
+                            else
+                                char.Humanoid.AutoRotate = false
+                                char.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
+                                char.HumanoidRootPart.CFrame = CFrame.lookAt(standPos, aimPos)
+                                triggerAttack(advMode, aimPos)
+                            end
+                        else
+                            if char:FindFirstChild("Humanoid") then char.Humanoid.AutoRotate = true end
+                            resetCamera()
+                            if Config.HopBoss then ServerHop() end
+                        end
+
+                    -- [ระบบเดิม] สำหรับ Advance Farm (บินเป็นวงกลม)
+                    elseif #heartsList > 0 and advMode then
                         if advanceIndex > #heartsList then advanceIndex = 1 end
                         local targetHeart = heartsList[advanceIndex]
                         
@@ -805,11 +854,16 @@ Window:Line()
 local GyakuTab = Window:Tab({Title = "Gyaku 💀", Icon = "skull"}) do
     GyakuTab:Section({Title = "🔥 Ultimate Gyakusatsu (V13)"})
     GyakuTab:Toggle({ Title = "☠️ Start Gyakusatsu Farm", Value = Config.GyakuFarm, Callback = function(v) Config.GyakuFarm = v; SaveConfig() end })
+    
+    GyakuTab:Section({Title = "⚔️ Attack Modes (Select One)"})
     GyakuTab:Toggle({ Title = "🎯 Kajiri Mode (Aimbot + Attack)", Value = Config.KajiriMode, Callback = function(v) Config.KajiriMode = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🌀 Advance Kajiri (Hold F)", Value = Config.AdvanceKajiri, Callback = function(v) Config.AdvanceKajiri = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🌪️ Advance Kosshi Farm", Desc = "Circular move + Spam E,R,F,C", Value = Config.AdvanceKosshi, Callback = function(v) Config.AdvanceKosshi = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🖱️ Advance V3 Farm (Spam Click)", Desc = "Circular move + Spam Mouse1", Value = Config.AdvanceV3, Callback = function(v) Config.AdvanceV3 = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🌸 Advance Hinami Farm", Desc = "Equip -> F once -> Spam Hold E", Value = Config.AdvanceHinami, Callback = function(v) Config.AdvanceHinami = v; SaveConfig() end })
+    GyakuTab:Toggle({ Title = "🦂 Scorpion Farm (1 by 1)", Desc = "Kill heart one by one -> Boss (Spam E,R,F,C)", Value = Config.ScorpionFarm, Callback = function(v) Config.ScorpionFarm = v; SaveConfig() end })
+    
+    GyakuTab:Section({Title = "⚙️ Gyaku Settings"})
     GyakuTab:Toggle({ Title = "🌐 Auto Hop Boss", Value = Config.HopBoss, Callback = function(v) Config.HopBoss = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🔄 Auto Faction Loop", Value = Config.AutoFaction, Callback = function(v) Config.AutoFaction = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🎭 Auto Mask on Spawn", Value = Config.AutoMask, Callback = function(v) Config.AutoMask = v; SaveConfig() end })
