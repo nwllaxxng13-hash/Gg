@@ -65,7 +65,7 @@ local Config = {
     AdvanceKosshi = false,
     AdvanceV3 = false,
     AdvanceHinami = false,
-    ScorpionFarm = false, -- [ใหม่]
+    ScorpionFarm = false,
     HopBoss = false,
     AutoFaction = false,
     AutoMask = false,
@@ -135,19 +135,26 @@ end
 LoadConfig()
 
 -- ==========================================
--- 2. Auto Faction On Boot
+-- 2. Auto Faction On Boot & Wait For Spawn
 -- ==========================================
-pcall(function()
-    local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
-    if remotes then
-        local raceRemote = remotes:WaitForChild("Race", 5)
-        if raceRemote then
-            raceRemote.Chose:InvokeServer(Config.FactionChoice)
+if Config.AutoFaction then
+    pcall(function()
+        local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+        if remotes then
+            local raceRemote = remotes:WaitForChild("Race", 5)
+            if raceRemote then
+                raceRemote.Chose:InvokeServer(Config.FactionChoice)
+                task.wait(1) 
+            end
         end
-    end
-end)
+    end)
+end
 
-repeat task.wait() until player:FindFirstChild("PlayerFolder")
+repeat 
+    task.wait(0.5) 
+until player:FindFirstChild("PlayerFolder") 
+  and player.Character 
+  and player.Character:FindFirstChild("HumanoidRootPart")
 
 -- ==========================================
 -- 3. Bypass Key Grabber
@@ -223,7 +230,7 @@ local function resetCamera()
 end
 
 local lastKajiriHold = 0
-local gyakuSkillTick = 0 -- [ตัวแปรจัดการคิวสกิลสำหรับ Scorpion Farm]
+local gyakuSkillTick = 0 
 
 local function tp(targetCFrame, aimPos, advanceMode, targetObj, earlyStop)
     if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
@@ -296,7 +303,6 @@ local function triggerAttack(mode, aimPos)
     if mode == "Kosshi" then
         pressKey("E", aimPos); pressKey("R", aimPos); pressKey("F", aimPos); pressKey("C", aimPos)
     elseif mode == "Scorpion" then
-        -- [แก้ไข] คิวสกิลสำหรับ Scorpion Farm ฆ่าทีละดวง + กันสกิลแคนเซิล
         if tick() - gyakuSkillTick > 2.5 then
             gyakuSkillTick = tick()
             task.spawn(function()
@@ -598,7 +604,7 @@ task.spawn(function()
                     elseif Config.AdvanceKosshi then advMode = "Kosshi"
                     elseif Config.AdvanceV3 then advMode = "V3"
                     elseif Config.AdvanceHinami then advMode = "Hinami"
-                    elseif Config.ScorpionFarm then advMode = "Scorpion" end -- [เพิ่มโหมด Scorpion]
+                    elseif Config.ScorpionFarm then advMode = "Scorpion" end 
 
                     if advMode == "Hinami" and not hasPressedHinamiF and (char:FindFirstChild("Kagune") or char:FindFirstChild("Quinque")) then
                         task.wait(0.3) 
@@ -606,16 +612,14 @@ task.spawn(function()
                         hasPressedHinamiF = true
                     end
 
-                    -- [ระบบแยก] สำหรับ Scorpion Farm (ฆ่าทีละดวง ไม่บินทะลุ)
                     if advMode == "Scorpion" then
                         local targetObj = nil
                         for _, h in ipairs(heartsList) do
                             if h and h.Parent and h.Humanoid.Health > 0 then
                                 targetObj = h
-                                break -- เจอหัวใจดวงแรกที่รอด ให้ล็อคเป้าเลย
+                                break 
                             end
                         end
-                        -- ถ้าหัวใจตายหมด ให้ตีบอสใหญ่
                         if not targetObj and bossObj and bossObj.Parent and bossObj.Humanoid.Health > 0 then
                             targetObj = bossObj
                         end
@@ -640,7 +644,6 @@ task.spawn(function()
                             if Config.HopBoss then ServerHop() end
                         end
 
-                    -- [ระบบเดิม] สำหรับ Advance Farm (บินเป็นวงกลม)
                     elseif #heartsList > 0 and advMode then
                         if advanceIndex > #heartsList then advanceIndex = 1 end
                         local targetHeart = heartsList[advanceIndex]
