@@ -69,7 +69,7 @@ local Config = {
     AdvanceHinami = false,
     ScorpionFarm = false,
     HopBoss = false,
-    AutoFaction = false,
+    AutoFaction = true, -- [ปรับเป็น True ตั้งแต่เริ่มเพื่อให้ Loop ทำงานทันที]
     AutoMask = false,
     FactionChoice = "CCG",
     WeaponStage = "One",
@@ -111,8 +111,6 @@ local CodesList = {
 }
 
 local SaveFileName = "ArkHub_SavedConfig.json"
-local oldCashoutTick = 0
-
 local function SaveConfig()
     pcall(function()
         if writefile then writefile(SaveFileName, HttpService:JSONEncode(Config)) end
@@ -137,27 +135,23 @@ end
 LoadConfig()
 
 -- ==========================================
--- 2. Auto Faction On Boot (Fixed Version)
+-- 2. ULTRA AUTO FACTION (FORCED LOOP)
 -- ==========================================
--- รอจนกว่า PlayerFolder จะโหลดมาอย่างสมบูรณ์ ป้องกันบัค Invoke เร็วเกินไป
-repeat task.wait() until player:FindFirstChild("PlayerFolder")
-
--- ยิงคำสั่งครั้งแรกหลังโหลดเสร็จ
-pcall(function()
-    local remotes = ReplicatedStorage:WaitForChild("Remotes")
-    local raceRemote = remotes:WaitForChild("Race")
-    raceRemote.Chose:InvokeServer(Config.FactionChoice)
-end)
-
--- ลูปสำรอง (Failsafe) ดันค่าเรื่อยๆ กันพลาดกรณีเกม Override
 task.spawn(function()
-    while task.wait(3) do
-        -- เช็คจากหน้าต่าง UI ควบคู่ไปได้
-        if Config.AutoFaction then 
+    while task.wait(1.5) do -- เช็คทุก 1.5 วินาที
+        if Config.AutoFaction then
             pcall(function()
+                local playerFolder = player:FindFirstChild("PlayerFolder")
                 local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-                if remotes and remotes:FindFirstChild("Race") then
-                    remotes.Race.Chose:InvokeServer(Config.FactionChoice)
+                
+                if playerFolder and remotes and remotes:FindFirstChild("Race") then
+                    local currentTeam = playerFolder.Customization.Team.Value
+                    local targetTeam = Config.FactionChoice:sub(1,1):upper() .. Config.FactionChoice:sub(2):lower() -- จัดฟอร์แมตชื่อ (CCG หรือ Ghoul)
+                    
+                    -- ถ้า Team ยังไม่ตรงกับที่เลือกใน Config ให้ส่งคำสั่งย้ำๆ
+                    if currentTeam ~= targetTeam then
+                        remotes.Race.Chose:InvokeServer(Config.FactionChoice)
+                    end
                 end
             end)
         end
@@ -353,6 +347,7 @@ local function needQuest()
     return true
 end
 
+local oldCashoutTick = 0
 local function handleQuestAndCashout()
     local doQuest = Config.AutoTask and needQuest()
     local doCashout = Config.AutoCashOut and (tick() - oldCashoutTick > 7200)
@@ -423,7 +418,7 @@ local function getStandardNPC()
         local isBossMob = (MasterBossLevels[npcName] ~= nil) or (npc.Parent and npc.Parent.Name == "NPCSpawns" and not TargetMap[npcName] and not string.find(npcName:lower(), "spawn"))
 
         if npcName == "Gyakusatsu" then
-            -- ข้าม Gyakusatsu
+            -- ข้าม
         elseif isSpecificBoss then
             validBossExists = true
             targetBossFound = true
@@ -478,7 +473,6 @@ local function collectCorpse(npc)
 end
 
 local bossSkillTick = 0
-
 task.spawn(function()
     while task.wait() do
         if Config.AutoFarm and not Config.GyakuFarm then
@@ -864,7 +858,7 @@ local GyakuTab = Window:Tab({Title = "Gyaku 💀", Icon = "skull"}) do
     GyakuTab:Toggle({ Title = "🌪️ Advance Kosshi Farm", Desc = "Circular move + Spam E,R,F,C", Value = Config.AdvanceKosshi, Callback = function(v) Config.AdvanceKosshi = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🖱️ Advance V3 Farm (Spam Click)", Desc = "Circular move + Spam Mouse1", Value = Config.AdvanceV3, Callback = function(v) Config.AdvanceV3 = v; SaveConfig() end })
     GyakuTab:Toggle({ Title = "🌸 Advance Hinami Farm", Desc = "Equip -> F once -> Spam Hold E", Value = Config.AdvanceHinami, Callback = function(v) Config.AdvanceHinami = v; SaveConfig() end })
-    GyakuTab:Toggle({ Title = "🦂 Scorpion Farm (1 by 1)", Desc = "Kill heart one by one -> Boss (Spam E,R,F,C)", Value = Config.ScorpionFarm, Callback = function(v) Config.ScorpionFarm = v; SaveConfig() end })
+    GyakuTab:Toggle({ Title = "Scorpion Farm (1 by 1)", Desc = "Kill heart one by one -> Boss (Spam E,R,F,C)", Value = Config.ScorpionFarm, Callback = function(v) Config.ScorpionFarm = v; SaveConfig() end })
     
     GyakuTab:Section({Title = "⚙️ Gyaku Settings"})
     GyakuTab:Toggle({ Title = "🌐 Auto Hop Boss", Value = Config.HopBoss, Callback = function(v) Config.HopBoss = v; SaveConfig() end })
@@ -876,4 +870,4 @@ local GyakuTab = Window:Tab({Title = "Gyaku 💀", Icon = "skull"}) do
 end
 Window:Line()
 
-Window:Notify({ Title = "Welcome to Ark Hub! 🚀", Desc = "Auto-Login successful. Config Restored.", Time = 5 })
+Window:Notify({ Title = "Welcome to Ark Hub! 🚀", Desc = "Auto-Faction Active. Config Restored.", Time = 5 })
