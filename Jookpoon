@@ -1,117 +1,136 @@
--- [[ จกปูน V.2 - EXTREME SPEED VERSION ]] --
+-- [[ จกปูน V.2 FIXED + INSTANT HOLD ]] --
 
--- ตั้งค่าตำแหน่ง
-local Pos1 = Vector3.new(1329.260, 1150.113, -4859.753)
-local Pos2 = Vector3.new(865.900, 1129.000, -5981.842)
+local CoreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+local lp = Players.LocalPlayer
 
--- สถานะการทำงาน
-local Settings = {
+-- ลบ UI เก่า
+if CoreGui:FindFirstChild("CementFarmV2_Fixed") then
+    CoreGui:FindFirstChild("CementFarmV2_Fixed"):Destroy()
+end
+
+-- ตั้งค่า
+local Config = {
+    Pos1 = Vector3.new(1329.260, 1150.113, -4859.753),
+    Pos2 = Vector3.new(865.900, 1129.000, -5981.842),
     WarpEnabled = false,
     AutoFire = false,
-    WarpDelay = 0.01, -- ปรับความเร็วการวาร์ป (วินาที)
-    FireRange = 30 -- ระยะการกด
+    WarpDelay = 0.01, -- ปรับความเร็วการสลับจุด
+    HoldTime = 0 -- 0 คือกดทันที (Instant)
 }
 
--- [[ ระบบ GUI ]] --
-local CoreGui = game:GetService("CoreGui")
+-- [[ 1. ระบบแก้ไข ProximityPrompt ให้กดไวขึ้น ]] --
+local function ModifyPrompts(obj)
+    if obj:IsA("ProximityPrompt") then
+        obj.HoldDuration = Config.HoldTime
+        -- ปรับระยะการกดให้ไกลขึ้นนิดหน่อยเพื่อความเสถียร
+        obj.MaxActivationDistance = 30 
+    end
+end
+
+-- ตรวจจับ Prompt ที่มีอยู่แล้วและที่กำลังจะเกิดใหม่
+for _, v in pairs(workspace:GetDescendants()) do ModifyPrompts(v) end
+workspace.DescendantAdded:Connect(ModifyPrompts)
+
+-- [[ 2. สร้าง GUI แบบสมบูรณ์ ]] --
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "CementFarmV2"
+ScreenGui.Name = "CementFarmV2_Fixed"
 ScreenGui.Parent = CoreGui
-ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 170, 0, 200)
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 MainFrame.Position = UDim2.new(0.5, -85, 0.4, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-MainFrame.BorderSizePixel = 0
+MainFrame.Size = UDim2.new(0, 170, 0, 180)
 MainFrame.Active = true
 MainFrame.Draggable = true
-MainFrame.Parent = ScreenGui
 
 local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = ToolFormat.UDim(0, 10)
+UICorner.CornerRadius = UDim.new(0, 10)
 UICorner.Parent = MainFrame
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 40)
-Title.Text = "จกปูน V.2 [FAST]"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.TextSize = 18
-Title.Font = Enum.Font.SourceSansBold
-Title.BackgroundTransparency = 1
 Title.Parent = MainFrame
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.BackgroundTransparency = 1
+Title.Text = "จกปูน V.2 [FIXED]"
+Title.TextColor3 = Color3.fromRGB(255, 215, 0)
+Title.TextSize = 16
+Title.Font = Enum.Font.SourceSansBold
 
--- ฟังก์ชันสร้างปุ่ม
-local function CreateButton(name, text, pos, color)
+local function CreateToggle(name, text, pos)
     local btn = Instance.new("TextButton")
     btn.Name = name
-    btn.Size = UDim2.new(0, 150, 0, 50)
+    btn.Parent = MainFrame
     btn.Position = pos
-    btn.BackgroundColor3 = color
-    btn.Text = text
+    btn.Size = UDim2.new(0, 150, 0, 50)
+    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    btn.Text = text .. ": OFF"
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Font = Enum.Font.SourceSansBold
-    btn.TextSize = 16
-    btn.Parent = MainFrame
+    btn.TextSize = 14
     
     local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
     corner.Parent = btn
     return btn
 end
 
-local WarpBtn = CreateButton("WarpBtn", "Warp Loop: OFF", UDim2.new(0, 10, 0, 60), Color3.fromRGB(150, 0, 0))
-local FireBtn = CreateButton("FireBtn", "Auto Fire: OFF", UDim2.new(0, 10, 0, 120), Color3.fromRGB(150, 0, 0))
+local WarpBtn = CreateToggle("WarpBtn", "Loop Warp", UDim2.new(0, 10, 0, 50))
+local FireBtn = CreateToggle("FireBtn", "Auto Fire", UDim2.new(0, 10, 0, 110))
 
--- [[ ฟังก์ชันการทำงาน ]] --
+-- [[ 3. ระบบการทำงาน (Logic) ]] --
 
--- 1. ลูป Warp แบบไว
+-- ฟังก์ชัน Fire Prompt
+local function FireAllNearby()
+    local char = lp.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        for _, v in pairs(workspace:GetDescendants()) do
+            if v:IsA("ProximityPrompt") then
+                local dist = (v.Parent.Position - char.HumanoidRootPart.Position).Magnitude
+                if dist < 30 then
+                    fireproximityprompt(v)
+                end
+            end
+        end
+    end
+end
+
+-- ลูป Warp สลับจุด
 task.spawn(function()
     while task.wait() do
-        if Settings.WarpEnabled then
-            local p = game.Players.LocalPlayer
-            if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                -- จุดที่ 1
-                p.Character.HumanoidRootPart.CFrame = CFrame.new(Pos1)
-                task.wait(Settings.WarpDelay)
-                
-                -- จุดที่ 2
-                if Settings.WarpEnabled then
-                    p.Character.HumanoidRootPart.CFrame = CFrame.new(Pos2)
-                    task.wait(Settings.WarpDelay)
-                end
-            end
-        end
-    end
-end)
-
--- 2. ลูป Fire Prompt แบบแก้บั๊ก (ใช้การเช็ครัศมีรอบตัว)
-task.spawn(function()
-    while task.wait(0.05) do -- เช็ครัวๆ ทุก 0.05 วินาที
-        if Settings.AutoFire then
-            local char = game.Players.LocalPlayer.Character
+        if Config.WarpEnabled then
+            local char = lp.Character
             if char and char:FindFirstChild("HumanoidRootPart") then
-                for _, v in pairs(workspace:GetDescendants()) do
-                    if v:IsA("ProximityPrompt") then
-                        local distance = (v.Parent.Position - char.HumanoidRootPart.Position).Magnitude
-                        if distance <= Settings.FireRange then
-                            fireproximityprompt(v)
-                        end
-                    end
-                end
+                char.HumanoidRootPart.CFrame = CFrame.new(Config.Pos1)
+                task.wait(Config.WarpDelay)
+                if not Config.WarpEnabled then break end
+                char.HumanoidRootPart.CFrame = CFrame.new(Config.Pos2)
+                task.wait(Config.WarpDelay)
             end
         end
     end
 end)
 
--- [[ ระบบ Toggle ]] --
+-- ลูป Auto Fire (รัวจัด)
+task.spawn(function()
+    while task.wait(0.1) do
+        if Config.AutoFire then
+            FireAllNearby()
+        end
+    end
+end)
+
+-- [[ 4. ระบบ Toggle ]] --
 WarpBtn.MouseButton1Click:Connect(function()
-    Settings.WarpEnabled = not Settings.WarpEnabled
-    WarpBtn.Text = Settings.WarpEnabled and "Warp Loop: ON" or "Warp Loop: OFF"
-    WarpBtn.BackgroundColor3 = Settings.WarpEnabled and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(150, 0, 0)
+    Config.WarpEnabled = not Config.WarpEnabled
+    WarpBtn.Text = "Loop Warp: " .. (Config.WarpEnabled and "ON" or "OFF")
+    WarpBtn.BackgroundColor3 = Config.WarpEnabled and Color3.fromRGB(0, 120, 0) or Color3.fromRGB(45, 45, 45)
 end)
 
 FireBtn.MouseButton1Click:Connect(function()
-    Settings.AutoFire = not Settings.AutoFire
-    FireBtn.Text = Settings.AutoFire and "Auto Fire: ON" or "Auto Fire: OFF"
-    FireBtn.BackgroundColor3 = Settings.AutoFire and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(150, 0, 0)
+    Config.AutoFire = not Config.AutoFire
+    FireBtn.Text = "Auto Fire: " .. (Config.AutoFire and "ON" or "OFF")
+    FireBtn.BackgroundColor3 = Config.AutoFire and Color3.fromRGB(0, 120, 0) or Color3.fromRGB(45, 45, 45)
 end)
