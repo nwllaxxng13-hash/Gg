@@ -1,0 +1,112 @@
+local Library = {} -- สร้าง GUI แบบง่ายๆ
+local ScreenGui = Instance.new("ScreenGui")
+local MainFrame = Instance.new("Frame")
+local Title = Instance.new("TextLabel")
+local WarpToggle = Instance.new("TextButton")
+local PromptToggle = Instance.new("TextButton")
+local UICorner = Instance.new("UICorner")
+
+-- ตั้งค่าตัวแปรควบคุม (Flags)
+local _G = {
+    WarpEnabled = false,
+    PromptEnabled = false
+}
+
+-- ตำแหน่งที่ต้องการ Warp
+local Pos1 = Vector3.new(1329.260, 1150.113, -4859.753)
+local Pos2 = Vector3.new(865.900, 1129.000, -5981.842)
+
+-- Setup GUI (เหมาะสำหรับมือถือ)
+ScreenGui.Name = "FarmGui"
+ScreenGui.Parent = game:GetService("CoreGui")
+ScreenGui.ResetOnSpawn = false
+
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MainFrame.Position = UDim2.new(0.5, -75, 0.4, 0)
+MainFrame.Size = UDim2.new(0, 150, 0, 180)
+MainFrame.Active = true
+MainFrame.Draggable = true
+
+UICorner.Parent = MainFrame
+
+Title.Parent = MainFrame
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.Text = "Farm จกปูน"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.BackgroundTransparency = 1
+Title.TextSize = 18
+
+-- ปุ่มสลับ Warp
+WarpToggle.Name = "WarpToggle"
+WarpToggle.Parent = MainFrame
+WarpToggle.Position = UDim2.new(0, 10, 0, 50)
+WarpToggle.Size = UDim2.new(0, 130, 0, 50)
+WarpToggle.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+WarpToggle.Text = "Loop Warp: OFF"
+WarpToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+-- ปุ่มสลับ ProximityPrompt
+PromptToggle.Name = "PromptToggle"
+PromptToggle.Parent = MainFrame
+PromptToggle.Position = UDim2.new(0, 10, 0, 110)
+PromptToggle.Size = UDim2.new(0, 130, 0, 50)
+PromptToggle.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+PromptToggle.Text = "Auto Prompt: OFF"
+PromptToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+-- ฟังก์ชัน Warp
+task.spawn(function()
+    while true do
+        if _G.WarpEnabled then
+            local char = game.Players.LocalPlayer.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                -- ไปจุดที่ 1
+                char.HumanoidRootPart.CFrame = CFrame.new(Pos1)
+                task.wait(2) -- ปรับเวลาพักรอตามต้องการ
+                
+                -- ไปจุดที่ 2 (ตรวจสอบอีกรอบเผื่อปิดกลางคัน)
+                if _G.WarpEnabled then
+                    char.HumanoidRootPart.CFrame = CFrame.new(Pos2)
+                    task.wait(2)
+                end
+            end
+        end
+        task.wait(0.1)
+    end
+end)
+
+-- ฟังก์ชัน Fire ProximityPrompts รอบตัว
+task.spawn(function()
+    while true do
+        if _G.PromptEnabled then
+            for _, v in pairs(workspace:GetDescendants()) do
+                if v:IsA("ProximityPrompt") then
+                    -- เช็คระยะห่าง (ถ้ารัศมีเกิน 20 หน่วยจะไม่ทำงาน เพื่อความเนียน)
+                    local player = game.Players.LocalPlayer
+                    if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                        local dist = (v.Parent.Position - player.Character.HumanoidRootPart.Position).Magnitude
+                        if dist < 20 then 
+                            fireproximityprompt(v)
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.2) -- ปรับความเร็วในการเช็ค Prompt
+    end
+end)
+
+-- Logic ปุ่มกด
+WarpToggle.MouseButton1Click:Connect(function()
+    _G.WarpEnabled = not _G.WarpEnabled
+    WarpToggle.Text = _G.WarpEnabled and "Loop Warp: ON" or "Loop Warp: OFF"
+    WarpToggle.BackgroundColor3 = _G.WarpEnabled and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(200, 0, 0)
+end)
+
+PromptToggle.MouseButton1Click:Connect(function()
+    _G.PromptEnabled = not _G.PromptEnabled
+    PromptToggle.Text = _G.PromptEnabled and "Auto Prompt: ON" or "Auto Prompt: OFF"
+    PromptToggle.BackgroundColor3 = _G.PromptEnabled and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(200, 0, 0)
+end)
