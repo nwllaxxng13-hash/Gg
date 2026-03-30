@@ -8,7 +8,7 @@ local Pos2 = Vector3.new(865.900, 1129.000, -5981.842)
 local Settings = {
     WarpEnabled = false,
     AutoFire = false,
-    WarpDelay = 0.3, -- ปรับความเร็วการวาร์ป (วินาที)
+    WarpDelay = 0.01, -- ปรับความเร็วการวาร์ป (วินาที)
     FireRange = 30 -- ระยะการกด
 }
 
