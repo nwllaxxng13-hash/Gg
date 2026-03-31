@@ -1,5 +1,5 @@
 --==================================================
--- KIM UI — ULTRA (WindUI Version)
+-- KIM UI — ULTRA (WindUI Version) + Gun Buff
 -- Converted from x2zu template to WindUI
 --==================================================
 
@@ -26,8 +26,8 @@ end
 -- Main Window
 -- =========================
 local Window = WindUI:CreateWindow({
-    Title = "Student War 90 By Ark",
-    Folder = "ARKUI",
+    Title = "KIM UI — ULTRA",
+    Folder = "KIMUI",
     Icon = "solar:star-bold",
     NewElements = true,
     HideSearchBar = false,
@@ -36,7 +36,7 @@ local Window = WindUI:CreateWindow({
         ButtonsType = "Mac",
     },
     OpenButton = {
-        Title = "Ark UI",
+        Title = "KIM UI",
         CornerRadius = UDim.new(1, 0),
         StrokeThickness = 2,
         Enabled = true,
@@ -58,6 +58,7 @@ local MainTab     = Window:Tab({ Title = "เมนูหลัก",       Icon 
 local TeleportTab = Window:Tab({ Title = "เทเลพอร์ต",      Icon = "solar:map-arrow-right-bold" })
 local VisualsTab  = Window:Tab({ Title = "มองต่างๆ",       Icon = "solar:eye-bold" })
 local ExtraTab    = Window:Tab({ Title = "ของเสริม",        Icon = "solar:tag-bold" })
+local GunBuffTab  = Window:Tab({ Title = "บัฟปืน",          Icon = "solar:fire-bold" })
 local FPSTab      = Window:Tab({ Title = "FPS",             Icon = "solar:chart-2-bold" })
 local EventTab    = Window:Tab({ Title = "เกี่ยวกับอีเว้น", Icon = "solar:calendar-bold" })
 
@@ -78,7 +79,7 @@ local PlayerGui        = LocalPlayer:WaitForChild("PlayerGui")
 -- =========================
 local function notify(title, content, duration)
     WindUI:Notify({
-        Title   = title   or "Ark UI",
+        Title   = title   or "KIM UI",
         Content = content or "",
         Duration = duration or 2,
     })
@@ -165,6 +166,191 @@ local aimingMark_size     = 28
 local aimingMark_pos      = nil
 local aimingMark_dragging = false
 local aimingMarkGui, aimingMarkBtn
+
+-- =========================
+-- GUN BUFF SYSTEM
+-- =========================
+local GunBuffConfig = {
+    SelectedGun = nil,
+    AutoExecute = false,
+    Settings = {
+        AmmoPerMag = 100,
+        MaxAmmo = 20,
+        Recoil = 0.1,
+        Spread = 20,
+        FireRate = 0.6,
+        BaseDamage = 20,
+        Ammo = 30,
+        Range = 99999,
+        ZeroDamageDistance = 99999,
+        FullDamageDistance = 1000,
+        ReloadTime = 0.1,
+        ExplosionRadius = math.huge,
+        WhizDistance = 20,
+        HitSoundVolume = math.huge,
+        BulletPerShot = 12,
+        ExplosionSoundVolume = math.huge,
+        FriendlyFire = true,
+        GoreSoundVolume = math.huge,
+        GoreSoundIDs = 19230359546,
+        LightBrightness = math.huge,
+        LightRange = math.huge,
+    }
+}
+
+local GunBuffedLabel = nil
+local isGunBuffed = false
+
+-- Create Gun Buffed Label
+local function createGunBuffLabel()
+    if GunBuffedLabel and GunBuffedLabel.Parent then return end
+    
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "KIMUI_GunBuffLabel"
+    sg.ResetOnSpawn = false
+    sg.IgnoreGuiInset = true
+    sg.DisplayOrder = 10001
+    sg.Parent = PlayerGui
+    
+    local label = Instance.new("TextLabel")
+    label.Name = "BuffLabel"
+    label.Size = UDim2.fromOffset(200, 40)
+    label.Position = UDim2.new(1, -210, 0, 10)
+    label.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    label.BackgroundTransparency = 0.3
+    label.BorderSizePixel = 0
+    label.Font = Enum.Font.GothamBold
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextSize = 16
+    label.Text = "Gun Buffed: false"
+    label.Parent = sg
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = label
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 2
+    stroke.Color = Color3.fromRGB(255, 0, 0)
+    stroke.Parent = label
+    
+    GunBuffedLabel = label
+end
+
+-- Update Gun Buffed Label
+local function updateGunBuffLabel(buffed)
+    createGunBuffLabel()
+    isGunBuffed = buffed
+    if GunBuffedLabel then
+        GunBuffedLabel.Text = "Gun Buffed: " .. tostring(buffed)
+        local stroke = GunBuffedLabel:FindFirstChildOfClass("UIStroke")
+        if stroke then
+            stroke.Color = buffed and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+        end
+    end
+end
+
+-- Get all tools from player
+local function getAllTools()
+    local tools = {}
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    local character = LocalPlayer.Character
+    
+    if backpack then
+        for _, item in ipairs(backpack:GetChildren()) do
+            if item:IsA("Tool") then
+                table.insert(tools, item.Name)
+            end
+        end
+    end
+    
+    if character then
+        for _, item in ipairs(character:GetChildren()) do
+            if item:IsA("Tool") then
+                if not table.find(tools, item.Name) then
+                    table.insert(tools, item.Name)
+                end
+            end
+        end
+    end
+    
+    table.sort(tools)
+    return tools
+end
+
+-- Execute Gun Buff
+local function executeGunBuff()
+    if not GunBuffConfig.SelectedGun then
+        notify("Gun Buff", "กรุณาเลือกปืนก่อน!", 2)
+        return false
+    end
+    
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    local character = LocalPlayer.Character
+    local gun = nil
+    
+    -- Find gun in backpack or character
+    if backpack then
+        gun = backpack:FindFirstChild(GunBuffConfig.SelectedGun)
+    end
+    if not gun and character then
+        gun = character:FindFirstChild(GunBuffConfig.SelectedGun)
+    end
+    
+    if not gun then
+        notify("Gun Buff", "ไม่พบปืน: " .. GunBuffConfig.SelectedGun, 2)
+        updateGunBuffLabel(false)
+        return false
+    end
+    
+    -- Find Setting module
+    local settingModule = gun:FindFirstChild("Setting")
+    if not settingModule then
+        notify("Gun Buff", "ไม่พบ Setting module", 2)
+        updateGunBuffLabel(false)
+        return false
+    end
+    
+    local mainSetting = settingModule:FindFirstChild("1")
+    if not mainSetting then
+        notify("Gun Buff", "ไม่พบ Setting/1", 2)
+        updateGunBuffLabel(false)
+        return false
+    end
+    
+    -- Execute buff
+    local success = pcall(function()
+        local h = require(mainSetting)
+        
+        for key, value in pairs(GunBuffConfig.Settings) do
+            if h[key] ~= nil then
+                h[key] = value
+            end
+        end
+    end)
+    
+    if success then
+        notify("Gun Buff", "บัฟปืนสำเร็จ! ✅", 1.5)
+        updateGunBuffLabel(true)
+        return true
+    else
+        notify("Gun Buff", "บัฟปืนล้มเหลว ❌", 2)
+        updateGunBuffLabel(false)
+        return false
+    end
+end
+
+-- Auto execute on respawn
+LocalPlayer.CharacterAdded:Connect(function()
+    if GunBuffConfig.AutoExecute and GunBuffConfig.SelectedGun then
+        task.wait(1) -- Wait for tools to load
+        executeGunBuff()
+    end
+end)
+
+-- Initial label creation
+createGunBuffLabel()
+updateGunBuffLabel(false)
 
 -- =========================
 -- Player Hitbox Core
@@ -1058,6 +1244,136 @@ do
 end
 
 -- ──────────────────────────────
+-- GUN BUFF TAB
+-- ──────────────────────────────
+local GunSelectSection = GunBuffTab:Section({ Title = "เลือกปืน" })
+
+local currentGunDropdown = nil
+
+GunSelectSection:Button({
+    Title    = "🔄 Tool Refresh",
+    Desc     = "รีเฟรชรายการ Tool",
+    Callback = function()
+        local tools = getAllTools()
+        if #tools == 0 then
+            notify("Gun Buff", "ไม่พบ Tool ในตัว", 2)
+            return
+        end
+        
+        -- Update dropdown if exists
+        if currentGunDropdown then
+            currentGunDropdown:UpdateValues(tools)
+        end
+        
+        notify("Tool Refresh", "พบ " .. #tools .. " Tools", 1.5)
+    end,
+})
+
+GunSelectSection:Space()
+
+currentGunDropdown = GunSelectSection:Dropdown({
+    Title     = "เลือกปืน",
+    Values    = getAllTools(),
+    Value     = nil,
+    AllowNone = true,
+    Multi     = false,
+    Callback  = function(selected)
+        GunBuffConfig.SelectedGun = selected
+        notify("Gun Selected", selected or "None", 1.2)
+    end,
+})
+
+local GunStatsSection = GunBuffTab:Section({ Title = "ค่าสถิติปืน" })
+
+-- Create inputs for all gun stats
+local statInputs = {
+    { key = "AmmoPerMag",           title = "AmmoPerMag",           default = 100 },
+    { key = "MaxAmmo",              title = "MaxAmmo",              default = 20 },
+    { key = "Recoil",               title = "Recoil",               default = 0.1 },
+    { key = "Spread",               title = "Spread",               default = 20 },
+    { key = "FireRate",             title = "FireRate",             default = 0.6 },
+    { key = "BaseDamage",           title = "BaseDamage",           default = 20 },
+    { key = "Ammo",                 title = "Ammo",                 default = 30 },
+    { key = "Range",                title = "Range",                default = 99999 },
+    { key = "ZeroDamageDistance",   title = "ZeroDamageDistance",   default = 99999 },
+    { key = "FullDamageDistance",   title = "FullDamageDistance",   default = 1000 },
+    { key = "ReloadTime",           title = "ReloadTime",           default = 0.1 },
+    { key = "ExplosionRadius",      title = "ExplosionRadius",      default = "math.huge" },
+    { key = "WhizDistance",         title = "WhizDistance",         default = 20 },
+    { key = "HitSoundVolume",       title = "HitSoundVolume",       default = "math.huge" },
+    { key = "BulletPerShot",        title = "BulletPerShot",        default = 12 },
+    { key = "ExplosionSoundVolume", title = "ExplosionSoundVolume", default = "math.huge" },
+    { key = "FriendlyFire",         title = "FriendlyFire",         default = true },
+    { key = "GoreSoundVolume",      title = "GoreSoundVolume",      default = "math.huge" },
+    { key = "GoreSoundIDs",         title = "GoreSoundIDs",         default = 19230359546 },
+    { key = "LightBrightness",      title = "LightBrightness",      default = "math.huge" },
+    { key = "LightRange",           title = "LightRange",           default = "math.huge" },
+}
+
+for i, stat in ipairs(statInputs) do
+    GunStatsSection:Input({
+        Title       = stat.title,
+        Desc        = "ค่า: " .. tostring(stat.default),
+        Placeholder = tostring(stat.default),
+        Callback    = function(txt)
+            if txt == "" then
+                GunBuffConfig.Settings[stat.key] = stat.default
+                return
+            end
+            
+            -- Handle math.huge
+            if txt == "math.huge" or txt == "inf" or txt == "infinite" then
+                GunBuffConfig.Settings[stat.key] = math.huge
+                return
+            end
+            
+            -- Handle booleans
+            if txt == "true" then
+                GunBuffConfig.Settings[stat.key] = true
+                return
+            elseif txt == "false" then
+                GunBuffConfig.Settings[stat.key] = false
+                return
+            end
+            
+            -- Handle numbers
+            local num = tonumber(txt)
+            if num then
+                GunBuffConfig.Settings[stat.key] = num
+            else
+                notify("Invalid Input", stat.title .. " ต้องเป็นตัวเลข", 2)
+            end
+        end,
+    })
+    
+    if i < #statInputs then
+        GunStatsSection:Space()
+    end
+end
+
+local GunExecuteSection = GunBuffTab:Section({ Title = "Execute" })
+
+GunExecuteSection:Button({
+    Title    = "⚡ Execute Gun Buff",
+    Desc     = "บัฟปืนที่เลือก",
+    Callback = function()
+        executeGunBuff()
+    end,
+})
+
+GunExecuteSection:Space()
+
+GunExecuteSection:Toggle({
+    Title    = "Auto Execute on Respawn",
+    Desc     = "บัฟอัตโนมัติตอนเกิดใหม่",
+    Value    = GunBuffConfig.AutoExecute,
+    Callback = function(s)
+        GunBuffConfig.AutoExecute = s
+        notify("Auto Execute", s and "ON" or "OFF", 1.2)
+    end,
+})
+
+-- ──────────────────────────────
 -- SETTINGS TAB
 -- ──────────────────────────────
 local FovSection = SettingsTab:Section({ Title = "FOV Settings" })
@@ -1392,4 +1708,4 @@ end)
 -- ──────────────────────────────
 -- Final Notify
 -- ──────────────────────────────
-notify("KIM UI — ULTRA", "Loaded ✅ | WindUI Edition", 4)
+notify("KIM UI — ULTRA", "Loaded ✅ | WindUI Edition + Gun Buff", 4)
