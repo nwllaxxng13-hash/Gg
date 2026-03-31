@@ -61,8 +61,6 @@ local ExtraTab    = Window:Tab({ Title = "ของเสริม",        Icon
 local GunBuffTab  = Window:Tab({ Title = "บัฟปืน",          Icon = "solar:fire-bold" })
 local FPSTab      = Window:Tab({ Title = "FPS",             Icon = "solar:chart-2-bold" })
 local EventTab    = Window:Tab({ Title = "เกี่ยวกับอีเว้น", Icon = "solar:calendar-bold" })
-local ShopTab     = Window:Tab({ Title = "ซื้อของ",         Icon = "solar:bag-bold" })
-local CrashTab    = Window:Tab({ Title = "ถล่มเซิฟ",        Icon = "solar:bomb-bold" })
 
 -- =========================
 -- Services & Locals
@@ -291,6 +289,7 @@ local function executeGunBuff()
     local character = LocalPlayer.Character
     local gun = nil
     
+    -- Find gun in backpack or character
     if backpack then
         gun = backpack:FindFirstChild(GunBuffConfig.SelectedGun)
     end
@@ -304,6 +303,7 @@ local function executeGunBuff()
         return false
     end
     
+    -- Find Setting module
     local settingModule = gun:FindFirstChild("Setting")
     if not settingModule then
         notify("Gun Buff", "ไม่พบ Setting module", 2)
@@ -318,8 +318,10 @@ local function executeGunBuff()
         return false
     end
     
+    -- Execute buff
     local success = pcall(function()
         local h = require(mainSetting)
+        
         for key, value in pairs(GunBuffConfig.Settings) do
             if h[key] ~= nil then
                 h[key] = value
@@ -341,11 +343,12 @@ end
 -- Auto execute on respawn
 LocalPlayer.CharacterAdded:Connect(function()
     if GunBuffConfig.AutoExecute and GunBuffConfig.SelectedGun then
-        task.wait(1)
+        task.wait(1) -- Wait for tools to load
         executeGunBuff()
     end
 end)
 
+-- Initial label creation
 createGunBuffLabel()
 updateGunBuffLabel(false)
 
@@ -1080,18 +1083,6 @@ local function getAllTeamNames()
 end
 
 -- =========================
--- TELEPORT HELPER
--- =========================
-local function teleportTo(pos)
-    local hrp = getHRP()
-    if not hrp then return false end
-    pcall(function()
-        hrp.CFrame = CFrame.new(pos)
-    end)
-    return true
-end
-
--- =========================
 -- UI WIRING — WindUI Elements
 -- =========================
 
@@ -1228,6 +1219,7 @@ AimbotSection:Button({
     end,
 })
 
+-- Aimbot Team Filter (multi dropdown)
 do
     local aimbotTeamNames = getAllTeamNames()
     if #aimbotTeamNames > 0 then
@@ -1267,9 +1259,12 @@ GunSelectSection:Button({
             notify("Gun Buff", "ไม่พบ Tool ในตัว", 2)
             return
         end
+        
+        -- Update dropdown if exists
         if currentGunDropdown then
             currentGunDropdown:UpdateValues(tools)
         end
+        
         notify("Tool Refresh", "พบ " .. #tools .. " Tools", 1.5)
     end,
 })
@@ -1290,6 +1285,7 @@ currentGunDropdown = GunSelectSection:Dropdown({
 
 local GunStatsSection = GunBuffTab:Section({ Title = "ค่าสถิติปืน" })
 
+-- Create inputs for all gun stats
 local statInputs = {
     { key = "AmmoPerMag",           title = "AmmoPerMag",           default = 100 },
     { key = "MaxAmmo",              title = "MaxAmmo",              default = 20 },
@@ -1324,10 +1320,14 @@ for i, stat in ipairs(statInputs) do
                 GunBuffConfig.Settings[stat.key] = stat.default
                 return
             end
+            
+            -- Handle math.huge
             if txt == "math.huge" or txt == "inf" or txt == "infinite" then
                 GunBuffConfig.Settings[stat.key] = math.huge
                 return
             end
+            
+            -- Handle booleans
             if txt == "true" then
                 GunBuffConfig.Settings[stat.key] = true
                 return
@@ -1335,6 +1335,8 @@ for i, stat in ipairs(statInputs) do
                 GunBuffConfig.Settings[stat.key] = false
                 return
             end
+            
+            -- Handle numbers
             local num = tonumber(txt)
             if num then
                 GunBuffConfig.Settings[stat.key] = num
@@ -1343,6 +1345,7 @@ for i, stat in ipairs(statInputs) do
             end
         end,
     })
+    
     if i < #statInputs then
         GunStatsSection:Space()
     end
@@ -1599,6 +1602,7 @@ HitboxSection:Toggle({
     Callback = function(s) _G.KIMUI_PLAYER_HITBOX_INF_TOGGLE(s) end,
 })
 
+-- Team filter for Hitbox
 do
     local teamNames = getAllTeamNames()
     if #teamNames == 0 then
@@ -1691,139 +1695,6 @@ ResetSection:Button({
 })
 
 -- ──────────────────────────────
--- ซื้อของ TAB
--- ──────────────────────────────
-local ShopSection = ShopTab:Section({ Title = "ร้านค้า" })
-
-ShopSection:Button({
-    Title    = "🔫 ซื้อกระสุน",
-    Desc     = "วาร์ปไปซื้อกระสุนแล้วกลับ",
-    Callback = function()
-        local hrp = getHRP()
-        if not hrp then
-            notify("ซื้อกระสุน", "ไม่พบตัวละคร", 2)
-            return
-        end
-
-        -- บันทึกตำแหน่งเดิม
-        local originalCFrame = hrp.CFrame
-
-        notify("ซื้อกระสุน", "กำลังวาร์ป...", 1)
-
-        -- วาร์ปไปร้าน (ข้างใต้ตำแหน่ง)
-        pcall(function()
-            hrp.CFrame = CFrame.new(Vector3.new(1280, 1131, -5406))
-        end)
-
-        task.wait(0.2)
-
-        -- Fire proximity prompt
-        pcall(function()
-            local prompt = Workspace:GetChildren()[3124].Prompt.ProximityPrompt
-            fireproximityprompt(prompt)
-        end)
-
-        task.wait(0.15)
-
-        -- วาร์ปกลับที่เดิม
-        pcall(function()
-            hrp.CFrame = originalCFrame
-        end)
-
-        notify("ซื้อกระสุน", "ซื้อสำเร็จ ✅", 1.5)
-    end,
-})
-
-ShopSection:Space()
-
-ShopSection:Button({
-    Title    = "☕ ซื้อ Starbuck",
-    Desc     = "วาร์ปไปซื้อ Starbuck",
-    Callback = function()
-        local hrp = getHRP()
-        if not hrp then
-            notify("ซื้อ Starbuck", "ไม่พบตัวละคร", 2)
-            return
-        end
-
-        notify("ซื้อ Starbuck", "กำลังวาร์ป...", 1)
-
-        -- วาร์ปไปร้าน
-        pcall(function()
-            hrp.CFrame = CFrame.new(Vector3.new(1202, 1130, -4590))
-        end)
-
-        task.wait(0.2)
-
-        -- Fire proximity prompt
-        pcall(function()
-            local prompt = Workspace["StarBuck Buyer"].Prompt.ProximityPrompt
-            fireproximityprompt(prompt)
-        end)
-
-        notify("ซื้อ Starbuck", "ซื้อสำเร็จ ✅", 1.5)
-    end,
-})
-
--- ──────────────────────────────
--- ถล่มเซิฟ TAB
--- ──────────────────────────────
-local CrashSection = CrashTab:Section({ Title = "⚠️ God Mode" })
-
-CrashSection:Button({
-    Title    = "💥 God Gun Buff",
-    Desc     = "Spread=999 | BulletPerShot=99999 | BaseDamage=999",
-    Callback = function()
-        if not GunBuffConfig.SelectedGun then
-            notify("God Gun Buff", "กรุณาเลือกปืนใน Tab บัฟปืนก่อน!", 3)
-            return
-        end
-
-        local backpack = LocalPlayer:FindFirstChild("Backpack")
-        local character = LocalPlayer.Character
-        local gun = nil
-
-        if backpack then
-            gun = backpack:FindFirstChild(GunBuffConfig.SelectedGun)
-        end
-        if not gun and character then
-            gun = character:FindFirstChild(GunBuffConfig.SelectedGun)
-        end
-
-        if not gun then
-            notify("God Gun Buff", "ไม่พบปืน: " .. GunBuffConfig.SelectedGun, 2)
-            return
-        end
-
-        local settingModule = gun:FindFirstChild("Setting")
-        if not settingModule then
-            notify("God Gun Buff", "ไม่พบ Setting module", 2)
-            return
-        end
-
-        local mainSetting = settingModule:FindFirstChild("1")
-        if not mainSetting then
-            notify("God Gun Buff", "ไม่พบ Setting/1", 2)
-            return
-        end
-
-        local success = pcall(function()
-            local h = require(mainSetting)
-            h.Spread        = 999
-            h.BulletPerShot = 99999
-            h.BaseDamage    = 999
-        end)
-
-        if success then
-            notify("God Gun Buff", "GOD MODE เปิดแล้ว! 💥", 2)
-            updateGunBuffLabel(true)
-        else
-            notify("God Gun Buff", "ล้มเหลว ❌", 2)
-        end
-    end,
-})
-
--- ──────────────────────────────
 -- Hotkeys
 -- ──────────────────────────────
 UserInputService.InputBegan:Connect(function(input, gp)
@@ -1837,4 +1708,4 @@ end)
 -- ──────────────────────────────
 -- Final Notify
 -- ──────────────────────────────
-notify("KIM UI — ULTRA", "Loaded ✅ | WindUI Edition + Gun Buff + Shop", 4)
+notify("KIM UI — ULTRA", "Loaded ✅ | WindUI Edition + Gun Buff", 4)
