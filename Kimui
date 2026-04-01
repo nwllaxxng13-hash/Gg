@@ -1,6 +1,6 @@
 --==================================================
 -- KIM UI — ULTRA (WindUI Version) + Gun Buff
--- Updated with Shop Fix + Trash Farm
+-- Updated with Settings Improvements + Buddy ESP
 --==================================================
 
 -- =========================
@@ -59,11 +59,11 @@ local TeleportTab = Window:Tab({ Title = "เทเลพอร์ต",      Ico
 local VisualsTab  = Window:Tab({ Title = "มองต่างๆ",       Icon = "solar:eye-bold" })
 local ExtraTab    = Window:Tab({ Title = "ของเสริม",        Icon = "solar:tag-bold" })
 local GunBuffTab  = Window:Tab({ Title = "บัฟปืน",          Icon = "solar:fire-bold" })
-local FarmTab     = Window:Tab({ Title = "ฟาร์ม",           Icon = "solar:refresh-bold" })
 local FPSTab      = Window:Tab({ Title = "FPS",             Icon = "solar:chart-2-bold" })
 local EventTab    = Window:Tab({ Title = "เกี่ยวกับอีเว้น", Icon = "solar:calendar-bold" })
 local ShopTab     = Window:Tab({ Title = "ซื้อของ",         Icon = "solar:bag-bold" })
 local CrashTab    = Window:Tab({ Title = "ถล่มเซิฟ",        Icon = "solar:bomb-bold" })
+local BuddyTab    = Window:Tab({ Title = "เพื่อน",          Icon = "solar:heart-bold" })
 
 -- =========================
 -- Services & Locals
@@ -126,6 +126,10 @@ local Player_HitboxEnabled = false
 local SelectedTeams        = {}
 local playerStates         = {}
 
+-- Buddy ESP
+local BuddyESPEnabled  = false
+local buddyStates      = {}
+
 -- Aimbot
 local aimbot_enabled    = false
 local team_lock         = true
@@ -142,6 +146,10 @@ local last_switch       = 0
 local aim_hard_lock     = false
 local third_person_lock = false
 local third_person_lock_power = 0.9
+
+-- Short Range Assist
+local shortRange_enabled  = false
+local shortRange_distance = 50
 
 -- FOV / Drag
 local fov_locked    = true
@@ -169,11 +177,6 @@ local aimingMark_size     = 28
 local aimingMark_pos      = nil
 local aimingMark_dragging = false
 local aimingMarkGui, aimingMarkBtn
-
--- Trash Farm
-local TrashFarmEnabled = false
-local TrashFarmConnection = nil
-local TrashFarmIndex = 0
 
 -- =========================
 -- GUN BUFF SYSTEM
@@ -556,6 +559,131 @@ local function PH_bindPlayer(p)
 end
 for _, p in ipairs(Players:GetPlayers()) do if p ~= LocalPlayer then PH_bindPlayer(p) end end
 Players.PlayerAdded:Connect(function(p) if p ~= LocalPlayer then PH_bindPlayer(p) end end)
+
+-- =========================
+-- BUDDY ESP SYSTEM
+-- =========================
+local function BE_clearOne(p)
+    local st = buddyStates[p]; if not st then return end
+    if st.highlight then pcall(function() st.highlight:Destroy() end) end
+    if st.esp       then pcall(function() st.esp:Destroy() end) end
+    buddyStates[p] = nil
+end
+
+local function BE_createHighlight(character, color)
+    if not character or not character:IsDescendantOf(game) then return end
+    local hl = Instance.new("Highlight")
+    hl.Adornee             = character
+    hl.FillColor           = color
+    hl.FillTransparency    = 0.5
+    hl.OutlineTransparency = 0.3
+    hl.Parent              = character
+    return hl
+end
+
+local function BE_createBillboard(hrp, p)
+    local bb = Instance.new("BillboardGui")
+    bb.Adornee      = hrp
+    bb.Size         = UDim2.new(0, 150, 0, 80)
+    bb.StudsOffset  = Vector3.new(0, 3, 0)
+    bb.AlwaysOnTop  = true
+    bb.Parent       = (p.Character or hrp)
+
+    local function addLabel(y, txt, col, sz)
+        local l = Instance.new("TextLabel", bb)
+        l.Size                  = UDim2.new(1, 0, 0, 20)
+        l.Position              = UDim2.new(0, 0, 0, y)
+        l.BackgroundTransparency = 1
+        l.Font                  = Enum.Font.Bodoni
+        l.TextColor3            = col
+        l.TextStrokeTransparency = 0
+        l.TextStrokeColor3      = Color3.fromRGB(20, 20, 20)
+        l.TextSize              = sz or 18
+        l.Text                  = txt
+        return l
+    end
+
+    local nameL  = addLabel(0,  p.Name, Color3.new(1,1,1), 18)
+    local hpL    = addLabel(20, "",     Color3.fromRGB(100,255,100), 16)
+    local teamL  = addLabel(40, "",     Color3.fromRGB(100,200,255), 14)
+
+    return bb, nameL, hpL, teamL
+end
+
+local function BE_isFriend(p)
+    if p == LocalPlayer then return false end
+    if not team_lock then return false end
+    local lt, tt = LocalPlayer.Team, p.Team
+    if lt and tt and lt == tt then return true end
+    return false
+end
+
+local function BE_applyOne(p)
+    local char = p and p.Character; if not char then return end
+    local hum  = getHumFromChar(char); if not hum or hum.Health <= 0 then return end
+    if not BE_isFriend(p) then return end
+    local hrp = getHRPFromChar(char); if not hrp then return end
+
+    local st = buddyStates[p]
+    if not st then st = { hrp = hrp, lastTextAt = 0 }; buddyStates[p] = st
+    else st.hrp = hrp end
+
+    local buddyColor = Color3.fromRGB(100, 200, 100)
+    if not st.highlight then
+        st.highlight = BE_createHighlight(char, buddyColor)
+    end
+    if not st.esp or not st.esp.Parent then
+        st.esp, st.name, st.hp, st.team = BE_createBillboard(hrp, p)
+    end
+
+    local t = now()
+    if t - (st.lastTextAt or 0) >= 0.4 then
+        pcall(function()
+            st.hp.Text   = "HP: " .. math.floor(hum.Health)
+            st.team.Text = "Team: " .. (p.Team and p.Team.Name or "None")
+        end)
+        st.lastTextAt = t
+    end
+end
+
+local be_lastTick = 0
+RunService.Heartbeat:Connect(function()
+    local t = now()
+    if t - be_lastTick < 0.25 then return end
+    be_lastTick = t
+
+    if not BuddyESPEnabled then
+        for pl in pairs(buddyStates) do BE_clearOne(pl) end
+        return
+    end
+
+    local myChar = LocalPlayer.Character; if not myChar then return end
+    local myHRP  = getHRPFromChar(myChar); if not myHRP then return end
+    local myPos  = myHRP.Position
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if BE_isFriend(p) and p.Character and isAlive(p.Character) then
+            BE_applyOne(p)
+        else
+            BE_clearOne(p)
+        end
+    end
+end)
+
+local function BE_bindPlayer(p)
+    local function reeval() be_lastTick = 0 end
+    p:GetPropertyChangedSignal("Team"):Connect(reeval)
+    p.CharacterAppearanceLoaded:Connect(reeval)
+    p.CharacterAdded:Connect(function(char)
+        local hum = getHumFromChar(char)
+        if hum then
+            hum.HealthChanged:Connect(function() be_lastTick = 0 end)
+            hum.Died:Connect(function() BE_clearOne(p); be_lastTick = 0 end)
+        end
+    end)
+end
+for _, p in ipairs(Players:GetPlayers()) do if p ~= LocalPlayer then BE_bindPlayer(p) end end
+Players.PlayerAdded:Connect(function(p) if p ~= LocalPlayer then BE_bindPlayer(p) end end)
 
 -- =========================
 -- Tools Hitbox
@@ -980,6 +1108,31 @@ end
 local function findBestTarget()
     local best, bestD = nil, math.huge
     local center = getAimCenter()
+    
+    -- If short range assist is enabled, find closest enemy first
+    if shortRange_enabled then
+        local myHRP = getHRP()
+        if myHRP then
+            local myPos = myHRP.Position
+            for _, pl in ipairs(Players:GetPlayers()) do
+                if isEnemy(pl) and pl.Character then
+                    local part = getAimPartFromChar(pl.Character)
+                    if part and part:IsA("BasePart") then
+                        local dist = (part.Position - myPos).Magnitude
+                        if dist <= shortRange_distance then
+                            if dist < bestD and isValidTarget(part) then
+                                bestD = dist
+                                best = part
+                            end
+                        end
+                    end
+                end
+            end
+            if best then return best end
+        end
+    end
+    
+    -- Otherwise use normal FOV-based targeting
     for _, pl in ipairs(Players:GetPlayers()) do
         if isEnemy(pl) and pl.Character then
             local part = getAimPartFromChar(pl.Character)
@@ -1095,98 +1248,6 @@ local function teleportTo(pos)
         hrp.CFrame = CFrame.new(pos)
     end)
     return true
-end
-
--- =========================
--- TRASH FARM SYSTEM (FIXED)
--- =========================
-local function findAllTrashPrompts()
-    local prompts = {}
-    local trashLoot = Workspace:FindFirstChild("TrashLoot")
-    if not trashLoot then return prompts end
-    
-    for _, item in ipairs(trashLoot:GetDescendants()) do
-        if item:IsA("ProximityPrompt") then
-            table.insert(prompts, item)
-        end
-    end
-    
-    return prompts
-end
-
-local function startTrashFarm()
-    if TrashFarmConnection then return end
-    
-    notify("ฟาร์มถังขยะ", "เริ่มฟาร์ม...", 1.5)
-    
-    TrashFarmIndex = 0
-    TrashFarmConnection = RunService.Heartbeat:Connect(function()
-        if not TrashFarmEnabled then return end
-        
-        local hrp = getHRP()
-        if not hrp then return end
-        
-        local prompts = findAllTrashPrompts()
-        if #prompts == 0 then return end
-        
-        -- Cycle through all trash prompts
-        TrashFarmIndex = (TrashFarmIndex % #prompts) + 1
-        local prompt = prompts[TrashFarmIndex]
-        
-        if not prompt or not prompt.Parent then return end
-        
-        -- Get prompt position
-        local promptParent = prompt.Parent
-        if not promptParent:IsA("BasePart") then
-            promptParent = promptParent:FindFirstChildWhichIsA("BasePart", true)
-        end
-        
-        if promptParent and promptParent:IsA("BasePart") then
-            -- Record original collision state
-            local originalCanCollide = hrp.CanCollide
-            
-            -- Teleport below the prompt (-5.5 studs) and disable collision
-            local targetPos = promptParent.Position - Vector3.new(0, 5.5, 0)
-            pcall(function()
-                hrp.CanCollide = false
-                hrp.CFrame = CFrame.new(targetPos)
-            end)
-            
-            task.wait(0.15)
-            
-            -- Ensure prompt is valid
-            if prompt and prompt.Parent and prompt.Enabled then
-                local old = boostPrompt(prompt)
-                task.wait(0.08)
-                firePromptFast(prompt, 15)
-                restorePrompt(prompt, old)
-            end
-            
-            -- Restore collision
-            pcall(function()
-                hrp.CanCollide = originalCanCollide
-            end)
-        end
-        
-        task.wait(0.6)
-    end)
-end
-
-local function stopTrashFarm()
-    if TrashFarmConnection then
-        TrashFarmConnection:Disconnect()
-        TrashFarmConnection = nil
-    end
-    
-    -- Restore collision state
-    local hrp = getHRP()
-    if hrp then
-        pcall(function()
-            hrp.CanCollide = true
-        end)
-    end
-    
-    notify("ฟาร์มถังขยะ", "หยุดฟาร์ม", 1.2)
 end
 
 -- =========================
@@ -1469,25 +1530,6 @@ GunExecuteSection:Toggle({
 })
 
 -- ──────────────────────────────
--- FARM TAB
--- ──────────────────────────────
-local TrashFarmSection = FarmTab:Section({ Title = "ฟาร์มถังขยะ" })
-
-TrashFarmSection:Toggle({
-    Title    = "ฟาร์มถังขยะ",
-    Desc     = "วาร์ปและ Fire ทุก Prompt อัตโนมัติ",
-    Value    = TrashFarmEnabled,
-    Callback = function(s)
-        TrashFarmEnabled = s
-        if s then
-            startTrashFarm()
-        else
-            stopTrashFarm()
-        end
-    end,
-})
-
--- ──────────────────────────────
 -- SETTINGS TAB
 -- ──────────────────────────────
 local FovSection = SettingsTab:Section({ Title = "FOV Settings" })
@@ -1533,6 +1575,36 @@ FovSection:Button({
         fov_pos = nil
         updateFovPosRadius(fov_value)
         notify("FOV", "Centered", 0.8)
+    end,
+})
+
+-- SHORT RANGE ASSIST SECTION
+local ShortRangeSection = SettingsTab:Section({ Title = "Short Range Assist" })
+
+ShortRangeSection:Toggle({
+    Title    = "Short Range Assist",
+    Desc     = "เล็งคนใกล้ตัวสุดก่อน (โดยไม่สนใจ FOV)",
+    Value    = shortRange_enabled,
+    Callback = function(s)
+        shortRange_enabled = s and true or false
+        notify("Short Range Assist", s and "ON" or "OFF", 1.2)
+    end,
+})
+
+ShortRangeSection:Space()
+
+ShortRangeSection:Input({
+    Title       = "Range Distance (studs)",
+    Desc        = "ระยะเล็งคนใกล้ตัว",
+    Placeholder = tostring(shortRange_distance),
+    Callback    = function(txt)
+        local n = tonumber(txt)
+        if n and n > 1 and n < 500 then
+            shortRange_distance = math.floor(n)
+            notify("Short Range", "=" .. shortRange_distance .. " studs", 1)
+        else
+            notify("Short Range", "ระยะ 2-499", 1.5)
+        end
     end,
 })
 
@@ -1796,6 +1868,8 @@ ResetSection:Button({
         aimingMark_pos         = viewportCenter()
         aimingMark_dragging    = false
         fov_locked             = true
+        shortRange_enabled     = false
+        shortRange_distance    = 50
         head_offset            = Vector3.new(0, 0.18, 0)
         switch_cd              = 0.12
         selectedAimbotTeams    = {}
@@ -1808,7 +1882,7 @@ ResetSection:Button({
 })
 
 -- ──────────────────────────────
--- ซื้อของ TAB (FIXED)
+-- ซื้อของ TAB
 -- ──────────────────────────────
 local ShopSection = ShopTab:Section({ Title = "ร้านค้า" })
 
@@ -1947,6 +2021,24 @@ ShopSection:Button({
 })
 
 -- ──────────────────────────────
+-- BUDDY TAB
+-- ──────────────────────────────
+local BuddyESPSection = BuddyTab:Section({ Title = "Buddy ESP" })
+
+BuddyESPSection:Toggle({
+    Title    = "Buddy ESP",
+    Desc     = "ป้ายชื่อ + Team + HP สำหรับเพื่อนทีมเดียวกัน",
+    Value    = BuddyESPEnabled,
+    Callback = function(s)
+        BuddyESPEnabled = s
+        if not s then
+            for pl in pairs(buddyStates) do BE_clearOne(pl) end
+        end
+        notify("Buddy ESP", s and "ON" or "OFF", 1.2)
+    end,
+})
+
+-- ──────────────────────────────
 -- ถล่มเซิฟ TAB
 -- ──────────────────────────────
 local CrashSection = CrashTab:Section({ Title = "⚠️ God Mode" })
@@ -2018,4 +2110,4 @@ end)
 -- ──────────────────────────────
 -- Final Notify
 -- ──────────────────────────────
-notify("KIM UI — ULTRA", "Loaded ✅ | ฟีเจอร์ใหม่: ฟาร์มถังขยะ + Shop Fix", 4)
+notify("KIM UI — ULTRA", "Loaded ✅ | Updates: Short Range + Buddy ESP", 4)
