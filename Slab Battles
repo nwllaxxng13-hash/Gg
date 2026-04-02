@@ -1,0 +1,540 @@
+--[[
+    KIM UI - ULTRA (WindUI Version)
+    แปลเป็นภาษาไทย
+    สำหรับเกม Slap Battles
+]]
+
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
+game:GetService("GuiService"):ClearError()
+
+-- โหลด WindUI Library
+local WindUI
+do
+    local ok, result = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+    end)
+    
+    if ok then
+        WindUI = result
+    else
+        warn("ไม่สามารถโหลด WindUI ได้")
+        return
+    end
+end
+
+-- ตรวจสอบ PlaceID
+local ValidPlaces = {
+    [11520107397] = "Killstreak Only",
+    [6403373529] = "Slap Battles",
+    [9015014224] = "Slap Battles",
+    [9431156611] = "Slap Royale",
+    [11828384869] = "Elude Maze",
+    [9020359053] = "Testing Server",
+    [9412268818] = "Slap Royale Testing"
+}
+
+local CurrentPlace = ValidPlaces[game.PlaceId]
+if not CurrentPlace then
+    return
+end
+
+-- สร้าง Bypass สำหรับเกม
+if game.PlaceId == 11520107397 or game.PlaceId == 6403373529 or game.PlaceId == 9015014224 then
+    local bypass
+    bypass = hookmetamethod(game, "__namecall", function(method, ...) 
+        if getnamecallmethod() == "FireServer" and method == game.ReplicatedStorage.Ban then
+            return
+        elseif getnamecallmethod() == "FireServer" and method == game.ReplicatedStorage.AdminGUI then
+            return
+        elseif getnamecallmethod() == "FireServer" and method == game.ReplicatedStorage.WalkSpeedChanged then
+            return
+        end
+        return bypass(method, ...)
+    end)
+    
+    -- สร้าง Safe Spot
+    if workspace:FindFirstChild("Spot") == nil then
+        local SafeSpot = Instance.new("Part", workspace)
+        SafeSpot.Position = Vector3.new(math.random(-25000,-2500), 500, math.random(-25000,-2500))
+        SafeSpot.Name = "Spot"
+        SafeSpot.Size = Vector3.new(500, 50, 500)
+        SafeSpot.Anchored = true
+        SafeSpot.Transparency = 0.5
+    end
+    
+    if workspace:FindFirstChild("TAntiVoid") == nil then
+        local TournamentAntiVoid = Instance.new("Part", workspace)
+        TournamentAntiVoid.Name = "TAntiVoid"
+        TournamentAntiVoid.Size = Vector3.new(2048, 15, 2048)
+        TournamentAntiVoid.Position = Vector3.new(3420, 70, 3)
+        TournamentAntiVoid.CanCollide = false
+        TournamentAntiVoid.Transparency = 1
+        TournamentAntiVoid.Anchored = true
+    end
+end
+
+-- สร้าง Window
+local Window = WindUI:CreateWindow({
+    Title = "Ark UI - Slab BATTLES | " .. CurrentPlace,
+    Icon = "solar:folder-2-bold-duotone",
+    Folder = "ARKUI",
+    Size = UDim2.fromOffset(580, 460),
+    
+    OpenButton = {
+        Title = "เปิด ARK UI",
+        Enabled = true,
+        Draggable = true,
+        Scale = 0.5,
+        Color = ColorSequence.new(
+            Color3.fromHex("#30FF6A"),
+            Color3.fromHex("#e7ff2f")
+        ),
+    },
+})
+
+-- ตัวแปรสำหรับฟังก์ชัน
+local SlapAura = false
+local AutoEnterArena = false
+local GloveESP = false
+local Walkspeed = 20
+local Jumppower = 50
+local KeepWalkspeed = false
+local KeepJumppower = false
+
+-- สร้าง Sections
+local HomeSection = Window:Section({
+    Title = "หน้าหลัก",
+})
+
+local CombatSection = Window:Section({
+    Title = "การต่อสู้",
+})
+
+local AntiSection = Window:Section({
+    Title = "ระบบป้องกัน",
+})
+
+local MiscSection = Window:Section({
+    Title = "เบ็ดเตล็ด",
+})
+
+local PlayerSection = Window:Section({
+    Title = "ผู้เล่น",
+})
+
+-- ===============================
+-- หน้าหลัก (Home)
+-- ===============================
+local HomeTab = HomeSection:Tab({
+    Title = "หน้าหลัก",
+    Icon = "solar:home-2-bold",
+    IconColor = Color3.fromHex("#83889E"),
+})
+
+HomeTab:Section({
+    Title = "ยินดีต้อนรับสู่ KIM UI - ULTRA",
+    TextSize = 20,
+})
+
+HomeTab:Button({
+    Title = "Infinite Yield",
+    Icon = "terminal",
+    Justify = "Center",
+    Callback = function()
+        loadstring(game:HttpGet('https://raw.githubusercontent.com/ionlyusegithubformcmods/1-Line-Scripts/main/Infinite%20Yield%20but%20with%20secure%20dex'))()
+    end
+})
+
+HomeTab:Space()
+
+HomeTab:Button({
+    Title = "รีจอยน์เซิร์ฟเวอร์",
+    Icon = "refresh-cw",
+    Justify = "Center",
+    Callback = function()
+        game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, game.Players.LocalPlayer)
+    end
+})
+
+HomeTab:Space()
+
+HomeTab:Button({
+    Title = "ปิด UI",
+    Icon = "x",
+    Color = Color3.fromHex("#ff4830"),
+    Justify = "Center",
+    Callback = function()
+        Window:Destroy()
+    end
+})
+
+-- ===============================
+-- การต่อสู้ (Combat)
+-- ===============================
+local CombatTab = CombatSection:Tab({
+    Title = "การต่อสู้",
+    Icon = "solar:sword-bold",
+    IconColor = Color3.fromHex("#EF4F1D"),
+})
+
+CombatTab:Toggle({
+    Title = "ออร่าตบ",
+    Desc = "ตบผู้เล่นที่อยู่ใกล้อัตโนมัติ",
+    Value = false,
+    Callback = function(value)
+        SlapAura = value
+        while SlapAura do
+            for i,v in pairs(game.Players:GetChildren()) do
+                if v ~= game.Players.LocalPlayer and v.Character then
+                    if v.Character:FindFirstChild("Dead") == nil and v.Character:FindFirstChild("HumanoidRootPart") then
+                        local Magnitude = (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v.Character.HumanoidRootPart.Position).Magnitude
+                        if 25 >= Magnitude then
+                            if game.PlaceId == 9431156611 then
+                                game.ReplicatedStorage.Events.Slap:FireServer(v.Character:WaitForChild("HumanoidRootPart"))
+                            else
+                                shared.gloveHits[game.Players.LocalPlayer.leaderstats.Glove.Value]:FireServer(v.Character:WaitForChild("HumanoidRootPart"), true)
+                            end
+                        end
+                    end
+                end
+            end
+            task.wait()
+        end
+    end
+})
+
+CombatTab:Space()
+
+CombatTab:Toggle({
+    Title = "เข้าสนามอัตโนมัติ",
+    Desc = "เข้าสนามแข่งขันอัตโนมัติ",
+    Value = false,
+    Callback = function(value)
+        AutoEnterArena = value
+        while AutoEnterArena do
+            if game.Players.LocalPlayer.Character:FindFirstChild("entered") == nil and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                firetouchinterest(game.Players.LocalPlayer.Character:WaitForChild("Head"), workspace.Lobby.Teleport1, 0)
+                firetouchinterest(game.Players.LocalPlayer.Character:WaitForChild("Head"), workspace.Lobby.Teleport1, 1)
+            end
+            task.wait()
+        end
+    end
+})
+
+CombatTab:Space()
+
+if game.PlaceId == 6403373529 or game.PlaceId == 9015014224 then
+    CombatTab:Button({
+        Title = "โหมดพระเจ้า (รีเซ็ตตัวละคร)",
+        Icon = "shield",
+        Desc = "ทำให้ไม่ตาย แต่จะรีเซ็ตตัวละคร",
+        Justify = "Center",
+        Callback = function()
+            if game.Players.LocalPlayer.Character:FindFirstChild("entered") == nil then
+                firetouchinterest(game.Players.LocalPlayer.Character:WaitForChild("Head"), workspace.Lobby.Teleport1, 0)
+                firetouchinterest(game.Players.LocalPlayer.Character:WaitForChild("Head"), workspace.Lobby.Teleport1, 1)
+            end
+            repeat task.wait() until game.Players.LocalPlayer.Character:FindFirstChildWhichIsA("Tool") or game.Players.LocalPlayer.Backpack:FindFirstChildWhichIsA("Tool")
+            
+            for i,v in pairs(game.Players.LocalPlayer.Character:GetChildren()) do
+                if v.ClassName == "Tool" then
+                    v.Parent = game.LogService
+                end
+            end
+            for i,v in pairs(game.Players.LocalPlayer.Backpack:GetChildren()) do
+                v.Parent = game.LogService
+            end
+            
+            game:GetService("ReplicatedStorage"):WaitForChild("HumanoidDied"):FireServer(game.Players.LocalPlayer.Character, false)
+            wait(3.75)
+            
+            for i,v in pairs(game.LogService:GetChildren()) do
+                v.Parent = game.Players.LocalPlayer.Backpack
+            end
+            for i,v in pairs(game.Players.LocalPlayer.Backpack:GetChildren()) do
+                game.Players.LocalPlayer.Character.Humanoid:EquipTool(v)
+            end 
+            
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = game.workspace.Origo.CFrame * CFrame.new(0, -5, 0)
+        end
+    })
+    
+    CombatTab:Space()
+end
+
+CombatTab:Toggle({
+    Title = "ESP ถุงมือ",
+    Desc = "แสดงชื่อถุงมือของผู้เล่นอื่น",
+    Value = false,
+    Callback = function(value)
+        GloveESP = value
+        if GloveESP == false then
+            for i, v in ipairs(game.Players:GetChildren()) do
+                if v.Character and v.Character:FindFirstChild("Head") and v.Character.Head:FindFirstChild("GloveEsp") then
+                    v.Character.Head.GloveEsp:Destroy()
+                end
+            end
+        end
+        
+        while GloveESP do
+            for i, v in ipairs(game.Players:GetChildren()) do
+                if v ~= game.Players.LocalPlayer and v.Character and v.Character:FindFirstChild("Head") then
+                    if v.Character.Head:FindFirstChild("GloveEsp") == nil then
+                        local GloveEsp = Instance.new("BillboardGui", v.Character.Head)
+                        GloveEsp.Adornee = v.Character.Head
+                        GloveEsp.Name = "GloveEsp"
+                        GloveEsp.Size = UDim2.new(0, 100, 0, 150)
+                        GloveEsp.StudsOffset = Vector3.new(0, 3, 0)
+                        GloveEsp.AlwaysOnTop = true
+                        
+                        local GloveEspText = Instance.new("TextLabel", GloveEsp)
+                        GloveEspText.BackgroundTransparency = 1
+                        GloveEspText.Size = UDim2.new(0, 100, 0, 100)
+                        GloveEspText.TextSize = 25
+                        GloveEspText.Font = Enum.Font.SourceSansSemibold
+                        GloveEspText.TextColor3 = Color3.new(255, 255, 255)
+                        GloveEspText.TextStrokeTransparency = 0
+                        GloveEspText.Text = v.leaderstats.Glove.Value
+                    end
+                end
+            end
+            task.wait()
+        end
+    end
+})
+
+-- ===============================
+-- ระบบป้องกัน (Anti)
+-- ===============================
+local AntiTab = AntiSection:Tab({
+    Title = "ระบบป้องกัน",
+    Icon = "solar:shield-check-bold",
+    IconColor = Color3.fromHex("#10C550"),
+})
+
+local AntiToggleAll = AntiTab:Toggle({
+    Title = "เปิด/ปิดทุกระบบป้องกัน",
+    Desc = "สลับทุกระบบป้องกันพร้อมกัน",
+    Value = false,
+    Callback = function(value)
+        -- จะอัพเดททุก toggle ภายใน
+    end
+})
+
+AntiTab:Space()
+
+AntiTab:Toggle({
+    Title = "ป้องกัน Portal",
+    Value = false,
+    Callback = function(value)
+        if value == true then
+            workspace.Lobby.Teleport2.CanTouch = false
+            workspace.Lobby.Teleport3.CanTouch = false
+            workspace.Lobby.Teleport4.CanTouch = false
+            workspace.Lobby.Teleport6.CanTouch = false
+        else
+            workspace.Lobby.Teleport2.CanTouch = true
+            workspace.Lobby.Teleport3.CanTouch = true
+            workspace.Lobby.Teleport4.CanTouch = true
+            workspace.Lobby.Teleport6.CanTouch = true
+        end
+    end
+})
+
+AntiTab:Space()
+
+AntiTab:Toggle({
+    Title = "ป้องกัน Void",
+    Desc = "ทำงานในทัวร์นาเมนต์ด้วย",
+    Value = false,
+    Callback = function(value)
+        game.Workspace.dedBarrier.CanCollide = value
+        if workspace:FindFirstChild("TAntiVoid") then
+            game.Workspace.TAntiVoid.CanCollide = value
+        end
+    end
+})
+
+AntiTab:Space()
+
+AntiTab:Toggle({
+    Title = "ป้องกันกำแพงตาย",
+    Value = false,
+    Callback = function(value)
+        if value == true then
+            for i,v in pairs(game.Workspace.DEATHBARRIER:GetChildren()) do
+                if v.ClassName == "Part" and v.Name == "BLOCK" then
+                    v.CanTouch = false
+                end
+            end
+            workspace.DEATHBARRIER.CanTouch = false
+            workspace.DEATHBARRIER2.CanTouch = false
+            workspace.dedBarrier.CanTouch = false
+            workspace.ArenaBarrier.CanTouch = false
+            workspace.AntiDefaultArena.CanTouch = false
+        else
+            for i,v in pairs(game.Workspace.DEATHBARRIER:GetChildren()) do
+                if v.ClassName == "Part" and v.Name == "BLOCK" then
+                    v.CanTouch = true
+                end
+            end
+            workspace.DEATHBARRIER.CanTouch = true
+            workspace.DEATHBARRIER2.CanTouch = true
+            workspace.dedBarrier.CanTouch = true
+            workspace.ArenaBarrier.CanTouch = true
+            workspace.AntiDefaultArena.CanTouch = true
+        end
+    end
+})
+
+-- ===============================
+-- เบ็ดเตล็ด (Misc)
+-- ===============================
+local MiscTab = MiscSection:Tab({
+    Title = "เบ็ดเตล็ด",
+    Icon = "solar:settings-bold",
+    IconColor = Color3.fromHex("#ECA201"),
+})
+
+MiscTab:Dropdown({
+    Title = "เทเลพอร์ต",
+    Values = {
+        "จุดปลอดภัย",
+        "สนาม",
+        "สนามปกติ",
+        "ล็อบบี้",
+        "ทัวร์นาเมนต์",
+        "เกาะโมอาย",
+        "เกาะ Slapple",
+    },
+    Value = nil,
+    Callback = function(value)
+        if value == "จุดปลอดภัย" then
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = workspace.Spot.CFrame * CFrame.new(0, 28, 0)
+        elseif value == "สนาม" then
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = game.workspace.Origo.CFrame * CFrame.new(0, -5, 0)
+        elseif value == "สนามปกติ" then
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(120, 360, -3)
+        elseif value == "ล็อบบี้" then
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(-800, 328, -2.5)
+        elseif value == "ทัวร์นาเมนต์" then
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = workspace.Battlearena.Arena.CFrame * CFrame.new(0, 10, 0)
+        elseif value == "เกาะโมอาย" then
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(215, -15.5, 0.5)
+        elseif value == "เกาะ Slapple" then
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = game.workspace.Arena.island5.Union.CFrame * CFrame.new(0, 3.25, 0)
+        end
+    end
+})
+
+MiscTab:Space()
+
+MiscTab:Button({
+    Title = "อีโมทฟรี",
+    Icon = "smile",
+    Desc = "พิมพ์ /e ชื่ออีโมท",
+    Justify = "Center",
+    Callback = function()
+        local Floss = game.Players.LocalPlayer.Character.Humanoid:LoadAnimation(game.ReplicatedStorage.AnimationPack.Floss)
+        local Groove = game.Players.LocalPlayer.Character.Humanoid:LoadAnimation(game.ReplicatedStorage.AnimationPack.Groove)
+        local Headless = game.Players.LocalPlayer.Character.Humanoid:LoadAnimation(game.ReplicatedStorage.AnimationPack.Headless)
+        
+        game.Players.LocalPlayer.Chatted:connect(function(msg)
+            if string.lower(msg) == "/e floss" then
+                Floss:Play()
+            elseif string.lower(msg) == "/e groove" then
+                Groove:Play()
+            elseif string.lower(msg) == "/e headless" then
+                Headless:Play()
+            end
+        end)
+        
+        WindUI:Notify({
+            Title = "อีโมทฟรี",
+            Content = "เปิดใช้งานแล้ว! พิมพ์ /e floss, /e groove, /e headless",
+            Duration = 5,
+        })
+    end
+})
+
+-- ===============================
+-- ผู้เล่น (Player)
+-- ===============================
+local PlayerTab = PlayerSection:Tab({
+    Title = "ผู้เล่น",
+    Icon = "solar:user-bold",
+    IconColor = Color3.fromHex("#257AF7"),
+})
+
+PlayerTab:Slider({
+    Title = "ความเร็วเดิน",
+    Step = 1,
+    Value = {
+        Min = 20,
+        Max = 1000,
+        Default = 20,
+    },
+    Callback = function(value)
+        game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = value
+        Walkspeed = value
+    end
+})
+
+PlayerTab:Space()
+
+PlayerTab:Toggle({
+    Title = "คงความเร็วเดิน",
+    Value = false,
+    Callback = function(value)
+        KeepWalkspeed = value
+        while KeepWalkspeed do
+            if game.Players.LocalPlayer.Character:FindFirstChild("Humanoid") and game.Players.LocalPlayer.Character.Humanoid.WalkSpeed ~= Walkspeed then
+                game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = Walkspeed
+            end
+            task.wait()
+        end
+    end
+})
+
+PlayerTab:Space()
+
+PlayerTab:Slider({
+    Title = "แรงกระโดด",
+    Step = 1,
+    Value = {
+        Min = 50,
+        Max = 1000,
+        Default = 50,
+    },
+    Callback = function(value)
+        game.Players.LocalPlayer.Character.Humanoid.JumpPower = value
+        Jumppower = value
+    end
+})
+
+PlayerTab:Space()
+
+PlayerTab:Toggle({
+    Title = "คงแรงกระโดด",
+    Value = false,
+    Callback = function(value)
+        KeepJumppower = value
+        while KeepJumppower do
+            if game.Players.LocalPlayer.Character:FindFirstChild("Humanoid") and game.Players.LocalPlayer.Character.Humanoid.JumpPower ~= Jumppower then
+                game.Players.LocalPlayer.Character.Humanoid.JumpPower = Jumppower
+            end
+            task.wait()
+        end
+    end
+})
+
+-- แจ้งเตือนว่าโหลดเสร็จ
+WindUI:Notify({
+    Title = "KIM UI - ULTRA",
+    Content = "โหลดสำเร็จ! ยินดีต้อนรับ",
+    Icon = "solar:check-circle-bold",
+    Duration = 3,
+})
