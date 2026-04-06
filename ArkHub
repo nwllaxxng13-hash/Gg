@@ -1,6 +1,6 @@
 --==================================================
 -- Ark UI - Limited (Presented: Student War 90)
--- Updated: Silent Aim Tab Added
+-- Updated: Silent Aim WallCheck Added
 --==================================================
 
 -- =========================
@@ -985,6 +985,7 @@ local SilentAimConfig = {
     UseAimbotFov = true,
     FovSize      = 150,
     ShotgunMode  = false,
+    WallCheck    = true,   -- ตรวจสอบกำแพงก่อนล็อกเป้า
 }
 
 local sa_currentTarget    = nil
@@ -1007,6 +1008,27 @@ local function SA_onScreenAndInFov(worldPos)
     local center = SA_getFovCenter()
     local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
     return d <= SA_getFovSize()
+end
+
+-- Wall check สำหรับ Silent Aim (raycast จากกล้องไปหา target part)
+local sa_rayParams = RaycastParams.new()
+sa_rayParams.FilterType  = Enum.RaycastFilterType.Exclude
+sa_rayParams.IgnoreWater = true
+
+local function SA_hasClearLOS(targetPart)
+    if not (targetPart and targetPart.Parent) then return false end
+    local camPos    = Camera.CFrame.Position
+    local targetPos = targetPart.Position
+    local dir       = (targetPos - camPos)
+    local dist      = dir.Magnitude
+    if dist <= 0 then return false end
+    sa_rayParams.FilterDescendantsInstances = { LocalPlayer.Character }
+    local result = Workspace:Raycast(camPos, dir.Unit * dist, sa_rayParams)
+    if not result then return true end
+    local inst = result.Instance
+    if not inst then return true end
+    -- ถือว่า clear ถ้า ray ชนส่วนของ character เป้าหมาย
+    return inst:IsDescendantOf(targetPart.Parent)
 end
 
 local function SA_isEnemy(p)
@@ -1037,6 +1059,8 @@ local function SA_findTarget()
                 if hum and hum.Health > 0 then
                     local dist = (part.Position - myHead.Position).Magnitude
                     if dist <= SilentAimConfig.MaxDistance and SA_onScreenAndInFov(part.Position) then
+                        -- Wall check: ข้ามถ้าเปิดและไม่มี LOS
+                        if SilentAimConfig.WallCheck and not SA_hasClearLOS(part) then continue end
                         if dist < bestDist then bestDist = dist; best = part end
                     end
                 end
@@ -1335,6 +1359,18 @@ SAToggleSection:Input({
         local n = tonumber(txt)
         if n and n > 0 then SilentAimConfig.MaxDistance = n; notify("SA Max Dist", "=" .. n, 1)
         else notify("SA Max Dist", "ต้องมากกว่า 0", 1.5) end
+    end,
+})
+
+SAToggleSection:Space()
+
+SAToggleSection:Toggle({
+    Title    = "Wall Check (LOS)",
+    Desc     = "ไม่ล็อกเป้าที่มีกำแพงบัง (default: ON)",
+    Value    = SilentAimConfig.WallCheck,
+    Callback = function(s)
+        SilentAimConfig.WallCheck = s
+        notify("SA Wall Check", s and "ON" or "OFF", 1.0)
     end,
 })
 
