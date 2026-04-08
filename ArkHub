@@ -1,6 +1,6 @@
 --==================================================
 -- Ark UI - Limited (Presented: Student War 90)
--- Updated: Silent Aim WallCheck Added
+-- Updated: Removed V2, Improved V1 Target Locking (Sticky Lock), Shotgun Icon RGB, Visuals Friend Check
 --==================================================
 
 -- =========================
@@ -71,6 +71,7 @@ local Teams            = game:GetService("Teams")
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace        = game:GetService("Workspace")
+local TweenService     = game:GetService("TweenService")
 local LocalPlayer      = Players.LocalPlayer
 local Camera           = Workspace.CurrentCamera
 local PlayerGui        = LocalPlayer:WaitForChild("PlayerGui")
@@ -117,6 +118,7 @@ local _op_nextTick       = 0
 -- Player Hitbox + ESP
 local Player_HeadSize      = 10
 local Player_HitboxEnabled = false
+local VisualsFriendCheck   = false -- สำหรับปิด Hitbox เพื่อน
 local SelectedTeams        = {}
 local playerStates         = {}
 
@@ -347,7 +349,18 @@ createGunBuffLabel()
 updateGunBuffLabel(false)
 
 -- =========================
--- Player Hitbox Core
+-- Friend Checks Core
+-- =========================
+local function BE_isFriend(p)
+    if p == LocalPlayer then return false end
+    if friendCache[p] ~= nil then return friendCache[p] end
+    local ok, isFriend = pcall(function() return LocalPlayer:IsFriendsWith(p.UserId) end)
+    if ok then friendCache[p] = isFriend; return isFriend end
+    return false
+end
+
+-- =========================
+-- Player Hitbox Core (Optimized)
 -- =========================
 local function getHumFromChar(char) return char and char:FindFirstChildOfClass("Humanoid") end
 local function getHRPFromChar(char) return char and char:FindFirstChild("HumanoidRootPart") end
@@ -483,6 +496,7 @@ RunService.Heartbeat:Connect(function()
     local candidates = {}
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character and isAlive(p.Character) then
+            if VisualsFriendCheck and BE_isFriend(p) then continue end -- Friend check fix
             local hrp = getHRPFromChar(p.Character)
             if hrp then
                 local d2     = sqrDist(myPos, hrp.Position)
@@ -555,14 +569,6 @@ local function BE_createBillboard(hrp, p)
     local hpL   = addLabel(20, "",     Color3.fromRGB(100,255,100), 16)
     local teamL = addLabel(40, "",     Color3.fromRGB(100,200,255), 14)
     return bb, nameL, hpL, teamL
-end
-
-local function BE_isFriend(p)
-    if p == LocalPlayer then return false end
-    if friendCache[p] ~= nil then return friendCache[p] end
-    local ok, isFriend = pcall(function() return LocalPlayer:IsFriendsWith(p.UserId) end)
-    if ok then friendCache[p] = isFriend; return isFriend end
-    return false
 end
 
 local function BE_applyOne(p)
@@ -715,13 +721,15 @@ local function ensureFovGui()
     fovGui.IgnoreGuiInset = true; fovGui.DisplayOrder = 9998; fovGui.Parent = PlayerGui
     fovFrame = Instance.new("Frame")
     fovFrame.AnchorPoint = Vector2.new(0.5, 0.5); fovFrame.BackgroundTransparency = 1
-    fovFrame.Active = true; fovFrame.Parent = fovGui
+    fovFrame.Active = false; fovFrame.Parent = fovGui
     fovStroke = Instance.new("UIStroke")
     fovStroke.Thickness = 1; fovStroke.Color = Color3.fromRGB(255, 0, 0); fovStroke.Parent = fovFrame
     local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(1, 0); corner.Parent = fovFrame
     fovDragHit = Instance.new("TextButton")
     fovDragHit.BackgroundTransparency = 1; fovDragHit.Text = ""
-    fovDragHit.AutoButtonColor = false; fovDragHit.Active = true; fovDragHit.Parent = fovFrame
+    fovDragHit.AutoButtonColor = false
+    fovDragHit.Active = false
+    fovDragHit.Parent = fovFrame
     fovDragHit.InputBegan:Connect(function(input)
         if aimingMark_enabled then return end
         if not fov_locked and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
@@ -778,6 +786,8 @@ local function updateFovPosRadius(radius)
     local center = getAimCenter(); local diam = math.floor(radius * 2)
     fovFrame.Visible = show_fov; fovFrame.Size = UDim2.fromOffset(diam, diam)
     fovFrame.Position = UDim2.fromOffset(center.X, center.Y)
+    fovFrame.Active    = not fov_locked
+    fovDragHit.Active  = not fov_locked
     fovDragHit.Size = fovFrame.Size; fovDragHit.Position = UDim2.fromOffset(0, 0)
     fovStroke.Color = Color3.fromRGB(255, 0, 0)
     if hasDrawing and fovCircleDrawing then
@@ -960,9 +970,6 @@ RunService.RenderStepped:Connect(function(dt)
     end
 end)
 
--- =========================
--- Team Helper
--- =========================
 local function getAllTeamNames()
     local names = {}
     local ok = pcall(function() for _, t in ipairs(Teams:GetTeams()) do table.insert(names, t.Name) end end)
@@ -974,7 +981,7 @@ local function getAllTeamNames()
 end
 
 -- =========================
--- SILENT AIM SYSTEM
+-- SILENT AIM SYSTEM (V1 Improved + Sticky Lock)
 -- =========================
 local SilentAimConfig = {
     Enabled      = false,
@@ -985,32 +992,29 @@ local SilentAimConfig = {
     UseAimbotFov = true,
     FovSize      = 150,
     ShotgunMode  = false,
-    WallCheck    = true,   -- ตรวจสอบกำแพงก่อนล็อกเป้า
+    WallCheck    = true,
 }
 
-local sa_currentTarget    = nil
+local sa_currentTarget     = nil
 local sa_highlightInstance = nil
 
--- FOV helpers for Silent Aim
+-- ─── FOV helpers ────────────────────────────────────────────
 local function SA_getFovCenter()
     if SilentAimConfig.UseAimbotFov then return getAimCenter() end
     return fov_pos or viewportCenter()
 end
-
 local function SA_getFovSize()
     if SilentAimConfig.UseAimbotFov then return fov_value end
     return SilentAimConfig.FovSize
 end
-
 local function SA_onScreenAndInFov(worldPos)
     local sp, onScr = Camera:WorldToViewportPoint(worldPos)
     if not onScr then return false end
-    local center = SA_getFovCenter()
-    local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+    local d = (Vector2.new(sp.X, sp.Y) - SA_getFovCenter()).Magnitude
     return d <= SA_getFovSize()
 end
 
--- Wall check สำหรับ Silent Aim (raycast จากกล้องไปหา target part)
+-- ─── Wall-check ────────────────────────────────────
 local sa_rayParams = RaycastParams.new()
 sa_rayParams.FilterType  = Enum.RaycastFilterType.Exclude
 sa_rayParams.IgnoreWater = true
@@ -1019,33 +1023,56 @@ local function SA_hasClearLOS(targetPart)
     if not (targetPart and targetPart.Parent) then return false end
     local camPos    = Camera.CFrame.Position
     local targetPos = targetPart.Position
-    local dir       = (targetPos - camPos)
+    local dir       = targetPos - camPos
     local dist      = dir.Magnitude
     if dist <= 0 then return false end
     sa_rayParams.FilterDescendantsInstances = { LocalPlayer.Character }
     local result = Workspace:Raycast(camPos, dir.Unit * dist, sa_rayParams)
     if not result then return true end
     local inst = result.Instance
-    if not inst then return true end
-    -- ถือว่า clear ถ้า ray ชนส่วนของ character เป้าหมาย
-    return inst:IsDescendantOf(targetPart.Parent)
+    return inst and inst:IsDescendantOf(targetPart.Parent)
 end
 
+-- ─── Enemy filter ──────────────────────────────────
 local function SA_isEnemy(p)
     if p == LocalPlayer then return false end
     if SilentAimConfig.TeamCheck then
         local lt, tt = LocalPlayer.Team, p.Team
         if lt and tt and lt == tt then return false end
     end
-    -- FriendCheck: ถ้าเปิด = ไม่ล็อกเพื่อนจริงๆ ในRoblox
     if SilentAimConfig.FriendCheck and BE_isFriend(p) then return false end
     return true
 end
 
--- หาเป้าที่อยู่ใน FOV และใกล้ตัวเราที่สุด
+-- ─── Validation & Targeting (Improved V1) ─────────────────
+local function SA_isValid(part)
+    if not part or not part.Parent then return false end
+    local hum = getHumFromChar(part.Parent)
+    if not hum or hum.Health <= 0 then return false end
+    if not SA_onScreenAndInFov(part.Position) then return false end
+    
+    local myChar = LocalPlayer.Character
+    local myHead = myChar and (myChar:FindFirstChild("Head") or myChar:FindFirstChild("HumanoidRootPart"))
+    if not myHead then return false end
+    
+    local wDist = (part.Position - myHead.Position).Magnitude
+    if wDist > SilentAimConfig.MaxDistance then return false end
+    
+    if SilentAimConfig.WallCheck and not SA_hasClearLOS(part) then return false end
+    return true
+end
+
 local function SA_findTarget()
-    local best, bestDist = nil, math.huge
-    local myChar = LocalPlayer.Character; if not myChar then return nil end
+    -- Sticky Lock: ยึดเป้าเดิมไว้ถ้ายังตรวจสอบผ่าน (แก้เป้ากระพริบหลุดแบบ V1 เดิม)
+    if sa_currentTarget and SA_isValid(sa_currentTarget) then
+        return sa_currentTarget
+    end
+
+    -- หาระยะ 3D แบบ V1
+    local bestPart = nil
+    local bestDist = math.huge
+    local myChar = LocalPlayer.Character
+    if not myChar then return nil end
     local myHead = myChar:FindFirstChild("Head") or myChar:FindFirstChild("HumanoidRootPart")
     if not myHead then return nil end
 
@@ -1055,22 +1082,20 @@ local function SA_findTarget()
                 or p.Character:FindFirstChild("Head")
                 or p.Character:FindFirstChild("HumanoidRootPart")
             if part and part:IsA("BasePart") then
-                local hum = getHumFromChar(p.Character)
-                if hum and hum.Health > 0 then
+                if SA_isValid(part) then
                     local dist = (part.Position - myHead.Position).Magnitude
-                    if dist <= SilentAimConfig.MaxDistance and SA_onScreenAndInFov(part.Position) then
-                        -- Wall check: ข้ามถ้าเปิดและไม่มี LOS
-                        if SilentAimConfig.WallCheck and not SA_hasClearLOS(part) then continue end
-                        if dist < bestDist then bestDist = dist; best = part end
+                    if dist < bestDist then
+                        bestDist = dist
+                        bestPart = part
                     end
                 end
             end
         end
     end
-    return best
+    return bestPart
 end
 
--- Highlight เป้า Silent Aim (สีเหลือง แยกจาก ESP สีอื่น)
+-- ─── Highlight เป้า (สีเหลือง) ──────────
 local function SA_updateHighlight(targetPart)
     if not targetPart or not targetPart.Parent then
         if sa_highlightInstance then pcall(function() sa_highlightInstance:Destroy() end); sa_highlightInstance = nil end
@@ -1081,21 +1106,25 @@ local function SA_updateHighlight(targetPart)
         if sa_highlightInstance then pcall(function() sa_highlightInstance:Destroy() end); sa_highlightInstance = nil end
         return
     end
-    -- สร้างใหม่ถ้าไม่มี หรือ target เปลี่ยน
+    local fillCol    = Color3.fromRGB(255, 220, 0)
+    local outlineCol = Color3.fromRGB(255, 255, 0)
     if not sa_highlightInstance or not sa_highlightInstance.Parent or sa_highlightInstance.Adornee ~= char then
         if sa_highlightInstance then pcall(function() sa_highlightInstance:Destroy() end) end
         local hl = Instance.new("Highlight")
         hl.Adornee             = char
-        hl.FillColor           = Color3.fromRGB(255, 220, 0)   -- เหลือง
+        hl.FillColor           = fillCol
         hl.FillTransparency    = 0.45
-        hl.OutlineColor        = Color3.fromRGB(255, 255, 0)
+        hl.OutlineColor        = outlineCol
         hl.OutlineTransparency = 0
         hl.Parent              = char
         sa_highlightInstance   = hl
+    else
+        sa_highlightInstance.FillColor    = fillCol
+        sa_highlightInstance.OutlineColor = outlineCol
     end
 end
 
--- Heartbeat: อัปเดตเป้า + highlight
+-- ─── Heartbeat ──────────────────────────────────────────────
 RunService.Heartbeat:Connect(function()
     if not SilentAimConfig.Enabled then
         sa_currentTarget = nil
@@ -1106,7 +1135,7 @@ RunService.Heartbeat:Connect(function()
     SA_updateHighlight(sa_currentTarget)
 end)
 
--- hookmetamethod - ดักจับ FireServer ของ VisualizeBullet
+-- ─── hookmetamethod ─────────────────────────────────────────
 local OldNamecall
 OldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local Method = getnamecallmethod()
@@ -1115,38 +1144,49 @@ OldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     if SilentAimConfig.Enabled and Method == "FireServer" and self.Name == "VisualizeBullet" then
         local Target = sa_currentTarget
         if Target and Target.Parent then
+            local MuzzlePos = Camera.CFrame.Position
+            local myChar = LocalPlayer.Character
+            if myChar then
+                local head = myChar:FindFirstChild("Head") or myChar:FindFirstChild("HumanoidRootPart")
+                if head then MuzzlePos = head.Position end
+            end
+            for _, potentialPart in pairs(Args) do
+                if typeof(potentialPart) == "Instance" and
+                   (potentialPart:IsA("BasePart") or potentialPart:IsA("Attachment")) then
+                    MuzzlePos = potentialPart:IsA("Attachment")
+                        and potentialPart.WorldPosition
+                        or potentialPart.Position
+                    break
+                end
+            end
+
+            local originPos = MuzzlePos
+
+            local baseDir = (Target.Position - originPos)
+            if baseDir.Magnitude > 0 then baseDir = baseDir.Unit end
+
+            local spreadVal = GunBuffConfig.Settings.Spread or 20
+
             for _, arg in pairs(Args) do
                 if typeof(arg) == "table" then
-                    -- หาจุดปากกระบอกปืน
-                    local MuzzlePos = LocalPlayer.Character
-                        and (LocalPlayer.Character:FindFirstChild("Head") or LocalPlayer.Character:FindFirstChild("HumanoidRootPart"))
-                        and (LocalPlayer.Character:FindFirstChild("Head") or LocalPlayer.Character:FindFirstChild("HumanoidRootPart")).Position
-                        or Vector3.new()
-                    for _, potentialPart in pairs(Args) do
-                        if typeof(potentialPart) == "Instance" and
-                           (potentialPart:IsA("BasePart") or potentialPart:IsA("Attachment")) then
-                            MuzzlePos = potentialPart:IsA("Attachment")
-                                and potentialPart.WorldPosition
-                                or potentialPart.Position
-                            break
-                        end
-                    end
-
                     for subIndex, subValue in pairs(arg) do
-                        -- เบนทิศกระสุนไปหาเป้า
                         if typeof(subValue) == "Vector3" then
-                            arg[subIndex] = (Target.Position - MuzzlePos).Unit
+                            if SilentAimConfig.ShotgunMode then
+                                local spreadRad = math.rad(spreadVal * 0.5)
+                                local rx = (math.random() - 0.5) * 2 * spreadRad
+                                local ry = (math.random() - 0.5) * 2 * spreadRad
+                                local cone = CFrame.new(Vector3.new(), baseDir) * CFrame.Angles(rx, ry, 0)
+                                arg[subIndex] = cone.LookVector
+                            else
+                                arg[subIndex] = baseDir
+                            end
                         end
-
-                        -- Shotgun Mode: ใช้ค่าจาก GunBuff Tab, ปกติ: ลด Spread/Recoil = 0
-                        if subIndex == "Spread" or subIndex == "Accuracy" then
-                            arg[subIndex] = SilentAimConfig.ShotgunMode
-                                and (GunBuffConfig.Settings.Spread or 0)
-                                or 0
-                        elseif subIndex == "Recoil" then
-                            arg[subIndex] = SilentAimConfig.ShotgunMode
-                                and (GunBuffConfig.Settings.Recoil or 0)
-                                or 0
+                        if not SilentAimConfig.ShotgunMode then
+                            if subIndex == "Spread" or subIndex == "Accuracy" then
+                                arg[subIndex] = 0
+                            elseif subIndex == "Recoil" then
+                                arg[subIndex] = 0
+                            end
                         end
                     end
                 end
@@ -1156,6 +1196,81 @@ OldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     end
     return OldNamecall(self, ...)
 end)
+
+-- =========================
+-- DRAGGABLE SHOTGUN ICON UI
+-- =========================
+local ShotgunGui = Instance.new("ScreenGui")
+ShotgunGui.Name = "ARKUI_ShotgunIcon"
+ShotgunGui.ResetOnSpawn = false
+ShotgunGui.DisplayOrder = 10005
+ShotgunGui.Enabled = false
+ShotgunGui.Parent = PlayerGui
+
+local sgBtn = Instance.new("ImageButton")
+sgBtn.Size = UDim2.fromOffset(48, 48)
+sgBtn.Position = UDim2.fromScale(0.8, 0.5)
+sgBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+sgBtn.Image = "rbxassetid://6022668884" -- Crosshair/Shotgun stylized icon
+sgBtn.ImageColor3 = Color3.new(1, 1, 1)
+sgBtn.Parent = ShotgunGui
+
+local sgCorner = Instance.new("UICorner")
+sgCorner.CornerRadius = UDim.new(0.2, 0)
+sgCorner.Parent = sgBtn
+
+local sgStroke = Instance.new("UIStroke")
+sgStroke.Thickness = 2.5
+sgStroke.Color = Color3.fromRGB(255, 0, 0)
+sgStroke.Parent = sgBtn
+
+task.spawn(function()
+    local h = 0
+    while task.wait() do
+        if not ShotgunGui.Enabled then continue end
+        h = h + 0.005
+        if h > 1 then h = 0 end
+        sgStroke.Color = Color3.fromHSV(h, 1, 1)
+    end
+end)
+
+local dragStart, dragPos
+local isDragging, wasDragging = false, false
+
+sgBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        isDragging = true
+        wasDragging = false
+        dragStart = input.Position
+        dragPos = sgBtn.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                isDragging = false
+            end
+        end)
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if isDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        if delta.Magnitude > 5 then wasDragging = true end
+        sgBtn.Position = UDim2.new(dragPos.X.Scale, dragPos.X.Offset + delta.X, dragPos.Y.Scale, dragPos.Y.Offset + delta.Y)
+    end
+end)
+
+local function UpdateShotgunBtnColor()
+    local col = SilentAimConfig.ShotgunMode and Color3.fromRGB(50, 255, 50) or Color3.fromRGB(255, 50, 50)
+    TweenService:Create(sgBtn, TweenInfo.new(0.3), {BackgroundColor3 = col}):Play()
+end
+
+sgBtn.MouseButton1Click:Connect(function()
+    if wasDragging then return end
+    SilentAimConfig.ShotgunMode = not SilentAimConfig.ShotgunMode
+    UpdateShotgunBtnColor()
+    notify("Shotgun Mode", SilentAimConfig.ShotgunMode and "ON" or "OFF", 1)
+end)
+
 
 -- =========================
 -- UI WIRING — WindUI Elements
@@ -1168,11 +1283,10 @@ local InfoSection = InfoTab:Section({ Title = "Ark UI - Limited" })
 InfoSection:Paragraph({
     Title = "Presented: Student War 90",
     Desc  = "📝 Recently Updates Information:\n" ..
-            "- เพิ่ม Silent Aim Tab พร้อมระบบ hookmetamethod\n" ..
-            "- Silent Aim ล็อกเป้าใน FOV + Highlight สีเหลือง\n" ..
-            "- FriendCheck: ไม่ล็อกเพื่อน Roblox จริงๆ\n" ..
-            "- Shotgun Mode ใช้ค่า Spread/Recoil จาก Gun Buff Tab\n" ..
-            "- เพิ่มค่า Lifesteal (0.1 Default) ในเมนูบัฟปืน\n\n" ..
+            "- ปรับปรุง Silent Aim: ลบ V2 ออกและนำระบบ Sticky Lock มาใส่ใน V1 ทำให้ล็อกเป้าหมายเดิมได้ดีขึ้น ไม่กระพริบ ล็อกตามระยะใกล้สุดแบบเดิม\n" ..
+            "- เพิ่ม Shotgun Mode UI Draggable Icon มีอนิเมชั่นและสีสัน\n" ..
+            "- เพิ่ม Friend Check สำหรับ Visuals Tab ปิดมองเพื่อน\n" ..
+            "- Optimize Hitbox และ ESP ลดอาการกระตุกดึงเฟรม\n\n" ..
             "ขอบคุณที่ใช้งาน Ark UI - Limited ครับ!"
 })
 
@@ -1317,10 +1431,7 @@ SAToggleSection:Toggle({
     Value    = SilentAimConfig.Enabled,
     Callback = function(s)
         SilentAimConfig.Enabled = s
-        if not s then
-            sa_currentTarget = nil
-            SA_updateHighlight(nil)
-        end
+        if not s then sa_currentTarget = nil; SA_updateHighlight(nil) end
         notify("Silent Aim", s and "ON" or "OFF", 1.2)
     end,
 })
@@ -1331,10 +1442,7 @@ SAToggleSection:Toggle({
     Title    = "Team Check",
     Desc     = "ไม่ล็อกทีมเดียวกัน (default: OFF)",
     Value    = SilentAimConfig.TeamCheck,
-    Callback = function(s)
-        SilentAimConfig.TeamCheck = s
-        notify("SA Team Check", s and "ON" or "OFF", 1.0)
-    end,
+    Callback = function(s) SilentAimConfig.TeamCheck = s; notify("SA Team Check", s and "ON" or "OFF", 1.0) end,
 })
 
 SAToggleSection:Space()
@@ -1343,10 +1451,16 @@ SAToggleSection:Toggle({
     Title    = "Friend Check",
     Desc     = "ไม่ล็อกเพื่อนใน Roblox ของเรา (default: ON)",
     Value    = SilentAimConfig.FriendCheck,
-    Callback = function(s)
-        SilentAimConfig.FriendCheck = s
-        notify("SA Friend Check", s and "ON" or "OFF", 1.0)
-    end,
+    Callback = function(s) SilentAimConfig.FriendCheck = s; notify("SA Friend Check", s and "ON" or "OFF", 1.0) end,
+})
+
+SAToggleSection:Space()
+
+SAToggleSection:Toggle({
+    Title    = "Wall Check (LOS)",
+    Desc     = "ไม่ล็อกเป้าที่มีกำแพงบัง (default: ON)",
+    Value    = SilentAimConfig.WallCheck,
+    Callback = function(s) SilentAimConfig.WallCheck = s; notify("SA Wall Check", s and "ON" or "OFF", 1.0) end,
 })
 
 SAToggleSection:Space()
@@ -1359,18 +1473,6 @@ SAToggleSection:Input({
         local n = tonumber(txt)
         if n and n > 0 then SilentAimConfig.MaxDistance = n; notify("SA Max Dist", "=" .. n, 1)
         else notify("SA Max Dist", "ต้องมากกว่า 0", 1.5) end
-    end,
-})
-
-SAToggleSection:Space()
-
-SAToggleSection:Toggle({
-    Title    = "Wall Check (LOS)",
-    Desc     = "ไม่ล็อกเป้าที่มีกำแพงบัง (default: ON)",
-    Value    = SilentAimConfig.WallCheck,
-    Callback = function(s)
-        SilentAimConfig.WallCheck = s
-        notify("SA Wall Check", s and "ON" or "OFF", 1.0)
     end,
 })
 
@@ -1415,20 +1517,34 @@ SAFovSection:Input({
 local SAShotgunSection = SilentAimTab:Section({ Title = "Shotgun Mode" })
 
 SAShotgunSection:Toggle({
+    Title    = "Shotgun Mode Icon Keybinds",
+    Desc     = "เปิดโชว์ปุ่ม Icon ลากได้สำหรับเปิด/ปิด Shotgun เร็วๆ",
+    Value    = ShotgunGui.Enabled,
+    Callback = function(s)
+        ShotgunGui.Enabled = s
+        notify("Shotgun Icon", s and "เปิดแล้ว" or "ปิดซ่อน", 1.5)
+    end,
+})
+
+SAShotgunSection:Space()
+
+SAShotgunSection:Toggle({
     Title    = "Shotgun Mode",
-    Desc     = "ใช้ค่า Spread/Recoil จาก Gun Buff Tab แทนการล็อก = 0",
+    Desc     = "กระจายกระสุนเป็นกรวยรอบเป้า ใช้ค่า Spread จาก Gun Buff Tab",
     Value    = SilentAimConfig.ShotgunMode,
     Callback = function(s)
         SilentAimConfig.ShotgunMode = s
-        notify("Shotgun Mode", s and "ON (ใช้ค่า Gun Buff)" or "OFF (Spread=0)", 1.5)
+        UpdateShotgunBtnColor()
+        notify("Shotgun Mode", s and "ON — Spread กรวยรอบเป้า" or "OFF — ตรงเป้า 100%", 1.5)
     end,
 })
 
 SAShotgunSection:Paragraph({
     Title = "ℹ️ หมายเหตุ Shotgun Mode",
-    Desc  = "เมื่อเปิด: Spread = ค่าใน Gun Buff Tab (default 20)\n" ..
-            "เมื่อปิด: Spread = 0 (แม่นยำสูงสุด)\n" ..
-            "ใช้คู่กับ BulletPerShot สูงๆ ใน Gun Buff Tab เพื่อผล Shotgun เต็มที่"
+    Desc  = "เปิด: แต่ละลูกกระสุน spread เป็นกรวยรอบทิศเป้า\n" ..
+            "ขนาดกรวย = ค่า Spread ใน Gun Buff Tab (default 20)\n" ..
+            "ปิด: กระสุนทุกลูกพุ่งตรงเป้า (แม่น 100%)\n" ..
+            "ใช้คู่ BulletPerShot สูงๆ เพื่อผล Shotgun เต็มที่"
 })
 
 -- ──────────────────────────────
@@ -1555,6 +1671,12 @@ local HitboxSection = VisualsTab:Section({ Title = "Player Hitbox + ESP" })
 HitboxSection:Toggle({ Title = "Player Hitbox + ESP", Desc = "ขยาย HRP + ป้ายชื่อ + ไฮไลท์", Value = Player_HitboxEnabled,
     Callback = function(s) _G.KIMUI_PLAYER_HITBOX_SET_TOGGLE(s); notify("Player Hitbox", s and "ON" or "OFF", 1) end })
 HitboxSection:Space()
+
+-- เพิ่ม Friend Check สำหรับ Visuals
+HitboxSection:Toggle({ Title = "Friend Check", Desc = "ปิด Hitbox/ESP สำหรับเพื่อนเราในเกม", Value = VisualsFriendCheck,
+    Callback = function(s) VisualsFriendCheck = s; notify("Visuals Friend Check", s and "ON" or "OFF", 1) end })
+HitboxSection:Space()
+
 HitboxSection:Slider({ Title = "Headbox Size", Desc = "ขนาดกล่องหัว (HRP cube)", Step = 1, Value = { Min = 1, Max = 100, Default = Player_HeadSize },
     Callback = function(v) _G.__KIMUI_PLAYER_HITBOX_SET_SIZE(v); notify("Player Hitbox", "Size=" .. v, 1) end })
 HitboxSection:Space()
@@ -1623,7 +1745,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
         AutoPromptEnabled = not AutoPromptEnabled
         notify("Auto Prompt", AutoPromptEnabled and "ON" or "OFF", 1.2)
     end
-    -- F8: Toggle Silent Aim เร็วๆ
+    -- F8: Toggle Silent Aim
     if input.KeyCode == Enum.KeyCode.F8 then
         SilentAimConfig.Enabled = not SilentAimConfig.Enabled
         if not SilentAimConfig.Enabled then sa_currentTarget = nil; SA_updateHighlight(nil) end
@@ -1634,4 +1756,4 @@ end)
 -- ──────────────────────────────
 -- Final Notify
 -- ──────────────────────────────
-notify("Ark UI - Limited", "Loaded ✅ | Silent Aim Added | F8 = Toggle SA", 4)
+notify("Ark UI - Limited", "Loaded ✅ | V1 Target Lock Improved", 4)
