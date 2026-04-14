@@ -1,0 +1,513 @@
+--[[
+    Ark Hub
+    By Ark
+]]
+
+local cloneref = (cloneref or clonereference or function(instance)
+	return instance
+end)
+
+local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
+local RunService = cloneref(game:GetService("RunService"))
+local UserInputService = cloneref(game:GetService("UserInputService"))
+local players = cloneref(game:GetService("Players"))
+
+local plr = players.LocalPlayer
+
+-- [[ Setup WindUI ]]
+local WindUI
+do
+	local ok, result = pcall(function()
+		return require("./src/Init")
+	end)
+
+	if ok then
+		WindUI = result
+	else
+		WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+	end
+end
+
+local Window = WindUI:CreateWindow({
+	Title = "Ark Hub",
+	Author = "โดย Ark",
+	Icon = "solar:bolt-bold",
+	Theme = "Dark",
+	NewElements = true,
+	Transparent = true,
+	ToggleKey = Enum.KeyCode.V,
+	Acrylic = true,
+})
+
+-- [[ Variables & State ]]
+local Options = {
+    SpeedBoost = false,
+    Noclip = false,
+    RmvFallDamage = false,
+    ItemAura = false,
+    InstantItem = false,
+    RmvHitCooldown = false,
+    InfJump = false,
+    ItemESP = false,
+    PlayerESP = false,
+}
+
+-- [[ Functions ]]
+local function clearESP()
+    for _, item in pairs(workspace:GetDescendants()) do
+        if item.Name == "ESP_Folder" then
+            item:Destroy()
+        end
+    end
+end
+
+local function createESP(obj)
+    local toolType = obj:GetAttribute("ToolType")
+
+    if toolType and obj then
+        local folder = obj:FindFirstChild("ESP_Folder")
+        if not folder then
+            folder = Instance.new("Folder")
+            folder.Name = "ESP_Folder"
+            folder.Parent = obj
+
+            local bgui = Instance.new("BillboardGui")
+            bgui.Name = "NameESP"
+            bgui.Size = UDim2.new(0, 200, 0, 50)
+            bgui.StudsOffset = Vector3.new(0, 3, 0)
+            bgui.Enabled = true
+            bgui.AlwaysOnTop = true
+            bgui.Parent = folder
+            bgui.Adornee = obj
+            
+            local text = Instance.new("TextLabel")
+            text.Size = UDim2.new(1, 0, 1, 0)
+            text.BackgroundTransparency = 1
+            text.TextColor3 = Color3.fromRGB(255, 0, 0)
+            text.TextStrokeTransparency = 0
+            text.Text = obj.Name .. " : " .. tostring(toolType)
+            text.Parent = bgui
+            
+            local highlight = Instance.new("Highlight")
+            highlight.Name = "ToolHighlight"
+            highlight.FillColor = Color3.fromRGB(255, 0, 0)
+            highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+            highlight.OutlineTransparency = 1
+            highlight.Parent = folder
+            highlight.Adornee = obj
+            highlight.FillTransparency = 0.7
+        end
+    end
+end
+
+local function createPlayerESP(player)
+    if player.Character then
+        local folder = player.Character:FindFirstChild("PlayerESP_Folder")
+        if not folder then
+            folder = Instance.new("Folder")
+            folder.Name = "PlayerESP_Folder"
+            folder.Parent = player.Character
+
+            local bgui = Instance.new("BillboardGui")
+            bgui.Name = "NameESP"
+            bgui.Size = UDim2.new(0, 200, 0, 50)
+            bgui.StudsOffset = Vector3.new(0, 3, 0)
+            bgui.Enabled = true
+            bgui.AlwaysOnTop = true
+            bgui.Parent = folder
+            bgui.Adornee = player.Character
+            
+            local text = Instance.new("TextLabel")
+            text.Size = UDim2.new(1, 0, 1, 0)
+            text.BackgroundTransparency = 1
+            text.TextColor3 = Color3.fromRGB(0, 255, 0)
+            text.TextStrokeTransparency = 0
+            
+            local hum = player.Character:FindFirstChildWhichIsA("Humanoid")
+            local health = hum and math.floor(hum.Health) or 0
+            text.Text = player.Name .. " : " .. tostring(health)
+            text.Parent = bgui
+            
+            local highlight = Instance.new("Highlight")
+            highlight.Name = "PlayerHighlight"
+            highlight.FillColor = Color3.fromRGB(0, 255, 0)
+            highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+            highlight.FillTransparency = 0.7
+            highlight.OutlineTransparency = 1
+            highlight.Parent = folder
+            highlight.Adornee = player.Character
+        end
+    end
+end
+
+local function clearPlayerESP()
+    for _, esp in pairs(workspace:GetDescendants()) do
+        if esp.Name == "PlayerESP_Folder" then
+            esp:Destroy()
+        end
+    end
+end
+
+local lastPos
+local function getItems()
+    local char = plr.Character
+    local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+    if not (char and hum and hum.RootPart) then return end
+
+    lastPos = hum.RootPart.CFrame
+    for _, item in pairs(workspace:GetChildren()) do
+        if item:GetAttribute("ToolType") then
+            for _, trigger in pairs(item:GetDescendants()) do
+                if trigger:IsA("ProximityPrompt") and trigger.Name == "DropPrompt" then
+                    hum.RootPart.CFrame = trigger.Parent.CFrame + Vector3.new(0, 3, 0)
+                    task.wait(0.5)
+                    fireproximityprompt(trigger, trigger.MaxActivationDistance)
+                    task.wait(0.5)
+                end
+            end
+        end
+    end
+    hum.RootPart.CFrame = lastPos
+end
+
+-- [[ Tabs ]]
+local TabMain = Window:Tab({ Title = "หน้าหลัก", Icon = "solar:home-smile-bold" })
+local TabESP = Window:Tab({ Title = "มองทะลุ", Icon = "solar:eye-bold" })
+local TabMisc = Window:Tab({ Title = "อื่นๆ", Icon = "solar:box-minimalistic-bold" })
+
+TabMain:Select()
+
+-- [[ Tab: หน้าหลัก (Main) ]]
+TabMain:Section({ Title = "การเคลื่อนที่ & ตัวละคร" })
+
+local tpwalk
+TabMain:Toggle({
+    Title = "วิ่งเร็ว (Speed Boost)",
+    Value = Options.SpeedBoost,
+    Callback = function(value)
+        Options.SpeedBoost = value
+        if value then
+            tpwalk = RunService.Heartbeat:Connect(function(delta)
+                local char = plr.Character
+                local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+                if char and hum and hum.Parent and hum.MoveDirection.Magnitude > 0 then
+                    char:TranslateBy(hum.MoveDirection * 2.3 * delta * 10)
+                end
+            end)
+        else
+            if tpwalk then tpwalk:Disconnect() end
+        end
+    end
+})
+
+local Noclipping
+TabMain:Toggle({
+    Title = "เดินทะลุกำแพง (Noclip)",
+    Value = Options.Noclip,
+    Callback = function(value)
+        Options.Noclip = value
+        if value then
+            Noclipping = RunService.Stepped:Connect(function()
+                if plr.Character ~= nil then
+                    for _, child in pairs(plr.Character:GetDescendants()) do
+                        if child:IsA("BasePart") and child.CanCollide == true then
+                            child.CanCollide = false
+                        end
+                    end
+                end
+            end)
+        else
+            if Noclipping then Noclipping:Disconnect() end
+        end
+    end
+})
+
+TabMain:Toggle({
+    Title = "ปิดดาเมจตกจากที่สูง (Remove Fall Damage)",
+    Value = Options.RmvFallDamage,
+    Callback = function(value)
+        Options.RmvFallDamage = value
+        local char = plr.Character
+        if char then
+            local falldamage = char:FindFirstChild("FallDamage")
+            if falldamage then 
+                falldamage.Enabled = not value 
+            end
+        end
+    end
+})
+
+TabMain:Section({ Title = "จัดการไอเทม" })
+
+TabMain:Toggle({
+    Title = "เก็บของรอบตัวอัตโนมัติ (Item Aura)",
+    Value = Options.ItemAura,
+    Callback = function(value)
+        Options.ItemAura = value
+        if value then
+            task.spawn(function()
+                while Options.ItemAura do
+                    for _, item in pairs(workspace:GetChildren()) do
+                        if item:GetAttribute("ToolType") then
+                            for _, trigger in pairs(item:GetDescendants()) do
+                                if trigger:IsA("ProximityPrompt") and trigger.Name == "DropPrompt" then
+                                    fireproximityprompt(trigger, trigger.MaxActivationDistance)
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.3)
+                end
+            end)
+        end
+    end
+})
+
+TabMain:Toggle({
+    Title = "วาร์ปเก็บของอัตโนมัติ (Instant Collect)",
+    Value = Options.InstantItem,
+    Callback = function(value)
+        Options.InstantItem = value
+        if value then
+            task.spawn(function()
+                while Options.InstantItem do
+                    getItems()
+                    task.wait(1)
+                end
+            end)
+        end
+    end
+})
+
+TabMain:Button({
+    Title = "วาร์ปเก็บของทั้งหมด (1 ครั้ง)",
+    Icon = "solar:box-bold",
+    Callback = function()
+        getItems()
+    end
+})
+
+TabMain:Section({ Title = "ระบบแผนที่" })
+
+TabMain:Button({
+    Title = "มองเห็นในที่มืด (FullBright)",
+    Icon = "solar:sun-bold",
+    Callback = function()
+        game:GetService("Lighting").Brightness = 2
+        game:GetService("Lighting").ClockTime = 14
+        game:GetService("Lighting").FogEnd = 100000
+        game:GetService("Lighting").GlobalShadows = false
+        game:GetService("Lighting").OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+    end
+})
+
+getgenv().zone = false
+TabMain:Button({
+    Title = "วาร์ปไปโซนปลอดภัย (Safe Zone)",
+    Desc = "กดเพื่อวาร์ปไปพื้นที่ปลอดภัย และกดอีกครั้งเพื่อกลับมาที่เดิม",
+    Icon = "solar:shield-bold",
+    Callback = function()
+        local char = plr.Character
+        local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+        
+        if not rootPart then return end
+
+        local safeZone = workspace:FindFirstChild("SafeZone")
+        if not safeZone then
+            safeZone = Instance.new("Part")
+            safeZone.Name = "SafeZone"
+            safeZone.Size = Vector3.new(50, 1, 50)
+            safeZone.Transparency = 0.5
+            safeZone.Color = Color3.fromRGB(0, 255, 0)
+            safeZone.Anchored = true
+            safeZone.CanCollide = true 
+            safeZone.Position = Vector3.new(0, 500, 0)
+            safeZone.Parent = workspace
+        end
+
+        if not getgenv().zone then
+            lastPos = rootPart.CFrame
+            rootPart.CFrame = safeZone.CFrame + Vector3.new(0, 5, 0)
+            getgenv().zone = true
+        else
+            if lastPos then
+                rootPart.CFrame = lastPos
+            end
+            getgenv().zone = false
+        end
+    end
+})
+
+TabMain:Button({
+    Title = "แสดงกับระเบิดที่ซ่อนอยู่ (Visible Landmines)",
+    Icon = "solar:danger-triangle-bold",
+    Callback = function()
+        local mineField = workspace:FindFirstChild("Minefield")
+        if mineField then
+            for _, part in pairs(mineField:GetChildren()) do
+                if part.Name == "Landmine" then
+                    part.Transparency = 0
+                end
+            end
+        end
+    end
+})
+
+-- [[ Tab: มองทะลุ (ESP) ]]
+local playerESPUpdate
+TabESP:Toggle({
+    Title = "มองทะลุผู้เล่น (Players ESP)",
+    Value = Options.PlayerESP,
+    Callback = function(value)
+        Options.PlayerESP = value
+        if value then
+            for _, player in pairs(players:GetPlayers()) do
+                if player ~= plr then
+                    createPlayerESP(player)
+                end
+            end
+            if not playerESPUpdate then
+                playerESPUpdate = RunService.Heartbeat:Connect(function()
+                    for _, player in pairs(players:GetPlayers()) do
+                        if player ~= plr and player.Character then
+                            local folder = player.Character:FindFirstChild("PlayerESP_Folder")
+                            if folder then
+                                local bgui = folder:FindFirstChild("NameESP")
+                                if bgui then
+                                    local text = bgui:FindFirstChild("TextLabel")
+                                    local humanoid = player.Character:FindFirstChildWhichIsA("Humanoid")
+                                    if text and humanoid then
+                                        text.Text = player.Name .. " : " .. tostring(math.floor(humanoid.Health))
+                                        if player:GetAttribute("Ghost") and text.TextColor3 ~= Color3.fromRGB(0, 255, 255) then
+                                            text.TextColor3 = Color3.fromRGB(0, 255, 255)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end)
+            end
+        else
+            clearPlayerESP()
+            if playerESPUpdate then
+                playerESPUpdate:Disconnect()
+                playerESPUpdate = nil
+            end
+        end
+    end
+})
+
+TabESP:Toggle({
+    Title = "มองทะลุไอเทม (Items ESP)",
+    Value = Options.ItemESP,
+    Callback = function(value)
+        Options.ItemESP = value
+        if value then
+            for _, item in pairs(workspace:GetChildren()) do
+                createESP(item)
+            end
+        else
+            clearESP()
+        end
+    end
+})
+
+workspace.ChildAdded:Connect(function(obj)
+    if Options.ItemESP then
+        createESP(obj)
+    end
+end)
+
+-- [[ Tab: อื่นๆ (Misc) ]]
+local infJump
+local infJumpDebounce = false
+
+TabMisc:Toggle({
+    Title = "กระโดดไม่จำกัด (Inf Jump)",
+    Value = Options.InfJump,
+    Callback = function(value)
+        Options.InfJump = value
+        if value then
+            infJumpDebounce = false
+            infJump = UserInputService.JumpRequest:Connect(function()
+                if not infJumpDebounce and plr.Character then
+                    local hum = plr.Character:FindFirstChildWhichIsA("Humanoid")
+                    if hum then
+                        infJumpDebounce = true
+                        hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                        task.wait()
+                        infJumpDebounce = false
+                    end
+                end
+            end)
+        else
+            if infJump then infJump:Disconnect() end
+            infJumpDebounce = false
+        end
+    end
+})
+
+TabMisc:Toggle({
+    Title = "ตีรัว (ปิดคูลดาวน์การตี)",
+    Value = Options.RmvHitCooldown,
+    Callback = function(value)
+        Options.RmvHitCooldown = value
+    end
+})
+
+-- Handle HitCooldown via loop for safety across respawns
+task.spawn(function()
+    while task.wait(0.1) do
+        if Options.RmvHitCooldown then
+            local char = plr.Character
+            local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+            if hum and hum:GetAttribute("HitCooldown") ~= false then
+                hum:SetAttribute("HitCooldown", false)
+            end
+        end
+    end
+end)
+
+TabMisc:Button({
+    Title = "สตามิน่าไม่จำกัด (Inf Stamina)",
+    Icon = "solar:running-bold",
+    Callback = function()
+        local char = plr.Character
+        local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+        if hum then
+            hum:SetAttribute("MaxStamina", math.huge)
+            hum:SetAttribute("Stamina", math.huge)
+        end
+    end
+})
+
+TabMisc:Button({
+    Title = "กระเป๋าไม่จำกัด (Inf Inventory Size)",
+    Icon = "solar:backpack-bold",
+    Callback = function()
+        local char = plr.Character
+        local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+        if hum then
+            hum:SetAttribute("InventorySize", math.huge)
+        end
+    end
+})
+
+-- [[ Unload Button ]]
+TabMisc:Space({ Columns = 1 })
+TabMisc:Button({
+    Title = "ปิดสคริปต์ (Unload)",
+    Justify = "Center",
+    Icon = "solar:logout-3-bold",
+    Size = "Small",
+    Callback = function()
+        clearESP()
+        clearPlayerESP()
+        if tpwalk then tpwalk:Disconnect() end
+        if Noclipping then Noclipping:Disconnect() end
+        if infJump then infJump:Disconnect() end
+        if playerESPUpdate then playerESPUpdate:Disconnect() end
+        Window:Destroy()
+    end
+})
