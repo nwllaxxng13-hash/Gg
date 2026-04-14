@@ -1,6 +1,6 @@
 --[[
     Ark Hub
-    By Ark
+    By Ark (Removed Silent Aim, Kept Inf Ammo)
 ]]
 
 local cloneref = (cloneref or clonereference or function(instance)
@@ -46,10 +46,12 @@ local Options = {
     RmvFallDamage = false,
     ItemAura = false,
     InstantItem = false,
+    CollectFilter = "All",
     RmvHitCooldown = false,
     InfJump = false,
     ItemESP = false,
     PlayerESP = false,
+    InfAmmo = false -- เก็บกระสุนไม่จำกัดไว้
 }
 
 -- [[ Functions ]]
@@ -63,7 +65,6 @@ end
 
 local function createESP(obj)
     local toolType = obj:GetAttribute("ToolType")
-
     if toolType and obj then
         local folder = obj:FindFirstChild("ESP_Folder")
         if not folder then
@@ -148,6 +149,13 @@ local function clearPlayerESP()
     end
 end
 
+local function isValidItemType(toolType)
+    if Options.CollectFilter == "All" then return true end
+    local typeStr = tostring(toolType):lower()
+    local filterStr = tostring(Options.CollectFilter):lower()
+    return typeStr == filterStr
+end
+
 local lastPos
 local function getItems()
     local char = plr.Character
@@ -156,7 +164,8 @@ local function getItems()
 
     lastPos = hum.RootPart.CFrame
     for _, item in pairs(workspace:GetChildren()) do
-        if item:GetAttribute("ToolType") then
+        local toolType = item:GetAttribute("ToolType")
+        if toolType and isValidItemType(toolType) then
             for _, trigger in pairs(item:GetDescendants()) do
                 if trigger:IsA("ProximityPrompt") and trigger.Name == "DropPrompt" then
                     hum.RootPart.CFrame = trigger.Parent.CFrame + Vector3.new(0, 3, 0)
@@ -167,8 +176,33 @@ local function getItems()
             end
         end
     end
-    hum.RootPart.CFrame = lastPos
+    if hum and hum.RootPart and lastPos then
+        hum.RootPart.CFrame = lastPos
+    end
 end
+
+-- ==========================================
+-- HOOK SYSTEM (เฉพาะ Inf Ammo)
+-- ==========================================
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
+
+    if not checkcaller() then
+        if method == "FireServer" and self.Name == "Fire" and self:IsA("RemoteEvent") then
+            if self.Parent and self.Parent:IsA("Tool") and self.Parent.Parent == plr.Character then
+                -- บังคับ args[1] ให้เป็น true เสมอ (กระสุนไม่ลด)
+                if Options.InfAmmo then
+                    args[1] = true
+                    return oldNamecall(self, unpack(args))
+                end
+            end
+        end
+    end
+
+    return oldNamecall(self, ...)
+end)
 
 -- [[ Tabs ]]
 local TabMain = Window:Tab({ Title = "หน้าหลัก", Icon = "solar:home-smile-bold" })
@@ -178,6 +212,19 @@ local TabMisc = Window:Tab({ Title = "อื่นๆ", Icon = "solar:box-minima
 TabMain:Select()
 
 -- [[ Tab: หน้าหลัก (Main) ]]
+TabMain:Section({ Title = "ระบบปืน" })
+
+TabMain:Toggle({
+    Title = "กระสุนไม่จำกัด (Infinite Ammo)",
+    Desc = "ยิงโดยไม่ใช้กระสุนเลย",
+    Value = Options.InfAmmo,
+    Callback = function(value)
+        Options.InfAmmo = value
+    end
+})
+
+TabMain:Space({ Columns = 1 })
+
 TabMain:Section({ Title = "การเคลื่อนที่ & ตัวละคร" })
 
 local tpwalk
@@ -239,6 +286,16 @@ TabMain:Toggle({
 
 TabMain:Section({ Title = "จัดการไอเทม" })
 
+TabMain:Dropdown({
+    Title = "เลือกประเภทไอเทมที่ต้องการเก็บ",
+    Desc = "ใช้คู่กับวาร์ปเก็บของ หรือ เก็บของรอบตัว",
+    Value = Options.CollectFilter,
+    Values = {"All", "Gun", "Melee", "Usable"},
+    Callback = function(value)
+        Options.CollectFilter = value
+    end
+})
+
 TabMain:Toggle({
     Title = "เก็บของรอบตัวอัตโนมัติ (Item Aura)",
     Value = Options.ItemAura,
@@ -248,7 +305,8 @@ TabMain:Toggle({
             task.spawn(function()
                 while Options.ItemAura do
                     for _, item in pairs(workspace:GetChildren()) do
-                        if item:GetAttribute("ToolType") then
+                        local toolType = item:GetAttribute("ToolType")
+                        if toolType and isValidItemType(toolType) then
                             for _, trigger in pairs(item:GetDescendants()) do
                                 if trigger:IsA("ProximityPrompt") and trigger.Name == "DropPrompt" then
                                     fireproximityprompt(trigger, trigger.MaxActivationDistance)
@@ -456,7 +514,6 @@ TabMisc:Toggle({
     end
 })
 
--- Handle HitCooldown via loop for safety across respawns
 task.spawn(function()
     while task.wait(0.1) do
         if Options.RmvHitCooldown then
