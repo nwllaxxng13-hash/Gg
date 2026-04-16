@@ -1,1 +1,168 @@
-มึงโดนหลอกละไอควายโง่
+--[=[
+    Ark Hub - Custom UI Library
+    Version: 1.0.0
+    Description: A clean, modular UI library for custom scripts and utilities.
+]=]
+
+local ArkHub = {}
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+
+function ArkHub:CreateWindow(WindowName)
+    WindowName = WindowName or "Ark Hub"
+
+    -- จัดการ Gui เดิมถ้ามีอยู่แล้ว (ป้องกันการซ้อนทับ)
+    for _, gui in pairs(CoreGui:GetChildren()) do
+        if gui.Name == "ArkHubUI" then
+            gui:Destroy()
+        end
+    end
+
+    -- สร้าง ScreenGui หลัก
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "ArkHubUI"
+    ScreenGui.Parent = CoreGui
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+    -- สร้าง Main Frame
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Parent = ScreenGui
+    MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25) -- สีพื้นหลังค่าย (Dark Theme)
+    MainFrame.Position = UDim2.new(0.5, -250, 0.5, -175)
+    MainFrame.Size = UDim2.new(0, 500, 0, 350)
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Active = true
+    MainFrame.Draggable = true -- ทำให้ลากหน้าต่างได้
+
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0, 8)
+    UICorner.Parent = MainFrame
+
+    -- สร้าง Title bar
+    local TitleLabel = Instance.new("TextLabel")
+    TitleLabel.Name = "Title"
+    TitleLabel.Parent = MainFrame
+    TitleLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    TitleLabel.Size = UDim2.new(1, 0, 0, 35)
+    TitleLabel.Font = Enum.Font.GothamBold
+    TitleLabel.Text = "  " .. WindowName
+    TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TitleLabel.TextSize = 16
+    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    local TitleCorner = Instance.new("UICorner")
+    TitleCorner.CornerRadius = UDim.new(0, 8)
+    TitleCorner.Parent = TitleLabel
+
+    -- พื้นที่สำหรับใส่เนื้อหา (Tab Container)
+    local ContentContainer = Instance.new("ScrollingFrame")
+    ContentContainer.Name = "ContentContainer"
+    ContentContainer.Parent = MainFrame
+    ContentContainer.Active = true
+    ContentContainer.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    ContentContainer.Position = UDim2.new(0, 10, 0, 45)
+    ContentContainer.Size = UDim2.new(1, -20, 1, -55)
+    ContentContainer.ScrollBarThickness = 4
+    ContentContainer.BorderSizePixel = 0
+
+    local UIListLayout = Instance.new("UIListLayout")
+    UIListLayout.Parent = ContentContainer
+    UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    UIListLayout.Padding = UDim.new(0, 5)
+
+    local Window = {}
+
+    -- ฟังก์ชันสำหรับสร้างปุ่ม
+    function Window:CreateButton(ButtonText, Callback)
+        ButtonText = ButtonText or "Button"
+        Callback = Callback or function() end
+
+        local Button = Instance.new("TextButton")
+        Button.Name = "Button"
+        Button.Parent = ContentContainer
+        Button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+        Button.Size = UDim2.new(1, -10, 0, 35)
+        Button.Font = Enum.Font.GothamSemibold
+        Button.Text = ButtonText
+        Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Button.TextSize = 14
+        Button.AutoButtonColor = false
+
+        local BtnCorner = Instance.new("UICorner")
+        BtnCorner.CornerRadius = UDim.new(0, 6)
+        BtnCorner.Parent = Button
+
+        -- เอฟเฟกต์ตอนกดปุ่ม
+        Button.MouseButton1Click:Connect(function()
+            -- Animation ง่ายๆ เวลากด
+            local tweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            local tweenDown = TweenService:Create(Button, tweenInfo, {BackgroundColor3 = Color3.fromRGB(60, 60, 60)})
+            local tweenUp = TweenService:Create(Button, tweenInfo, {BackgroundColor3 = Color3.fromRGB(45, 45, 45)})
+            
+            tweenDown:Play()
+            tweenDown.Completed:Wait()
+            tweenUp:Play()
+
+            Callback()
+        end)
+    end
+
+    -- ฟังก์ชันสำหรับสร้าง Toggle (เปิด/ปิด)
+    function Window:CreateToggle(ToggleText, Callback)
+        ToggleText = ToggleText or "Toggle"
+        Callback = Callback or function() end
+        local Toggled = false
+
+        local ToggleFrame = Instance.new("Frame")
+        ToggleFrame.Name = "ToggleFrame"
+        ToggleFrame.Parent = ContentContainer
+        ToggleFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+        ToggleFrame.Size = UDim2.new(1, -10, 0, 35)
+
+        local TglCorner = Instance.new("UICorner")
+        TglCorner.CornerRadius = UDim.new(0, 6)
+        TglCorner.Parent = ToggleFrame
+
+        local ToggleLabel = Instance.new("TextLabel")
+        ToggleLabel.Parent = ToggleFrame
+        ToggleLabel.BackgroundTransparency = 1
+        ToggleLabel.Position = UDim2.new(0, 10, 0, 0)
+        ToggleLabel.Size = UDim2.new(0.8, 0, 1, 0)
+        ToggleLabel.Font = Enum.Font.GothamSemibold
+        ToggleLabel.Text = ToggleText
+        ToggleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        ToggleLabel.TextSize = 14
+        ToggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+        local ToggleButton = Instance.new("TextButton")
+        ToggleButton.Parent = ToggleFrame
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50) -- สีแดงตอนปิด
+        ToggleButton.Position = UDim2.new(1, -35, 0.5, -10)
+        ToggleButton.Size = UDim2.new(0, 20, 0, 20)
+        ToggleButton.Text = ""
+        
+        local BtnTglCorner = Instance.new("UICorner")
+        BtnTglCorner.CornerRadius = UDim.new(0, 4)
+        BtnTglCorner.Parent = ToggleButton
+
+        ToggleButton.MouseButton1Click:Connect(function()
+            Toggled = not Toggled
+            if Toggled then
+                TweenService:Create(ToggleButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(50, 255, 50)}):Play() -- สีเขียวตอนเปิด
+            else
+                TweenService:Create(ToggleButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(255, 50, 50)}):Play()
+            end
+            Callback(Toggled)
+        end)
+    end
+
+    -- อัปเดตขนาดของ ScrollingFrame ให้พอดีกับของข้างใน
+    UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        ContentContainer.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y + 10)
+    end)
+
+    return Window
+end
+
+return ArkHub
