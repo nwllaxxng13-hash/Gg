@@ -1,6 +1,6 @@
 --[[
     Ark Hub 
-    By Ark (Fixed NPC Detection)
+    By Ark (Dynamic Shortest-Path Dash & Fine Lerp Speed)
 ]]
 
 local cloneref = (cloneref or clonereference or function(instance)
@@ -13,17 +13,28 @@ local RunService = cloneref(game:GetService("RunService"))
 local TweenService = cloneref(game:GetService("TweenService"))
 local CoreGui = cloneref(game:GetService("CoreGui"))
 local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
 local Features = {
     AutoBlackFlashV1 = false,
     AutoBlackFlashV2 = false,
     TargetDistance = 50,
-    DashDistance = 3,
+    DashDistance = 5, 
+    DashSpeed = 0.4, 
+    DashSide = "Right", -- ใช้เมื่ออยู่ตรงหน้าเป้าหมายเป๊ะๆ เพื่อเลือกว่าจะฉีกทางไหน
+    LockAimDash = false, 
     HighlightTarget = false,
     TargetMode = "Both" 
 }
 
 local IsFiring = false 
+
+-- [[ Setup Animations ]]
+local AnimLeft = Instance.new("Animation")
+AnimLeft.AnimationId = "rbxassetid://117223862448096"
+
+local AnimRight = Instance.new("Animation")
+AnimRight.AnimationId = "rbxassetid://75203303352791"
 
 -- [[ Target Highlight Setup ]]
 local TargetHighlight = Instance.new("Highlight")
@@ -36,24 +47,18 @@ pcall(function()
     TargetHighlight.Parent = CoreGui
 end)
 
--- [[ Smart NPC Scanner (แก้หาไม่เจอ + แก้แลค) ]]
+-- [[ Smart NPC Scanner ]]
 local CachedNPCs = {}
 task.spawn(function()
-    while task.wait(3) do -- สแกนทุก 3 วิเพื่อความลื่นไหล
+    while task.wait(3) do
         local newCache = {}
-        -- ใช้ Descendants แต่กรองเฉพาะ Model เพื่อลดการทำงานของ Loop
         local allObjects = workspace:GetDescendants()
-        
         for i, obj in ipairs(allObjects) do
-            -- กระจายการคำนวณ: ทุกๆ 100 objects ให้รอ 1 frame เพื่อไม่ให้เกิด Spike Lag
             if i % 100 == 0 then RunService.Heartbeat:Wait() end
-            
             if obj:IsA("Model") and obj ~= LocalPlayer.Character then
                 local hum = obj:FindFirstChildOfClass("Humanoid")
                 local hrp = obj:FindFirstChild("HumanoidRootPart")
-                
                 if hum and hrp and hum.Health > 0 then
-                    -- เช็คว่าไม่ใช่ผู้เล่น
                     if not Players:GetPlayerFromCharacter(obj) then
                         table.insert(newCache, obj)
                     end
@@ -67,15 +72,10 @@ end)
 local function GetClosestTarget()
     local closestDistance = Features.TargetDistance
     local closestTarget = nil
-
-    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        return nil
-    end
-
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return nil end
     local myPos = LocalPlayer.Character.HumanoidRootPart.Position
     local potentialTargets = {}
-
-    -- ดึงข้อมูลผู้เล่น
+    
     if Features.TargetMode == "Players" or Features.TargetMode == "Both" then
         for _, player in pairs(Players:GetPlayers()) do
             if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
@@ -83,8 +83,6 @@ local function GetClosestTarget()
             end
         end
     end
-
-    -- ดึงข้อมูล NPC จาก Cache
     if Features.TargetMode == "NPCs" or Features.TargetMode == "Both" then
         for _, npc in pairs(CachedNPCs) do
             if npc and npc.Parent and npc:FindFirstChild("HumanoidRootPart") and npc:FindFirstChild("Humanoid") and npc.Humanoid.Health > 0 then
@@ -92,8 +90,6 @@ local function GetClosestTarget()
             end
         end
     end
-
-    -- หาตัวที่ใกล้ที่สุด
     for _, target in pairs(potentialTargets) do
         local targetPos = target.HumanoidRootPart.Position
         local distance = (targetPos - myPos).Magnitude
@@ -124,6 +120,110 @@ task.spawn(function()
     end
 end)
 
+-- [[ Dynamic Circular Dash Function ]]
+local function CircularDash(targetHRP)
+    local myChar = LocalPlayer.Character
+    local myHRP = myChar.HumanoidRootPart
+    local myHum = myChar:FindFirstChild("Humanoid")
+    
+    if not myHRP or not targetHRP or not myHum then return end
+    
+    local dashDuration = Features.DashSpeed 
+    local radius = Features.DashDistance 
+    
+    local targetPos = targetHRP.Position
+    -- หาเวกเตอร์ด้านหลังของเป้าหมายแบบ 2D (ไม่สนความสูง)
+    local flatTargetLook = Vector3.new(targetHRP.CFrame.LookVector.X, 0, targetHRP.CFrame.LookVector.Z).Unit
+    local backDir = -flatTargetLook
+    local finalPos = targetPos + (backDir * radius)
+    
+    -- หาเวกเตอร์ปัจจุบันของเราเทียบกับเป้าหมาย
+    local vecToMe = myHRP.Position - targetPos
+    local flatVecToMe = Vector3.new(vecToMe.X, 0, vecToMe.Z)
+    
+    if flatVecToMe.Magnitude < 0.1 then
+        flatVecToMe = backDir
+    else
+        flatVecToMe = flatVecToMe.Unit
+    end
+    
+    -- คำนวณมุมที่เหลืออยู่เพื่อไปถึงด้านหลัง
+    local dot = math.clamp(flatVecToMe:Dot(backDir), -1, 1)
+    local angleToBack = math.acos(dot)
+    
+    -- เช็คทิศทางที่สั้นที่สุด (ซ้าย หรือ ขวา)
+    local crossY = flatVecToMe:Cross(backDir).Y
+    local direction = crossY >= 0 and 1 or -1 -- 1 = ซ้าย, -1 = ขวา
+    
+    -- ถ้าเราอยู่ตรงหน้าเป้าหมายเป๊ะๆ (มากกว่า 170 องศา) ให้ใช้ค่าจาก Dropdown เป็นตัวตัดสินว่าจะฉีกทางไหน
+    if angleToBack > math.rad(170) then
+        direction = Features.DashSide == "Left" and 1 or -1
+    end
+    
+    -- ล็อคกล้อง
+    local cameraLockConn
+    if Features.LockAimDash then
+        cameraLockConn = RunService.RenderStepped:Connect(function()
+            if targetHRP and targetHRP.Parent then
+                local currentCF = Camera.CFrame
+                local targetCF = CFrame.lookAt(currentCF.Position, targetHRP.Position)
+                Camera.CFrame = currentCF:Lerp(targetCF, 0.25)
+            end
+        end)
+    end
+    
+    -- ถ้าอยู่ด้านหลังอยู่แล้ว (องศาเหลือน้อยกว่า 15 องศา) ไม่ต้องอ้อม พุ่งจัดระเบียบตรงๆ เลย
+    if angleToBack < math.rad(15) then
+        TweenService:Create(myHRP, TweenInfo.new(dashDuration * 0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            CFrame = CFrame.lookAt(finalPos, targetPos)
+        }):Play()
+        
+        task.delay(dashDuration * 0.5, function()
+            if cameraLockConn then cameraLockConn:Disconnect() end
+        end)
+        return
+    end
+    
+    -- ถ้าต้องพุ่งอ้อม ให้เล่น Animation ตามทิศทางที่ไป
+    local animator = myHum:FindFirstChild("Animator") or myHum
+    local track
+    if direction == 1 then
+        track = animator:LoadAnimation(AnimLeft)
+    else
+        track = animator:LoadAnimation(AnimRight)
+    end
+    if track then track:Play() end
+    
+    -- เริ่มลูปการพุ่งอ้อม
+    local startRelPos = flatVecToMe * radius
+    local startTime = tick()
+    local dashConn
+    
+    dashConn = RunService.Heartbeat:Connect(function()
+        local elapsed = tick() - startTime
+        local alpha = math.clamp(elapsed / dashDuration, 0, 1)
+        
+        if not targetHRP or not targetHRP.Parent or not myHRP or not myHRP.Parent or alpha >= 1 then
+            if dashConn then dashConn:Disconnect() end
+            if cameraLockConn then cameraLockConn:Disconnect() end
+            
+            -- จบการทำงาน หันหน้าเข้าหาเป้าหมาย
+            if myHRP and targetHRP and targetHRP.Parent then
+                myHRP.CFrame = CFrame.lookAt(targetPos + (backDir * radius), targetPos)
+            end
+            return
+        end
+        
+        -- หมุนองศาเท่าที่จำเป็นต้องอ้อมเท่านั้น (ไม่ใช่ครึ่งวงกลมเต็ม)
+        local currentAngle = alpha * angleToBack * direction
+        local rotationCF = CFrame.Angles(0, currentAngle, 0)
+        local currentRelPos = rotationCF:VectorToWorldSpace(startRelPos)
+        
+        local newPosition = targetPos + currentRelPos
+        myHRP.CFrame = CFrame.lookAt(newPosition, targetPos)
+    end)
+end
+
 -- [[ Hooking Remote ]]
 local OldNamecall
 OldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
@@ -141,9 +241,7 @@ OldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                 if Features.AutoBlackFlashV2 then
                     local target = GetClosestTarget()
                     if target and target:FindFirstChild("HumanoidRootPart") then
-                        local myHRP = LocalPlayer.Character.HumanoidRootPart
-                        local endCFrame = target.HumanoidRootPart.CFrame * CFrame.new(0, 0, Features.DashDistance)
-                        TweenService:Create(myHRP, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {CFrame = endCFrame}):Play()
+                        CircularDash(target.HumanoidRootPart)
                     end
                 end
                 task.wait(0.1) 
@@ -154,7 +252,7 @@ OldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     return OldNamecall(self, ...)
 end)
 
--- [[ WindUI ]]
+-- [[ WindUI Setup ]]
 local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
 
 local Window = WindUI:CreateWindow({
@@ -168,20 +266,23 @@ local Window = WindUI:CreateWindow({
 local AutoTab = Window:Tab({ Title = "Auto", Icon = "solar:bolt-bold" })
 AutoTab:Select()
 
-AutoTab:Section({ Title = "Targeting" })
+AutoTab:Section({ Title = "ระบบค้นหาเป้าหมาย" })
+
 AutoTab:Dropdown({
-	Title = "Target Mode",
+	Title = "เป้าหมาย (Target Mode)",
 	Value = Features.TargetMode,
 	Values = {"Players", "NPCs", "Both"},
 	Callback = function(v) Features.TargetMode = v end,
 })
+
 AutoTab:Toggle({
-	Title = "Target Highlight",
+	Title = "แสดงไฮไลท์เป้าหมาย",
 	Value = Features.HighlightTarget,
 	Callback = function(v) Features.HighlightTarget = v end,
 })
 
 AutoTab:Section({ Title = "Black Flash" })
+
 local ToggleV1, ToggleV2
 
 ToggleV1 = AutoTab:Toggle({
@@ -190,40 +291,64 @@ ToggleV1 = AutoTab:Toggle({
 	Callback = function(v)
         if v and Features.AutoBlackFlashV2 then
             ToggleV1:SetValue(false)
-            return WindUI:Notify({Title = "Blocked", Content = "Turn off V2 first"})
+            return WindUI:Notify({Title = "ระบบขัดข้อง", Content = "กรุณาปิด V2 ก่อนใช้งาน V1"})
         end
 		Features.AutoBlackFlashV1 = v
 	end,
 })
 
 ToggleV2 = AutoTab:Toggle({
-	Title = "Auto Black Flash v2",
+	Title = "Auto Black Flash v2 (พุ่งอ้อม)",
 	Value = Features.AutoBlackFlashV2,
 	Callback = function(v)
         if v and Features.AutoBlackFlashV1 then
             ToggleV2:SetValue(false)
-            return WindUI:Notify({Title = "Blocked", Content = "Turn off V1 first"})
+            return WindUI:Notify({Title = "ระบบขัดข้อง", Content = "กรุณาปิด V1 ก่อนใช้งาน V2"})
         end
 		Features.AutoBlackFlashV2 = v
 	end,
 })
 
+AutoTab:Dropdown({
+	Title = "ทิศทางเมื่ออยู่ตรงหน้า (Tie-breaker)",
+	Value = Features.DashSide,
+	Values = {"Left", "Right"},
+	Callback = function(v) Features.DashSide = v end,
+})
+
+AutoTab:Toggle({
+	Title = "ล็อคเป้ากล้องขณะพุ่ง (Lock Aim Dash)",
+	Value = Features.LockAimDash,
+	Callback = function(v) Features.LockAimDash = v end,
+})
+
+AutoTab:Section({ Title = "ปรับแต่งระยะและความเร็ว" })
+
 AutoTab:Slider({
-    Title = "Target Distance",
+    Title = "ระยะการหาเป้าหมาย",
 	Step = 1,
 	Value = {Min = 5, Max = 500, Default = 50},
 	Callback = function(v) Features.TargetDistance = v end,
 })
 
 AutoTab:Slider({
-    Title = "V2 Dash Distance",
+    Title = "ระยะการพุ่งอ้อม (Radius)",
 	Step = 1,
-	Value = {Min = 1, Max = 20, Default = 3},
+	Value = {Min = 1, Max = 20, Default = 5},
 	Callback = function(v) Features.DashDistance = v end,
 })
 
+AutoTab:Slider({
+    Title = "ความเร็วการพุ่ง (Speed/Duration)",
+    Step = 0.1, -- ปรับให้ละเอียดขึ้น สามารถตั้งเป็น 1.1, 1.2 ได้
+    Value = {Min = 0.1, Max = 3.0, Default = 0.4},
+    Callback = function(v) 
+        Features.DashSpeed = v 
+    end,
+})
+
 AutoTab:Button({
-	Title = "Unload Hub",
+	Title = "ปิดการใช้งานสคริปต์",
 	Justify = "Center",
 	Callback = function()
         TargetHighlight:Destroy()
