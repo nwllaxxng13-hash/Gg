@@ -1,0 +1,2176 @@
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║                  ARK HUB - Dead Rails                    ║
+-- ║                   โดย Ark X RINGTA                       ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+
+local minimizeUI = Enum.KeyCode.RightAlt
+
+-- 🟢 สร้าง Window หลัก
+local Window = WindUI:CreateWindow({
+    Title = "Ark Hub",
+    Author = "โดย Ark X RINGTA",
+    Icon = "solar:compass-big-bold",
+    Theme = "Dark",
+    NewElements = true,
+    Transparent = true,
+    Acrylic = false,
+    ToggleKey = minimizeUI,
+})
+
+-- แท็บต่างๆ
+local FarT    = Window:Tab({ Title = "ฟาร์ม",         Icon = "solar:farming-bold" })
+local Ma      = Window:Tab({ Title = "หลัก",           Icon = "solar:star-bold" })
+local Ite     = Window:Tab({ Title = "ไอเทม",          Icon = "solar:box-bold" })
+local TpT     = Window:Tab({ Title = "เทเลพอร์ต",      Icon = "solar:map-arrow-right-bold" })
+local PlayerT = Window:Tab({ Title = "ผู้เล่น",        Icon = "solar:user-bold" })
+local MiscT   = Window:Tab({ Title = "เบ็ดเตล็ด",      Icon = "solar:widget-bold" })
+local Settings= Window:Tab({ Title = "ตั้งค่า",        Icon = "solar:settings-minimalistic-bold" })
+
+FarT:Select()
+
+do
+    local baseUrl = "https://raw.githubusercontent.com/Shade-vex/Hutao-hub-code-pro-mode/refs/heads/main/"
+    local Config     = loadstring(game:HttpGet(baseUrl .. "Config.lua.txt"))()
+    local Utilities  = loadstring(game:HttpGet(baseUrl .. "Util.lua.txt"))()
+    local ESP        = loadstring(game:HttpGet(baseUrl .. "ESP.lua.txt"))()(Config, Utilities)
+    local MiddleClick= loadstring(game:HttpGet(baseUrl .. "MiddleClick.lua.txt"))()
+    local Aimbot     = loadstring(game:HttpGet(baseUrl .. "Aimbot.lua.txt"))()
+
+    ESP.Initialize()
+    MiddleClick.Initialize()
+    Aimbot.Initialize()
+
+    -- ══════════════════════════════
+    --         แท็บ ฟาร์ม
+    -- ══════════════════════════════
+
+    FarT:Paragraph({
+        Title = "หมายเหตุ",
+        Desc  = "• ฟีเจอร์เหล่านี้เป็นการสลับเปิด/ปิด สามารถใช้ร่วมกับคอนฟิกได้\n  การปิดสวิตช์ไม่ได้หยุดสคริปต์ที่กำลังทำงานอยู่\n• ตั้งค่าคอนฟิกได้ที่แท็บ ตั้งค่า"
+    })
+
+    FarT:Section({ Title = "↳ บอนด์" })
+
+    FarT:Toggle({
+        Title = "ฟาร์มบอนด์อัตโนมัติ",
+        Desc  = "เวอร์ชั่นปกติของการฟาร์มบอนด์",
+        Value = false,
+        Callback = function(Value)
+            if Value then
+                getgenv().DeadRails = {
+                    ["Farm"] = {
+                        ["Enabled"] = true,
+                        ["Mode"] = "Normal",
+                    },
+                }
+                AutoBondsURL = baseUrl .. "AutoBondsINF"
+                loadstring(game:HttpGet(AutoBondsURL))()
+            end
+        end
+    })
+
+    FarT:Toggle({
+        Title = "ฟาร์มบอนด์อัตโนมัติขั้นสุด",
+        Desc  = "70+ บอนด์ต่อรอบ — แนะนำให้ใช้",
+        Value = false,
+        Callback = function(Value)
+            if Value then
+                AutoBondsURl = baseUrl .. "AutoBonds2.lua.txt"
+                loadstring(game:HttpGet(AutoBondsURl))()
+            end
+        end
+    })
+
+    FarT:Section({ Title = "↳ ชนะ" })
+
+    FarT:Toggle({
+        Title = "ฟาร์มบอนด์ & ชนะอัตโนมัติ",
+        Desc  = "คลิกเพื่อเริ่มฟาร์มบอนด์และชนะด้วย AI\nแนะนำให้ใช้คลาสคาวบอย",
+        Value = false,
+        Callback = function(Value)
+            if Value then
+                AutoBondsUrL = baseUrl .. "AutoBonds3.lua.txt"
+                loadstring(game:HttpGet(AutoBondsUrL))()
+            end
+        end
+    })
+
+    -- ══════════════════════════════
+    --         แท็บ หลัก
+    -- ══════════════════════════════
+
+    Ma:Section({ Title = "↳ คลาส" })
+
+    Ma:Button({
+        Title = "รับคลาสม้า",
+        Callback = function()
+            if getgenv().HorseCl then return end
+            getgenv().HorseCl = true
+            local args = { [1] = "Horse" }
+            game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("RemotePromise"):WaitForChild("Remotes"):WaitForChild("C_BuyClass"):FireServer(unpack(args))
+            task.wait(1)
+            local args2 = { [1] = "Horse" }
+            game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("RemotePromise"):WaitForChild("Remotes"):WaitForChild("C_EquipClass"):FireServer(unpack(args2))
+            WindUI:Notify({
+                Title   = "Ark Hub",
+                Content = "รับและสวมใส่คลาสม้าสำเร็จ!",
+            })
+        end
+    })
+
+    Ma:Section({ Title = "↳ เอมบอท" })
+
+    Ma:Button({
+        Title = "เอมบอท V1",
+        Desc  = "• รองรับมือถือ",
+        Callback = function()
+            local RunService = game:GetService("RunService")
+            local Cam = workspace.CurrentCamera
+            local Player = game:GetService("Players").LocalPlayer
+
+            local validNPCs = {}
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+            local function isNPC(obj)
+                return obj:IsA("Model")
+                    and obj:FindFirstChild("Humanoid")
+                    and obj.Humanoid.Health > 0
+                    and obj:FindFirstChild("Head")
+                    and obj:FindFirstChild("HumanoidRootPart")
+                    and not game:GetService("Players"):GetPlayerFromCharacter(obj)
+            end
+
+            local function updateNPCs()
+                local tempTable = {}
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if isNPC(obj) then tempTable[obj] = true end
+                end
+                for i = #validNPCs, 1, -1 do
+                    if not tempTable[validNPCs[i]] then table.remove(validNPCs, i) end
+                end
+                for obj in pairs(tempTable) do
+                    if not table.find(validNPCs, obj) then table.insert(validNPCs, obj) end
+                end
+            end
+
+            local function handleDescendant(descendant)
+                if isNPC(descendant) then
+                    table.insert(validNPCs, descendant)
+                    local humanoid = descendant:WaitForChild("Humanoid")
+                    humanoid.Destroying:Connect(function()
+                        for i = #validNPCs, 1, -1 do
+                            if validNPCs[i] == descendant then table.remove(validNPCs, i); break end
+                        end
+                    end)
+                end
+            end
+            workspace.DescendantAdded:Connect(handleDescendant)
+
+            local function predictPos(target)
+                local rootPart = target:FindFirstChild("HumanoidRootPart")
+                local head = target:FindFirstChild("Head")
+                if not rootPart or not head then return head and head.Position or rootPart and rootPart.Position end
+                local velocity = rootPart.Velocity
+                local basePosition = rootPart.Position + velocity * 0.02
+                return basePosition + (head.Position - rootPart.Position)
+            end
+
+            local function getTarget()
+                local nearest, minDistance = nil, math.huge
+                local viewportCenter = Cam.ViewportSize / 2
+                raycastParams.FilterDescendantsInstances = {Player.Character}
+                for _, npc in ipairs(validNPCs) do
+                    local predictedPos = predictPos(npc)
+                    local screenPos, visible = Cam:WorldToViewportPoint(predictedPos)
+                    if visible and screenPos.Z > 0 then
+                        local ray = workspace:Raycast(Cam.CFrame.Position, (predictedPos - Cam.CFrame.Position).Unit * 1000, raycastParams)
+                        if ray and ray.Instance:IsDescendantOf(npc) then
+                            local distance = (Vector2.new(screenPos.X, screenPos.Y) - viewportCenter).Magnitude
+                            if distance < minDistance then minDistance = distance; nearest = npc end
+                        end
+                    end
+                end
+                return nearest
+            end
+
+            local function aim(targetPosition)
+                local currentCF = Cam.CFrame
+                local targetDirection = (targetPosition - currentCF.Position).Unit
+                local newLookVector = currentCF.LookVector:Lerp(targetDirection, 0.581)
+                Cam.CFrame = CFrame.new(currentCF.Position, currentCF.Position + newLookVector)
+            end
+
+            local heartbeat = RunService.Heartbeat
+            local lastUpdate, UPDATE_INTERVAL = 0, 0.4
+            local aimbotEnabled = false
+
+            heartbeat:Connect(function(dt)
+                lastUpdate = lastUpdate + dt
+                if lastUpdate >= UPDATE_INTERVAL then updateNPCs(); lastUpdate = 0 end
+                if aimbotEnabled then
+                    local target = getTarget()
+                    if target then aim(predictPos(target)) end
+                end
+            end)
+
+            workspace.DescendantRemoving:Connect(function(descendant)
+                if isNPC(descendant) then
+                    for i = #validNPCs, 1, -1 do
+                        if validNPCs[i] == descendant then table.remove(validNPCs, i); break end
+                    end
+                end
+            end)
+
+            local TweenService = game:GetService("TweenService")
+            if game.CoreGui:FindFirstChild("CustomToggleUI") then
+                local oldUI = game.CoreGui:FindFirstChild("CustomToggleUI")
+                if oldUI:FindFirstChild("MainFrame") then
+                    TweenService:Create(oldUI.MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
+                    wait(0.3)
+                end
+                oldUI:Destroy()
+            end
+
+            local ScreenGui = Instance.new("ScreenGui")
+            ScreenGui.Name = "CustomToggleUI"
+            ScreenGui.Parent = game.CoreGui
+
+            local MainFrame = Instance.new("Frame")
+            MainFrame.Name = "MainFrame"
+            MainFrame.Parent = ScreenGui
+            MainFrame.Size = UDim2.new(0, 250, 0, 130)
+            MainFrame.Position = UDim2.new(0.120833337 - 0.1, 0, 0.0952890813 + 0.01, 0)
+            MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+            MainFrame.BackgroundTransparency = 1
+            MainFrame.BorderSizePixel = 0
+            MainFrame.ClipsDescendants = true
+            MainFrame.Active = true
+            MainFrame.Draggable = true
+            Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
+
+            local Title = Instance.new("TextLabel")
+            Title.Size = UDim2.new(1, 0, 0, 30)
+            Title.BackgroundTransparency = 1
+            Title.Text = "เอมบอท V1"
+            Title.TextSize = 18
+            Title.Font = Enum.Font.GothamBold
+            Title.TextColor3 = Color3.fromRGB(220, 220, 220)
+            Title.Parent = MainFrame
+
+            local ToggleButton = Instance.new("TextButton")
+            ToggleButton.Size = UDim2.new(0, 90, 0, 40)
+            ToggleButton.Position = UDim2.new(0.5, -45, 0.5, -20)
+            ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+            ToggleButton.Text = "ปิด"
+            ToggleButton.Font = Enum.Font.GothamBold
+            ToggleButton.TextSize = 16
+            ToggleButton.TextColor3 = Color3.fromRGB(200, 200, 200)
+            ToggleButton.Parent = MainFrame
+            Instance.new("UICorner", ToggleButton).CornerRadius = UDim.new(0, 20)
+
+            local Indicator = Instance.new("Frame")
+            Indicator.Size = UDim2.new(0, 34, 0, 34)
+            Indicator.Position = UDim2.new(0, 4, 0.5, -17)
+            Indicator.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+            Indicator.Parent = ToggleButton
+            Indicator.BorderSizePixel = 0
+            Instance.new("UICorner", Indicator).CornerRadius = UDim.new(1, 0)
+
+            local DestroyButton = Instance.new("TextButton")
+            DestroyButton.Size = UDim2.new(0, 90, 0, 30)
+            DestroyButton.Position = UDim2.new(0.5, -45, 1, -35)
+            DestroyButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+            DestroyButton.Text = "ปิด UI"
+            DestroyButton.Font = Enum.Font.GothamBold
+            DestroyButton.TextSize = 14
+            DestroyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            DestroyButton.Parent = MainFrame
+            Instance.new("UICorner", DestroyButton).CornerRadius = UDim.new(0, 10)
+
+            local toggleState = false
+            local function toggle()
+                toggleState = not toggleState
+                aimbotEnabled = toggleState
+                ToggleButton.Text = toggleState and "เปิด" or "ปิด"
+                local targetColor = toggleState and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(255, 50, 50)
+                local targetPos   = toggleState and UDim2.new(1, -38, 0.5, -17) or UDim2.new(0, 4, 0.5, -17)
+                TweenService:Create(Indicator, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = targetColor, Position = targetPos}):Play()
+                TweenService:Create(ToggleButton, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = toggleState and Color3.fromRGB(80, 200, 80) or Color3.fromRGB(50, 50, 50)}):Play()
+            end
+            ToggleButton.MouseButton1Click:Connect(toggle)
+            DestroyButton.MouseButton1Click:Connect(function()
+                if MainFrame then
+                    TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
+                    aimbotEnabled = false; toggleState = false
+                    wait(0.3); ScreenGui:Destroy()
+                end
+            end)
+            TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.2}):Play()
+        end
+    })
+
+    local function detectMobile()
+        local UIS = game:GetService("UserInputService")
+        return UIS.TouchEnabled and not UIS.KeyboardEnabled and not UIS.MouseEnabled
+    end
+
+    local fov = 100
+
+    if detectMobile() then
+        Ma:Button({
+            Title = "เอมบอท V2",
+            Desc  = "• รองรับมือถือ",
+            Callback = function()
+                local RunService = game:GetService("RunService")
+                local Cam = workspace.CurrentCamera
+                local Player = game:GetService("Players").LocalPlayer
+
+                local FOVring = Drawing.new("Circle")
+                FOVring.Visible = false
+                FOVring.Thickness = 2
+                FOVring.Color = Color3.fromRGB(0, 0, 0)
+                FOVring.Filled = false
+                FOVring.Radius = fov
+                FOVring.Position = Vector2.new(Cam.ViewportSize.X / 2, Cam.ViewportSize.Y / 2)
+
+                local isAiming = false
+                local validNPCs = {}
+                local raycastParams = RaycastParams.new()
+                raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+                local function isNPC1(obj)
+                    return obj:IsA("Model")
+                        and obj:FindFirstChild("Humanoid") and obj.Humanoid.Health > 0
+                        and obj:FindFirstChild("Head") and obj:FindFirstChild("HumanoidRootPart")
+                        and not game:GetService("Players"):GetPlayerFromCharacter(obj)
+                end
+                local function updateNPCs()
+                    local tempTable = {}
+                    for _, obj in ipairs(workspace:GetDescendants()) do
+                        if isNPC1(obj) then tempTable[obj] = true end
+                    end
+                    for i = #validNPCs, 1, -1 do
+                        if not tempTable[validNPCs[i]] then table.remove(validNPCs, i) end
+                    end
+                    for obj in pairs(tempTable) do
+                        if not table.find(validNPCs, obj) then table.insert(validNPCs, obj) end
+                    end
+                end
+                local function handleDescendant(descendant)
+                    if isNPC1(descendant) then
+                        table.insert(validNPCs, descendant)
+                        local humanoid = descendant:WaitForChild("Humanoid")
+                        humanoid.Destroying:Connect(function()
+                            for i = #validNPCs, 1, -1 do
+                                if validNPCs[i] == descendant then table.remove(validNPCs, i); break end
+                            end
+                        end)
+                    end
+                end
+                workspace.DescendantAdded:Connect(handleDescendant)
+
+                local GuiService = game:GetService("GuiService")
+                local function updateDrawings()
+                    local screenSize = GuiService:GetScreenResolution()
+                    FOVring.Position = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
+                    FOVring.Radius = fov * (screenSize.Y / 1080)
+                end
+                RunService.RenderStepped:Connect(updateDrawings)
+
+                local function predictPos(target)
+                    local rootPart = target:FindFirstChild("HumanoidRootPart")
+                    local head = target:FindFirstChild("Head")
+                    if not rootPart or not head then return head and head.Position or rootPart and rootPart.Position end
+                    return rootPart.Position + rootPart.Velocity * 0.02 + (head.Position - rootPart.Position)
+                end
+                local function getTarget()
+                    local nearest, minDistance = nil, math.huge
+                    local viewportCenter = Cam.ViewportSize / 2
+                    raycastParams.FilterDescendantsInstances = {Player.Character}
+                    for _, npc in ipairs(validNPCs) do
+                        local predictedPos = predictPos(npc)
+                        local screenPos, visible = Cam:WorldToViewportPoint(predictedPos)
+                        if visible and screenPos.Z > 0 then
+                            local ray = workspace:Raycast(Cam.CFrame.Position, (predictedPos - Cam.CFrame.Position).Unit * 1000, raycastParams)
+                            if ray and ray.Instance:IsDescendantOf(npc) then
+                                local distance = (Vector2.new(screenPos.X, screenPos.Y) - viewportCenter).Magnitude
+                                if distance < minDistance and distance < fov then minDistance = distance; nearest = npc end
+                            end
+                        end
+                    end
+                    return nearest
+                end
+                local function aim(targetPosition)
+                    local currentCF = Cam.CFrame
+                    local newLookVector = currentCF.LookVector:Lerp((targetPosition - currentCF.Position).Unit, 0.581)
+                    Cam.CFrame = CFrame.new(currentCF.Position, currentCF.Position + newLookVector)
+                end
+
+                local heartbeat = RunService.Heartbeat
+                local lastUpdate, UPDATE_INTERVAL = 0, 0.4
+                heartbeat:Connect(function(dt)
+                    task.wait(0.2)
+                    updateDrawings()
+                    lastUpdate = lastUpdate + dt
+                    if lastUpdate >= UPDATE_INTERVAL then updateNPCs(); lastUpdate = 0 end
+                    if isAiming then
+                        local target = getTarget()
+                        if target then aim(predictPos(target)) end
+                    end
+                end)
+
+                local TweenService = game:GetService("TweenService")
+                if game.CoreGui:FindFirstChild("CustomToggleUI1") then
+                    local oldUI = game.CoreGui:FindFirstChild("CustomToggleUI1")
+                    if oldUI:FindFirstChild("MainFrame") then
+                        TweenService:Create(oldUI.MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
+                        wait(0.3)
+                    end
+                    oldUI:Destroy()
+                end
+
+                local ScreenGui = Instance.new("ScreenGui")
+                ScreenGui.Name = "CustomToggleUI1"
+                ScreenGui.Parent = game.CoreGui
+
+                local MainFrame = Instance.new("Frame")
+                MainFrame.Name = "MainFrame"; MainFrame.Parent = ScreenGui
+                MainFrame.Size = UDim2.new(0, 250, 0, 130)
+                MainFrame.Position = UDim2.new(1, -260, 0, 20)
+                MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+                MainFrame.BackgroundTransparency = 1; MainFrame.BorderSizePixel = 0
+                MainFrame.ClipsDescendants = true; MainFrame.Active = true; MainFrame.Draggable = true
+                Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
+
+                local TitleL = Instance.new("TextLabel"); TitleL.Size = UDim2.new(1, 0, 0, 30)
+                TitleL.BackgroundTransparency = 1; TitleL.Text = "เอมบอท V2"
+                TitleL.TextSize = 18; TitleL.Font = Enum.Font.GothamBold
+                TitleL.TextColor3 = Color3.fromRGB(220, 220, 220); TitleL.Parent = MainFrame
+
+                local ToggleButton = Instance.new("TextButton")
+                ToggleButton.Size = UDim2.new(0, 90, 0, 40); ToggleButton.Position = UDim2.new(0.5, -45, 0.5, -20)
+                ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50); ToggleButton.Text = "ปิด"
+                ToggleButton.Font = Enum.Font.GothamBold; ToggleButton.TextSize = 16
+                ToggleButton.TextColor3 = Color3.fromRGB(200, 200, 200); ToggleButton.Parent = MainFrame
+                Instance.new("UICorner", ToggleButton).CornerRadius = UDim.new(0, 20)
+
+                local Indicator = Instance.new("Frame")
+                Indicator.Size = UDim2.new(0, 34, 0, 34); Indicator.Position = UDim2.new(0, 4, 0.5, -17)
+                Indicator.BackgroundColor3 = Color3.fromRGB(255, 50, 50); Indicator.Parent = ToggleButton; Indicator.BorderSizePixel = 0
+                Instance.new("UICorner", Indicator).CornerRadius = UDim.new(1, 0)
+
+                local DestroyButton = Instance.new("TextButton")
+                DestroyButton.Size = UDim2.new(0, 90, 0, 30); DestroyButton.Position = UDim2.new(0.5, -45, 1, -35)
+                DestroyButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50); DestroyButton.Text = "ปิด UI"
+                DestroyButton.Font = Enum.Font.GothamBold; DestroyButton.TextSize = 14
+                DestroyButton.TextColor3 = Color3.fromRGB(255, 255, 255); DestroyButton.Parent = MainFrame
+                Instance.new("UICorner", DestroyButton).CornerRadius = UDim.new(0, 10)
+
+                local toggleState = false
+                local function toggle()
+                    toggleState = not toggleState; isAiming = not isAiming; FOVring.Visible = isAiming
+                    ToggleButton.Text = toggleState and "เปิด" or "ปิด"
+                    local targetColor = toggleState and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(255, 50, 50)
+                    local targetPos   = toggleState and UDim2.new(1, -38, 0.5, -17) or UDim2.new(0, 4, 0.5, -17)
+                    TweenService:Create(Indicator, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = targetColor, Position = targetPos}):Play()
+                    TweenService:Create(ToggleButton, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = toggleState and Color3.fromRGB(80, 200, 80) or Color3.fromRGB(50, 50, 50)}):Play()
+                end
+                ToggleButton.MouseButton1Click:Connect(toggle)
+                DestroyButton.MouseButton1Click:Connect(function()
+                    if MainFrame then
+                        TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
+                        isAiming = false; toggleState = false; wait(0.3); ScreenGui:Destroy()
+                    end
+                end)
+                TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.2}):Play()
+
+                updateNPCs()
+                workspace.DescendantRemoved:Connect(function(descendant)
+                    if isNPC1(descendant) then
+                        for i = #validNPCs, 1, -1 do
+                            if validNPCs[i] == descendant then table.remove(validNPCs, i); break end
+                        end
+                    end
+                end)
+                game:GetService("Players").PlayerRemoving:Connect(function() FOVring:Remove() end)
+            end
+        })
+    else
+        local aimEnabled = false
+        Ma:Toggle({
+            Title = "เอมบอท V2",
+            Desc  = "• กดปุ่ม M2 ค้างเพื่อเริ่มเล็ง",
+            Value = false,
+            Callback = function(v)
+                aimEnabled = v
+                Aimbot.Enabled = v
+            end
+        })
+    end
+
+    Ma:Slider({
+        Title    = "ระยะมองเอมบอท V2",
+        Desc     = "ปรับ FOV ของเอมบอท V2",
+        IsTooltip = true,
+        Step     = 1,
+        Value    = { Min = 50, Max = 250, Default = 100 },
+        Callback = function(Value)
+            if detectMobile() then
+                fov = Value
+            else
+                Aimbot.Settings.FOV = Value
+            end
+        end
+    })
+
+    -- ── NPC Cam Lock Button (draggable overlay) ──
+    local Players_       = game:GetService("Players")
+    local UserInputService_ = game:GetService("UserInputService")
+    local TweenService_  = game:GetService("TweenService")
+    local RunService_    = game:GetService("RunService")
+    local CoreGui_       = game:GetService("CoreGui")
+
+    local player_ = Players_.LocalPlayer
+
+    local screenGui2 = Instance.new("ScreenGui")
+    screenGui2.Name = "Cathub_NPC_Lock_UI"
+    screenGui2.Parent = CoreGui_
+
+    local button = Instance.new("TextButton")
+    button.Name = "NPC Lock: ON/OFF"
+    button.Size = UDim2.new(0, 150, 0, 50)
+    button.Position = UDim2.new(0.5, -75, 0.9, -25)
+    button.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    button.BackgroundTransparency = 0.3
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.Text = "ล็อค NPC: ปิด"
+    button.Font = Enum.Font.SourceSansSemibold
+    button.TextScaled = true
+    button.ZIndex = 1000
+    button.Visible = false
+    button.Parent = screenGui2
+    local uicorner2 = Instance.new("UICorner"); uicorner2.CornerRadius = UDim.new(0.2, 0); uicorner2.Parent = button
+
+    local draggingBtn, dragStartBtn, startPosBtn, isDraggingBtn = false, nil, nil, false
+    local dragThresholdBtn = 10
+
+    local function startDrag(input)
+        isDraggingBtn = false; draggingBtn = true; dragStartBtn = input.Position; startPosBtn = button.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then draggingBtn = false end
+        end)
+    end
+    local function onDragBtn(input)
+        if draggingBtn then
+            local delta = (input.Position - dragStartBtn).Magnitude
+            if delta > dragThresholdBtn then isDraggingBtn = true end
+            button.Position = UDim2.new(startPosBtn.X.Scale, startPosBtn.X.Offset + (input.Position.X - dragStartBtn.X), startPosBtn.Y.Scale, startPosBtn.Y.Offset + (input.Position.Y - dragStartBtn.Y))
+        end
+    end
+    button.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then startDrag(input) end
+    end)
+    button.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then onDragBtn(input) end
+    end)
+    button.MouseButton1Click:Connect(function()
+        if isDraggingBtn then return end
+        local clickTween = TweenService_:Create(button, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.5})
+        clickTween:Play(); task.wait(0.1)
+        TweenService_:Create(button, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.3}):Play()
+    end)
+
+    local npcLock = false
+    local lastTarget2 = nil
+    local toggleLoop2
+
+    local function addPlayerHighlight()
+        if player_.Character then
+            local highlight = player_.Character:FindFirstChild("PlayerHighlightESP")
+            if not highlight then
+                highlight = Instance.new("Highlight")
+                highlight.Name = "PlayerHighlightESP"
+                highlight.FillColor = Color3.new(1, 1, 1)
+                highlight.OutlineColor = Color3.new(1, 1, 1)
+                highlight.FillTransparency = 0.5
+                highlight.OutlineTransparency = 0
+                highlight.Parent = player_.Character
+            end
+        end
+    end
+    local function removePlayerHighlight()
+        if player_.Character and player_.Character:FindFirstChild("PlayerHighlightESP") then
+            player_.Character.PlayerHighlightESP:Destroy()
+        end
+    end
+    local function getClosestNPC()
+        local closestNPC, closestDistance = nil, math.huge
+        for _, object in ipairs(workspace:GetDescendants()) do
+            if object:IsA("Model") then
+                local humanoid = object:FindFirstChild("Humanoid") or object:FindFirstChildWhichIsA("Humanoid")
+                local hrp = object:FindFirstChild("HumanoidRootPart") or object.PrimaryPart
+                if humanoid and hrp and humanoid.Health > 0 and object.Name ~= "Horse" then
+                    local isPlayer = false
+                    for _, pl in ipairs(Players_:GetPlayers()) do
+                        if pl.Character == object then isPlayer = true; break end
+                    end
+                    if not isPlayer then
+                        local distance = (hrp.Position - player_.Character.HumanoidRootPart.Position).Magnitude
+                        if distance < closestDistance then closestDistance = distance; closestNPC = object end
+                    end
+                end
+            end
+        end
+        return closestNPC
+    end
+
+    local camLockEnabled = false
+    Ma:Section({ Title = "↳ ล็อคกล้อง NPC" })
+    Ma:Toggle({
+        Title = "ล็อคกล้อง NPC",
+        Value = false,
+        Callback = function(Value)
+            camLockEnabled = Value
+            button.Visible = Value
+        end
+    })
+
+    button.MouseButton1Click:Connect(function()
+        if isDraggingBtn then return end
+        npcLock = not npcLock
+        button.Text = npcLock and "ล็อค NPC: เปิด" or "ล็อค NPC: ปิด"
+        local camera = workspace.CurrentCamera
+
+        if npcLock then
+            toggleLoop2 = game:GetService("RunService").RenderStepped:Connect(function()
+                local npc = getClosestNPC()
+                if npc and npc:FindFirstChild("Humanoid") then
+                    local npcHumanoid = npc:FindFirstChild("Humanoid")
+                    if npcHumanoid.Health > 0 then
+                        camera.CameraSubject = npcHumanoid; lastTarget2 = npc; addPlayerHighlight()
+                    else
+                        WindUI:Notify({ Title = "Ark Hub", Content = "สังหาร NPC: " .. npc.Name })
+                        lastTarget2 = nil; removePlayerHighlight()
+                        if player_.Character and player_.Character:FindFirstChild("Humanoid") then
+                            camera.CameraSubject = player_.Character:FindFirstChild("Humanoid")
+                        end
+                    end
+                else
+                    if player_.Character and player_.Character:FindFirstChild("Humanoid") then
+                        camera.CameraSubject = player_.Character:FindFirstChild("Humanoid")
+                    end
+                    lastTarget2 = nil; removePlayerHighlight()
+                end
+            end)
+        else
+            if toggleLoop2 then toggleLoop2:Disconnect(); toggleLoop2 = nil end
+            removePlayerHighlight()
+            if player_.Character and player_.Character:FindFirstChild("Humanoid") then
+                workspace.CurrentCamera.CameraSubject = player_.Character:FindFirstChild("Humanoid")
+            end
+        end
+    end)
+
+    Ma:Section({ Title = "↳ อีเอสพี" })
+
+    Ma:Toggle({
+        Title = "อีเอสพี",
+        Desc  = "• อีเอสพีไอเทม/มอนสเตอร์",
+        Value = false,
+        Callback = function(v)
+            if v then ESP.Initialize(); ESP.Update() else ESP.Cleanup() end
+        end
+    })
+
+    Ma:Section({ Title = "↳ ขยาย Hitbox" })
+
+    getgenv().hitboxEnabled = false
+    local hitboxTransparency = 0.85
+    local hitboxColor = Color3.fromRGB(255, 0, 0)
+    local hitboxSize = Vector3.new(15, 15, 15)
+    local originalProperties = {}
+    local hitboxConnection
+    local lastUpdate_hb = 0
+    local UPDATE_INTERVAL_hb = 0.3
+
+    local targetNPCs = {
+        ["Vampire"]=true,["Werewolf"]=true,["Wolf"]=true,["Runner"]=true,["Walker"]=true,
+        ["Banner"]=true,["Nikola Tesla"]=true,["Lab Zombie"]=true,["Captain Prescott"]=true,
+        ["Zombie Soldier"]=true,["Banker"]=true,["Outlaw"]=true,["RifleOutlaw"]=true,
+        ["ShotgunOutlaw"]=true,["RevolverOutlaw"]=true,["TurretOutlaw"]=true,
+        ["Scientist Zombies"]=true,["Scientist"]=true,["Soldier"]=true,
+        ["ZombieMiner"]=true,["SkeletonMiner"]=true,
+    }
+
+    local function isTargetNPC(character)
+        return character:IsA("Model") and character:FindFirstChild("Humanoid") and targetNPCs[character.Name]
+    end
+    local function expandHitbox(npc)
+        for _, partName in ipairs({"HumanoidRootPart", "Head"}) do
+            local hitboxPart = npc:FindFirstChild(partName)
+            local humanoid = npc:FindFirstChild("Humanoid")
+            if hitboxPart and humanoid and humanoid.Health > 0 then
+                if not originalProperties[npc] then originalProperties[npc] = {} end
+                if not originalProperties[npc][partName] then
+                    originalProperties[npc][partName] = { Size = hitboxPart.Size, Transparency = (partName == "HumanoidRootPart") and 1 or 0, Shape = hitboxPart.Shape, CanCollide = hitboxPart.CanCollide }
+                end
+                hitboxPart.Size = hitboxSize; hitboxPart.Transparency = hitboxTransparency
+                hitboxPart.Color = hitboxColor; hitboxPart.Material = Enum.Material.ForceField; hitboxPart.CanCollide = false
+                hitboxPart.Shape = (partName == "HumanoidRootPart") and Enum.PartType.Block or Enum.PartType.Ball
+            end
+        end
+    end
+    local function resetHitbox(npc)
+        for _, partName in ipairs({"HumanoidRootPart", "Head"}) do
+            local hitboxPart = npc:FindFirstChild(partName)
+            if hitboxPart and originalProperties[npc] and originalProperties[npc][partName] then
+                hitboxPart.Size = originalProperties[npc][partName].Size
+                hitboxPart.Transparency = originalProperties[npc][partName].Transparency
+                hitboxPart.Shape = originalProperties[npc][partName].Shape
+                hitboxPart.Color = Color3.fromRGB(255, 255, 255)
+                hitboxPart.Material = Enum.Material.Plastic
+                hitboxPart.CanCollide = originalProperties[npc][partName].CanCollide
+            end
+        end
+        originalProperties[npc] = nil
+    end
+    local function monitorNPCHealth(npc)
+        local humanoid = npc:FindFirstChild("Humanoid")
+        if humanoid then
+            humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+                if humanoid.Health <= 0 then resetHitbox(npc) end
+            end)
+        end
+    end
+    local function updateAllNPCs()
+        local currentTime = tick()
+        if currentTime - lastUpdate_hb < UPDATE_INTERVAL_hb then return end
+        lastUpdate_hb = currentTime
+        for _, npc in ipairs(workspace:GetDescendants()) do
+            if isTargetNPC(npc) then
+                if getgenv().hitboxEnabled then expandHitbox(npc); monitorNPCHealth(npc) else resetHitbox(npc) end
+            end
+        end
+    end
+    local function toggleHitbox(enable)
+        if enable then
+            hitboxConnection = game:GetService("RunService").Stepped:Connect(updateAllNPCs)
+        elseif hitboxConnection then
+            hitboxConnection:Disconnect()
+        end
+        updateAllNPCs()
+    end
+
+    Ma:Toggle({
+        Title = "ขยาย Hitbox",
+        Value = false,
+        Callback = function(Value)
+            getgenv().hitboxEnabled = Value
+            toggleHitbox(Value)
+        end
+    })
+
+    Ma:Section({ Title = "↳ ออร่าสังหาร" })
+
+    if game.PlaceId == 116495829188952 then
+        Ma:Paragraph({
+            Title = "หมายเหตุ",
+            Desc  = "เข้าเกมหลักเพื่อใช้ฟีเจอร์นี้!"
+        })
+    else
+        local Players_ka = game:GetService("Players")
+        local ReplicatedStorage_ka = game:GetService("ReplicatedStorage")
+
+        local ShootRemote = ReplicatedStorage_ka.Remotes.Weapon.Shoot
+        local ReloadRemote = ReplicatedStorage_ka.Remotes.Weapon.Reload
+        local Camera_ka = workspace.CurrentCamera or workspace:WaitForChild("Camera")
+        local LocalPlayer_ka = Players_ka.LocalPlayer
+
+        local AutoHeadshotEnabled = false
+        local AutoReloadEnabled = true
+        local GunAuraAllMobs = true
+        local SEARCH_RADIUS = 1000
+        local HEADSHOT_DELAY = 0.1
+        local killAuraCoroutine = nil
+
+        local Weapons_ka = { ["Revolver"]=true,["Rifle"]=true,["Sawed-Off Shotgun"]=true,["Bolt Action Rifle"]=true,["Navy Revolver"]=true,["Mauser"]=true,["Shotgun"]=true }
+
+        local function getEquippedSupportedWeapon()
+            local char = LocalPlayer_ka.Character
+            if not char then return nil end
+            for name in pairs(Weapons_ka) do
+                local tool = char:FindFirstChild(name)
+                if tool then return tool end
+            end
+            return nil
+        end
+        local function isNPC_ka(obj)
+            if not obj:IsA("Model") then return false end
+            if workspace:FindFirstChild("Horse") and obj:IsDescendantOf(workspace.Horse) then return false end
+            local hum = obj:FindFirstChildOfClass("Humanoid")
+            if not hum or hum.Health <= 0 then return false end
+            return obj:FindFirstChild("Head") and obj:FindFirstChild("HumanoidRootPart") and not Players_ka:GetPlayerFromCharacter(obj)
+        end
+        local function findAllNPCsInRange()
+            local npcs = {}
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                if isNPC_ka(obj) then
+                    local head = obj:FindFirstChild("Head")
+                    local dist = (head.Position - Camera_ka.CFrame.Position).Magnitude
+                    if dist <= SEARCH_RADIUS then table.insert(npcs, {model=obj, hum=obj.Humanoid, head=head}) end
+                end
+            end
+            table.sort(npcs, function(a, b) return (a.head.Position - Camera_ka.CFrame.Position).Magnitude < (b.head.Position - Camera_ka.CFrame.Position).Magnitude end)
+            return npcs
+        end
+        local function autoHeadshotLoop()
+            while AutoHeadshotEnabled do
+                local tool = getEquippedSupportedWeapon()
+                if tool then
+                    local npcs = GunAuraAllMobs and findAllNPCsInRange() or {}
+                    for _, npc in ipairs(npcs) do
+                        if npc.hum and npc.hum.Health > 0 then
+                            local pelletTable = {}
+                            if tool.Name:lower():find("shotgun") then for i = 1, 6 do pelletTable[tostring(i)] = npc.hum end else pelletTable["1"] = npc.hum end
+                            local shootArgs = { workspace:GetServerTimeNow(), tool, CFrame.new(npc.head.Position + Vector3.new(0, 1.5, 0), npc.head.Position), pelletTable }
+                            pcall(function() ShootRemote:FireServer(unpack(shootArgs)) end)
+                            if AutoReloadEnabled then pcall(function() ReloadRemote:FireServer(workspace:GetServerTimeNow(), tool) end) end
+                        end
+                    end
+                end
+                task.wait(HEADSHOT_DELAY)
+            end
+        end
+
+        Ma:Toggle({
+            Title = "ออร่าสังหารด้วยปืน",
+            Desc  = "ต้องถือปืนไว้",
+            Value = false,
+            Callback = function(Value)
+                AutoHeadshotEnabled = Value
+                if Value then
+                    if not killAuraCoroutine then killAuraCoroutine = task.spawn(autoHeadshotLoop) end
+                else
+                    AutoHeadshotEnabled = false
+                end
+            end
+        })
+
+        Ma:Slider({
+            Title    = "รัศมีออร่าสังหาร",
+            Desc     = "ปรับระยะโจมตี",
+            IsTooltip = true,
+            Step     = 1,
+            Value    = { Min = 100, Max = 2000, Default = 1000 },
+            Callback = function(Value)
+                SEARCH_RADIUS = tonumber(Value) or 1000
+            end
+        })
+    end
+
+    Ma:Section({ Title = "↳ การต่อสู้ประชิด" })
+
+    local autoClickConnection = nil
+    Ma:Toggle({
+        Title = "คลิกอัตโนมัติ",
+        Value = false,
+        Callback = function(Value)
+            local player_ac = game.Players.LocalPlayer
+            if Value then
+                autoClickConnection = game:GetService("RunService").RenderStepped:Connect(function()
+                    local tool = player_ac.Character and player_ac.Character:FindFirstChildOfClass("Tool")
+                    if tool then tool:Activate() end
+                end)
+            else
+                if autoClickConnection then autoClickConnection:Disconnect(); autoClickConnection = nil end
+            end
+        end
+    })
+
+    local auraScriptName = "AuraEffect"
+    Ma:Toggle({
+        Title = "ออร่าประชิด V3",
+        Value = false,
+        Callback = function(Value)
+            if Value then
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/Shade-vex/Dead-Rails-V3/refs/heads/main/Melle-Aura.lua.txt"))()
+            else
+                local function tryDestroyIn(parent)
+                    for _, obj in ipairs(parent:GetChildren()) do
+                        if obj.Name:lower():find("aura") or obj.Name == auraScriptName then obj:Destroy() end
+                    end
+                end
+                pcall(function()
+                    tryDestroyIn(game.CoreGui)
+                    tryDestroyIn(game.Players.LocalPlayer:WaitForChild("PlayerGui"))
+                    tryDestroyIn(game.Workspace)
+                end)
+            end
+        end
+    })
+
+    Ma:Section({ Title = "↳ รักษาอัตโนมัติ" })
+
+    local Players_h = game:GetService("Players")
+    local RunService_h = game:GetService("RunService")
+    local LocalPlayer_h = Players_h.LocalPlayer
+    local Character_h = LocalPlayer_h.Character or LocalPlayer_h.CharacterAdded:Wait()
+    local Humanoid_h = Character_h:FindFirstChildOfClass("Humanoid")
+
+    local autoHealEnabled = false
+    local healThreshold = 30
+    local healingInProgress = false
+    local priorityItem = "Snake Oil"
+
+    Ma:Slider({
+        Title    = "เกณฑ์การรักษา (%)",
+        Desc     = "เปอร์เซ็นต์ HP ที่จะเริ่มรักษาอัตโนมัติ",
+        IsTooltip = true,
+        Step     = 1,
+        Value    = { Min = 10, Max = 90, Default = 30 },
+        Callback = function(Value) healThreshold = Value end
+    })
+
+    Ma:Dropdown({
+        Title  = "ลำดับความสำคัญของไอเทม",
+        Values = {"Snake Oil", "Bandage"},
+        Value  = "Snake Oil",
+        Callback = function(Value) priorityItem = Value end
+    })
+
+    Ma:Toggle({
+        Title = "รักษาอัตโนมัติ",
+        Desc  = "ต้องมีผ้าพันแผลหรือน้ำมันงู",
+        Value = false,
+        Callback = function(Value) autoHealEnabled = Value end
+    })
+
+    local function findHealingItem()
+        local Backpack = LocalPlayer_h.Backpack
+        local SnakeOil, Bandage = nil, nil
+        for _, item in ipairs(Backpack:GetChildren()) do
+            if item:IsA("Tool") then
+                if item.Name:find("Snake Oil") then SnakeOil = item
+                elseif item.Name:find("Bandage") then Bandage = item end
+            end
+        end
+        return SnakeOil, Bandage
+    end
+    local function useSoiL()
+        local so = game:GetService("Players").LocalPlayer.Character:FindFirstChild("Snake Oil")
+        if so then so.Use:FireServer(so) end
+    end
+    local function useBdage()
+        local bd = game:GetService("Players").LocalPlayer.Character:FindFirstChild("Bandage")
+        if bd then bd.Use:FireServer() end
+    end
+    local function useHealingItem()
+        if healingInProgress then return end
+        healingInProgress = true
+        while autoHealEnabled and Humanoid_h.Health < (Humanoid_h.MaxHealth * (healThreshold / 100)) do
+            local SnakeOil, Bandage = findHealingItem()
+            if priorityItem == "Snake Oil" and SnakeOil then
+                WindUI:Notify({ Title = "Ark", Content = "รักษาอัตโนมัติ — กำลังใช้น้ำมันงู!" })
+                SnakeOil.Parent = Character_h; task.wait(0.1); useSoiL(); break
+            elseif priorityItem == "Bandage" and Bandage then
+                WindUI:Notify({ Title = "Ark", Content = "รักษาอัตโนมัติ — กำลังใช้ผ้าพันแผล!" })
+                Bandage.Parent = Character_h; task.wait(0.2); useBdage()
+            elseif SnakeOil then
+                WindUI:Notify({ Title = "Ark", Content = "รักษาอัตโนมัติ — ใช้น้ำมันงูแทน!" })
+                SnakeOil.Parent = Character_h; task.wait(0.1); useSoiL(); break
+            elseif Bandage then
+                WindUI:Notify({ Title = "Ark X RINGTA", Content = "รักษาอัตโนมัติ — ใช้ผ้าพันแผลแทน!" })
+                Bandage.Parent = Character_h; task.wait(0.2); useBdage()
+            else break end
+        end
+        healingInProgress = false
+    end
+    RunService_h.Heartbeat:Connect(function()
+        if autoHealEnabled and not healingInProgress and Humanoid_h.Health < (Humanoid_h.MaxHealth * (healThreshold / 100)) then
+            useHealingItem()
+        end
+    end)
+
+    -- ══════════════════════════════
+    --         แท็บ ไอเทม
+    -- ══════════════════════════════
+
+    Ite:Section({ Title = "↳ เทสลา" })
+
+    Ite:Button({
+        Title = "สร้าง Tesla อัตโนมัติ",
+        Callback = function()
+            pcall(function()
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/Shade-vex/bruh/refs/heads/main/Auto-Tesla-Boss.lua"))()
+            end)
+        end
+    })
+
+    Ite:Section({ Title = "↳ ไอเทม" })
+
+    local Mstatus = false
+    local originalHoldDurations1 = {}
+    local runService_m = game:GetService("RunService")
+    local moneyBagConnections = {}
+
+    local function skipHoldPrompt1(prompt)
+        if prompt and prompt:IsA("ProximityPrompt") and prompt.Parent and prompt.Parent.Name == "MoneyBag" then
+            if not originalHoldDurations1[prompt] then originalHoldDurations1[prompt] = prompt.HoldDuration end
+            prompt.HoldDuration = 0
+        end
+    end
+    local function restoreMoneybagPrompts()
+        for prompt, duration in pairs(originalHoldDurations1) do
+            if prompt and prompt.Parent and prompt.Parent.Name == "MoneyBag" then prompt.HoldDuration = duration end
+        end
+        originalHoldDurations1 = {}
+    end
+    local function cleanupConnections_m()
+        for _, connection in pairs(moneyBagConnections) do if connection then connection:Disconnect() end end
+        table.clear(moneyBagConnections)
+    end
+    local function collectMoneyBags()
+        if not Mstatus then return end
+        cleanupConnections_m()
+        for _, v in ipairs(workspace.RuntimeItems:GetChildren()) do
+            if v:IsA("Model") and v.Name == "Moneybag" and v:FindFirstChild("MoneyBag") then
+                local prompt = v.MoneyBag:FindFirstChildOfClass("ProximityPrompt")
+                if prompt then skipHoldPrompt1(prompt) end
+            end
+        end
+        local connection = runService_m.Heartbeat:Connect(function()
+            if not Mstatus then return end
+            for _, v in ipairs(workspace.RuntimeItems:GetChildren()) do
+                if v:IsA("Model") and v.Name == "Moneybag" and v:FindFirstChild("MoneyBag") then
+                    local prompt = v.MoneyBag:FindFirstChildOfClass("ProximityPrompt")
+                    if prompt and (v.MoneyBag.Position - game.Players.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= prompt.MaxActivationDistance then
+                        fireproximityprompt(prompt)
+                    end
+                end
+            end
+        end)
+        table.insert(moneyBagConnections, connection)
+    end
+
+    Ite:Toggle({
+        Title = "เก็บถุงเงินอัตโนมัติ",
+        Value = false,
+        Callback = function(Value)
+            Mstatus = Value
+            if Mstatus then collectMoneyBags() else cleanupConnections_m(); restoreMoneybagPrompts() end
+        end
+    })
+
+    local ReplicatedStorage1 = game:GetService("ReplicatedStorage")
+    local RuntimeItems1 = workspace:WaitForChild("RuntimeItems")
+    local PickUpTool = ReplicatedStorage1.Remotes.Tool.PickUpTool
+    local autoPickupEnabled = false
+
+    Ite:Toggle({
+        Title = "เก็บน้ำมันงูและผ้าพันแผลอัตโนมัติ",
+        Value = false,
+        Callback = function(Value)
+            autoPickupEnabled = Value
+            if autoPickupEnabled then
+                task.spawn(function()
+                    while autoPickupEnabled do
+                        for _, itemName in ipairs({"Bandage", "Snake Oil"}) do
+                            local item = RuntimeItems1:FindFirstChild(itemName)
+                            if item then PickUpTool:FireServer(item) end
+                        end
+                        task.wait(0.5)
+                    end
+                end)
+            end
+        end
+    })
+
+    local autoCollectEnabled = false
+    local toggleFunction_gun = nil
+    local gunCoroutine = nil
+
+    Ite:Toggle({
+        Title = "เก็บปืนอัตโนมัติ",
+        Value = false,
+        Callback = function(Value)
+            autoCollectEnabled = Value
+            if autoCollectEnabled then
+                gunCoroutine = coroutine.create(function()
+                    pcall(function()
+                        loadstring(game:HttpGet("https://raw.githubusercontent.com/Shade-vex/sjsnskk/refs/heads/main/pickupgun"))()
+                        if _G.ToggleAutoPickupGun then
+                            toggleFunction_gun = _G.ToggleAutoPickupGun
+                            toggleFunction_gun(true)
+                        else warn("⚠️ ไม่พบฟังก์ชัน _G.ToggleAutoPickupGun!") end
+                    end)
+                end)
+                coroutine.resume(gunCoroutine)
+            else
+                if toggleFunction_gun then toggleFunction_gun(false) end
+            end
+        end
+    })
+
+    Ite:Button({
+        Title = "สแกนไอเทม",
+        Callback = function()
+            local itemsList = {
+                {"GoldBar",50},{"SilverBar",25},{"GoldPainting",35},{"GoldCup",25},
+                {"SilverPocketWatch",7},{"SilverPainting",12},{"Vampire",15},{"Werewolf",20},
+                {"GoldPlate",20},{"GoldPocketWatch",15},{"Holy Water",20},{"Painting",5},
+                {"Banjo",15},{"Statue",5},{"SilverStatue",20},{"GoldStatue",45},
+                {"VaseTwo",5},{"Bandage",7},{"Book",5},{"Wheel",5},{"Chair",5},
+                {"Barrel",5},{"Rope",5},{"Helmet",60},{"ChestPlate",70},
+                {"Rightshoulderarmor",45},{"Leftshoulderarmor",45},{"Nikola Tesla`s Head",250}
+            }
+            local folder = workspace.RuntimeItems
+            local totalValue, scannedItems = 0, 0
+            for _, item in pairs(folder:GetChildren()) do
+                for _, itemData in pairs(itemsList) do
+                    if item.Name == itemData[1] then totalValue = totalValue + itemData[2]; scannedItems = scannedItems + 1 end
+                end
+            end
+            WindUI:Notify({
+                Title   = "Ark X RINGTA",
+                Content = "สแกนแล้ว (" .. totalValue .. "$) — พบ " .. scannedItems .. "/" .. #folder:GetChildren() .. " ไอเทม",
+            })
+        end
+    })
+
+    -- ══════════════════════════════
+    --       แท็บ เทเลพอร์ต
+    -- ══════════════════════════════
+
+    if game.PlaceId == 116495829188952 then
+        TpT:Paragraph({
+            Title = "หมายเหตุ",
+            Desc  = "ใช้ฟีเจอร์เหล่านี้ด้วยความระมัดระวัง!"
+        })
+    else
+        TpT:Section({ Title = "↳ จบเกม" })
+
+        local countdownVisible = false
+        local CountdownGui = Instance.new("ScreenGui")
+        CountdownGui.Name = "CountdownUI"; CountdownGui.ResetOnSpawn = false
+        CountdownGui.IgnoreGuiInset = true; CountdownGui.Parent = game:GetService("CoreGui")
+
+        local Frame_cd = Instance.new("Frame")
+        Frame_cd.Size = UDim2.new(0, 150, 0, 50); Frame_cd.Position = UDim2.new(0.5, -75, 0.15, 0)
+        Frame_cd.BackgroundColor3 = Color3.fromRGB(30, 30, 30); Frame_cd.BackgroundTransparency = 0.1
+        Frame_cd.BorderSizePixel = 0; Frame_cd.AnchorPoint = Vector2.new(0.5, 0)
+        Frame_cd.Active = true; Frame_cd.Draggable = true; Frame_cd.Parent = CountdownGui; Frame_cd.Visible = false
+        Instance.new("UICorner", Frame_cd).CornerRadius = UDim.new(0, 10)
+        local UIStroke_cd = Instance.new("UIStroke"); UIStroke_cd.Color = Color3.fromRGB(255,255,255)
+        UIStroke_cd.Thickness = 1.5; UIStroke_cd.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; UIStroke_cd.Parent = Frame_cd
+        local Label_cd = Instance.new("TextLabel"); Label_cd.Size = UDim2.new(1,0,1,0)
+        Label_cd.BackgroundTransparency = 1; Label_cd.Text = "10:00"; Label_cd.Font = Enum.Font.FredokaOne
+        Label_cd.TextScaled = true; Label_cd.TextColor3 = Color3.fromRGB(255,255,255); Label_cd.Parent = Frame_cd
+
+        local countdownTime = 10 * 60; local running_cd = false
+        local lastTimeChecked = os.time(); local pausedTime = nil
+
+        local function formatTime(seconds)
+            return string.format("%02d:%02d", math.floor(seconds / 60), seconds % 60)
+        end
+
+        task.spawn(function()
+            while countdownTime > 0 do
+                task.wait(1)
+                if running_cd then
+                    local now = os.time(); local delta = now - lastTimeChecked
+                    countdownTime -= delta; lastTimeChecked = now
+                    if countdownTime < 0 then countdownTime = 0 end
+                    Label_cd.Text = formatTime(countdownTime)
+                end
+            end
+        end)
+
+        TpT:Toggle({
+            Title = "นับถอยหลัง",
+            Desc  = "นับถอยหลัง 10 นาที",
+            Value = false,
+            Callback = function(Value)
+                Frame_cd.Visible = Value
+                if Value then
+                    if pausedTime then countdownTime -= (os.time() - pausedTime); pausedTime = nil end
+                    lastTimeChecked = os.time(); running_cd = true
+                else
+                    running_cd = false; pausedTime = os.time()
+                end
+            end
+        })
+    end
+
+    TpT:Button({
+        Title = "เทเลพอร์ตไปจุดหมายปลายทาง",
+        Callback = function()
+            local Player = game.Players.LocalPlayer
+            if not Player.Character then Player.CharacterAdded:Wait() end
+            local Character = Player.Character
+            if Character and Character:FindFirstChild("HumanoidRootPart") then
+                local HRP = Character.HumanoidRootPart
+                local HUM = Character:FindFirstChildOfClass("Humanoid")
+                local originalWalkSpeed = HUM.WalkSpeed
+                HUM.WalkSpeed = 0; HRP.CFrame = CFrame.new(-424.45, 26.06, -49040.66); HRP.Anchored = true
+                task.wait(0.5)
+                for _, part in pairs(Character:GetDescendants()) do if part:IsA("BasePart") then part.Velocity = Vector3.new(0,0,0) end end
+                task.wait(1); HRP.CFrame = CFrame.new(-447.38, 26.08, -48747.68)
+                task.wait(0.5)
+                for _, part in pairs(Character:GetDescendants()) do if part:IsA("BasePart") then part.Velocity = Vector3.new(0,0,0) end end
+                task.wait(1); HRP.CFrame = CFrame.new(-312.17, 26.08, -48747.68)
+                task.wait(0.5)
+                for _, part in pairs(Character:GetDescendants()) do if part:IsA("BasePart") then part.Velocity = Vector3.new(0,0,0) end end
+                task.wait(1); HRP.CFrame = CFrame.new(-424.45, 26.06, -49040.66)
+                task.wait(2); HRP.Anchored = false; HUM.WalkSpeed = originalWalkSpeed
+            end
+        end
+    })
+
+    TpT:Section({ Title = "↳ รถไฟ" })
+
+    TpT:Button({
+        Title = "เทเลพอร์ตไปรถไฟ",
+        Callback = function()
+            pcall(function()
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/Shade-vex/KJ/refs/heads/main/TPtotrain.txt"))()
+            end)
+        end
+    })
+
+    TpT:Section({ Title = "↳ ฐาน" })
+
+    local teleportLocations = {
+        ["จุดเริ่มต้น"]  = CFrame.new(56.6396217, 3.24999976, 29936.3516),
+        ["10 กม."]       = CFrame.new(-160.576843, 2.99617577, 19913.252),
+        ["20 กม."]       = CFrame.new(-556.92572, 2.98922157, 9956.79883),
+        ["30 กม."]       = CFrame.new(-569.779663, 2.99999976, 47.5958443),
+        ["40 กม."]       = CFrame.new(-184.494064, 3.14674306, -9899.91797),
+        ["50 กม."]       = CFrame.new(55.228714, 3.19885039, -19842.3789),
+        ["60 กม."]       = CFrame.new(-199.620743, 3.14927387, -29733.9453),
+        ["70 กม."]       = CFrame.new(-577.781921, 3.49909163, -39654.2148),
+    }
+
+    local function findClosestVehicleSeat(position)
+        local closestSeat, minDistance = nil, math.huge
+        for _, seat in ipairs(workspace:GetDescendants()) do
+            if seat:IsA("VehicleSeat") then
+                local distance = (position - seat.Position).Magnitude
+                if distance < minDistance then minDistance = distance; closestSeat = seat end
+            end
+        end
+        return closestSeat
+    end
+
+    local function teleportToLocation(locationName)
+        local Player = game.Players.LocalPlayer
+        if not Player.Character then Player.CharacterAdded:Wait() end
+        local Character = Player.Character
+        if Character and Character:FindFirstChild("HumanoidRootPart") then
+            local HRP = Character.HumanoidRootPart
+            local HUM = Character:FindFirstChildOfClass("Humanoid")
+            local originalWalkSpeed = HUM.WalkSpeed
+            HUM.WalkSpeed = 0; HRP.CFrame = teleportLocations[locationName]; HRP.Anchored = true
+            task.wait(2)
+            local fseat = findClosestVehicleSeat(HRP.Position)
+            if fseat then
+                HRP.CFrame = fseat.CFrame + Vector3.new(0, 3, 0); task.wait(0.15)
+                HRP.Anchored = false; task.wait(0.5); fseat:Sit(HUM)
+            else
+                HRP.Anchored = false; warn("ไม่พบที่นั่งใกล้: " .. locationName)
+            end
+            task.wait(1); HUM.WalkSpeed = originalWalkSpeed
+        end
+    end
+
+    local dropdownValues_tp = {}
+    for locationName in pairs(teleportLocations) do table.insert(dropdownValues_tp, locationName) end
+    table.sort(dropdownValues_tp)
+
+    local selectedLocation = dropdownValues_tp[1]
+    TpT:Dropdown({
+        Title  = "เลือกฐาน",
+        Values = dropdownValues_tp,
+        Value  = dropdownValues_tp[1],
+        Callback = function(value) selectedLocation = value end
+    })
+
+    TpT:Button({
+        Title = "เทเลพอร์ตไปฐานที่เลือก",
+        Callback = function()
+            if selectedLocation and teleportLocations[selectedLocation] then
+                task.wait(1); teleportToLocation(selectedLocation)
+            else warn("ไม่ได้เลือกฐานที่ถูกต้อง") end
+        end
+    })
+
+    TpT:Button({
+        Title = "เทเลพอร์ตไปห้องแล็บเทสลา",
+        Callback = function()
+            local Player = game.Players.LocalPlayer
+            if not Player.Character then Player.CharacterAdded:Wait() end
+            local Character = Player.Character
+            if Character and Character:FindFirstChild("HumanoidRootPart") then
+                local HRP = Character.HumanoidRootPart
+                local HUM = Character:FindFirstChildOfClass("Humanoid")
+                local originalWalkSpeed = HUM.WalkSpeed
+                HUM.WalkSpeed = 0
+                local Generator = workspace:WaitForChild("TeslaLab"):WaitForChild("Generator")
+                HRP:PivotTo(CFrame.new(Generator:GetPivot().Position + Vector3.new(0, 5, 0))); HRP.Anchored = true
+                task.wait(2)
+                local RuntimeItems_tl = workspace:WaitForChild("RuntimeItems")
+                local function findClosestAvailableSeat()
+                    local closestSeat, minDistance = nil, math.huge
+                    local playerPos = HRP.Position
+                    for _, chair in pairs(RuntimeItems_tl:GetChildren()) do
+                        if chair:IsA("Model") and chair.Name == "Chair" then
+                            local seat = chair:FindFirstChild("Seat")
+                            if seat and seat:IsA("Seat") and seat.Occupant == nil then
+                                local distance = (seat.Position - playerPos).Magnitude
+                                if distance < minDistance then minDistance = distance; closestSeat = seat end
+                            end
+                        end
+                    end
+                    return closestSeat
+                end
+                local seat = findClosestAvailableSeat()
+                if seat then
+                    HRP.Anchored = true; HRP:PivotTo(seat.CFrame + Vector3.new(0, 3, 0))
+                    task.delay(0.15, function() if HRP and HRP.Anchored then HRP.Anchored = false end end)
+                    task.delay(0.1, function() if HRP and HRP.Anchored then HRP.Anchored = false end end)
+                    task.wait(0.5); seat:Sit(HUM)
+                else HRP.Anchored = false end
+                task.wait(1); HUM.WalkSpeed = originalWalkSpeed
+            end
+        end
+    })
+
+    TpT:Button({
+        Title = "เทเลพอร์ตไปปราสาทเร็ว",
+        Callback = function()
+            pcall(function()
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/Shade-vex/KJ/refs/heads/main/FASTCASTLE.txt"))()
+            end)
+        end
+    })
+
+    TpT:Button({
+        Title = "เทเลพอร์ตไปป้อม",
+        Callback = function()
+            pcall(function()
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/Shade-vex/KJ/refs/heads/main/Tpfort.lua.txt"))()
+            end)
+        end
+    })
+
+    TpT:Button({
+        Title = "เทเลพอร์ตไปสเตอร์ลิง",
+        Callback = function()
+            pcall(function()
+                local originalSetCore = game:GetService("StarterGui").SetCore
+                local blocked = {"SendNotification"}
+                hookfunction(originalSetCore, function(self, method, ...)
+                    if table.find(blocked, method) then return end
+                    return originalSetCore(self, method, ...)
+                end)
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/Shade-vex/KJ/refs/heads/main/TPsterling.txt"))()
+            end)
+        end
+    })
+
+    -- ══════════════════════════════
+    --         แท็บ ผู้เล่น
+    -- ══════════════════════════════
+
+    PlayerT:Button({
+        Title = "เชื่อมอาวุธกับอากาศ",
+        Callback = function()
+            pcall(function()
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/Shade-vex/DeadRails/refs/heads/main/Air-Weld.lua"))()
+            end)
+        end
+    })
+
+    PlayerT:Section({ Title = "↳ ทะลุกำแพง" })
+
+    local runService_nc = game:GetService("RunService")
+    local players_nc = game:GetService("Players")
+    local localPlayer_nc = players_nc.LocalPlayer
+    local noClipLoop_nc
+
+    PlayerT:Toggle({
+        Title = "ทะลุกำแพง",
+        Value = false,
+        Callback = function(Value)
+            if Value then
+                noClipLoop_nc = runService_nc.Stepped:Connect(function()
+                    local character = localPlayer_nc.Character
+                    if character then
+                        local humanoid = character:FindFirstChildOfClass("Humanoid")
+                        if humanoid then
+                            local isDead = humanoid.Health <= 0
+                            for _, v in pairs(character:GetDescendants()) do
+                                if v:IsA("MeshPart") or v:IsA("Part") then v.CanCollide = isDead end
+                            end
+                            local rootPart = character:FindFirstChild("HumanoidRootPart")
+                            if rootPart and rootPart.Position.Y < -5 then
+                                rootPart.CFrame = CFrame.new(rootPart.Position.X, 5, rootPart.Position.Z)
+                            end
+                        end
+                    end
+                end)
+            else
+                if noClipLoop_nc then noClipLoop_nc:Disconnect(); noClipLoop_nc = nil end
+                local character = localPlayer_nc.Character
+                if character then
+                    for _, v in pairs(character:GetDescendants()) do
+                        if v:IsA("MeshPart") or v:IsA("Part") then v.CanCollide = true end
+                    end
+                end
+            end
+        end
+    })
+
+    localPlayer_nc.CharacterAdded:Connect(function()
+        wait(1)
+    end)
+
+    local RunService_nc2 = game:GetService("RunService")
+    local Players_nc2 = game:GetService("Players")
+    local LocalPlayer_nc2 = Players_nc2.LocalPlayer
+    local NoclipEnabled_nc2 = false
+    local NoclipConnection_nc2
+    local Clip_nc2 = nil
+    local Baseplate_nc2
+
+    local function createBaseplate()
+        if Baseplate_nc2 then Baseplate_nc2:Destroy() end
+        Baseplate_nc2 = Instance.new("Part")
+        Baseplate_nc2.Size = Vector3.new(99999, 5, 99999); Baseplate_nc2.Position = Vector3.new(0, -5, 0)
+        Baseplate_nc2.Anchored = true; Baseplate_nc2.CanCollide = true
+        Baseplate_nc2.Material = Enum.Material.SmoothPlastic; Baseplate_nc2.Parent = game.Workspace
+    end
+    local function noclip()
+        Clip_nc2 = false
+        NoclipConnection_nc2 = RunService_nc2.Stepped:Connect(function()
+            if Clip_nc2 == false and LocalPlayer_nc2.Character then
+                for _, v in pairs(LocalPlayer_nc2.Character:GetDescendants()) do
+                    if v:IsA("BasePart") and v.CanCollide and v.Name ~= "Baseplate" then v.CanCollide = false end
+                end
+            end
+            wait(0.1)
+        end)
+    end
+    local function clip()
+        if NoclipConnection_nc2 then NoclipConnection_nc2:Disconnect() end
+        Clip_nc2 = true
+        if LocalPlayer_nc2.Character then
+            for _, v in pairs(LocalPlayer_nc2.Character:GetDescendants()) do
+                if v:IsA("BasePart") then v.CanCollide = true end
+            end
+        end
+    end
+    RunService_nc2.Stepped:Connect(function()
+        local root = LocalPlayer_nc2.Character and LocalPlayer_nc2.Character:FindFirstChild("HumanoidRootPart")
+        if root and root.Position.Y < -5 then root.CFrame = CFrame.new(root.Position.X, 5, root.Position.Z) end
+    end)
+
+    PlayerT:Toggle({
+        Title = "ทะลุกำแพง 2 (แนะนำ)",
+        Value = false,
+        Callback = function(Value)
+            if Value then createBaseplate(); noclip() else clip() end
+        end
+    })
+
+    -- Invisibility helpers
+    local Players_inv = game:GetService("Players")
+    local player_inv = Players_inv.LocalPlayer
+    local invis_on = false
+    local invisChair = nil
+    local savedCFrame = nil
+
+    local function setTransparency(character, transparency)
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") or part:IsA("Decal") or part:IsA("MeshPart") then part.Transparency = transparency end
+        end
+    end
+    local function turnOnInvisibility()
+        if not invis_on then
+            invis_on = true
+            local char = player_inv.Character or player_inv.CharacterAdded:Wait()
+            local hrp = char:WaitForChild("HumanoidRootPart")
+            savedCFrame = hrp.CFrame
+            wait(); char:MoveTo(Vector3.new(-25.95, 84, 3537.55)); wait(0.15)
+            invisChair = Instance.new("Seat", workspace)
+            invisChair.Anchored = false; invisChair.CanCollide = false
+            invisChair.Name = "invischair"; invisChair.Transparency = 1
+            invisChair.Position = Vector3.new(-25.95, 84, 3537.55)
+            local weld = Instance.new("Weld", invisChair)
+            weld.Part0 = invisChair
+            weld.Part1 = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+            wait(); invisChair.CFrame = savedCFrame; setTransparency(char, 0); hrp.Transparency = 0
+        end
+    end
+    local function turnOffInvisibility()
+        if invis_on then
+            invis_on = false
+            local char = player_inv.Character or player_inv.CharacterAdded:Wait()
+            local hrp = char:WaitForChild("HumanoidRootPart")
+            setTransparency(char, 0); hrp.Transparency = 0
+            if savedCFrame then hrp.CFrame = savedCFrame end
+            if invisChair then invisChair:Destroy(); invisChair = nil end
+        end
+    end
+
+    PlayerT:Section({ Title = "↳ บิน" })
+
+    local Players_fly = game:GetService("Players")
+    local UIS_fly = game:GetService("UserInputService")
+    local RunService_fly = game:GetService("RunService")
+    local player_fly = Players_fly.LocalPlayer
+    local char_fly = player_fly.Character or player_fly.CharacterAdded:Wait()
+    local hrp_fly = char_fly:WaitForChild("HumanoidRootPart")
+
+    local flying = false
+    local speed_fly = 2
+    local control = {f = 0, b = 0, l = 0, r = 0}
+    local bodyGyro, bodyVel, flyConn
+
+    local function onInput_fly(input, isProcessed)
+        if isProcessed then return end
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            if input.KeyCode == Enum.KeyCode.W then control.f = 1 end
+            if input.KeyCode == Enum.KeyCode.S then control.b = -1 end
+            if input.KeyCode == Enum.KeyCode.A then control.l = -1 end
+            if input.KeyCode == Enum.KeyCode.D then control.r = 1 end
+        end
+    end
+    local function onRelease_fly(input)
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            if input.KeyCode == Enum.KeyCode.W then control.f = 0 end
+            if input.KeyCode == Enum.KeyCode.S then control.b = 0 end
+            if input.KeyCode == Enum.KeyCode.A then control.l = 0 end
+            if input.KeyCode == Enum.KeyCode.D then control.r = 0 end
+        end
+    end
+    local function startFly()
+        if flying then return end; flying = true
+        bodyGyro = Instance.new("BodyGyro"); bodyGyro.P = 9e4; bodyGyro.Parent = hrp_fly
+        bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9); bodyGyro.CFrame = hrp_fly.CFrame
+        bodyVel = Instance.new("BodyVelocity"); bodyVel.Velocity = Vector3.zero
+        bodyVel.MaxForce = Vector3.new(9e9, 9e9, 9e9); bodyVel.P = 9e4; bodyVel.Parent = hrp_fly
+        UIS_fly.InputBegan:Connect(onInput_fly); UIS_fly.InputEnded:Connect(onRelease_fly)
+        flyConn = RunService_fly.RenderStepped:Connect(function()
+            local camCF = workspace.CurrentCamera.CFrame; bodyGyro.CFrame = camCF
+            local moveVec = Vector3.zero
+            if control.f + control.b ~= 0 then moveVec += camCF.LookVector * (control.f + control.b) end
+            if control.l + control.r ~= 0 then moveVec += camCF.RightVector * (control.r + control.l) end
+            bodyVel.Velocity = moveVec * speed_fly + Vector3.new(0, 0.1, 0)
+        end)
+    end
+    local function stopFly()
+        flying = false
+        if flyConn then flyConn:Disconnect() end
+        if bodyGyro then bodyGyro:Destroy() end
+        if bodyVel then bodyVel:Destroy() end
+    end
+
+    PlayerT:Toggle({
+        Title = "บิน",
+        Desc  = "เมื่อเปิด คุณจะไม่สามารถเก็บ/โต้ตอบสิ่งใดได้!",
+        Value = false,
+        Callback = function(v)
+            if v then startFly() else stopFly() end
+        end
+    })
+
+    PlayerT:Slider({
+        Title    = "ความเร็วบิน",
+        Desc     = "ปรับความเร็วในการบิน",
+        IsTooltip = true,
+        Step     = 1,
+        Value    = { Min = 1, Max = 500, Default = 50 },
+        Callback = function(Value) speed_fly = Value end
+    })
+
+    PlayerT:Section({ Title = "↳ ความเร็วเดิน" })
+
+    local Players_ws = game:GetService("Players")
+    local player_ws = Players_ws.LocalPlayer
+    local char_ws = player_ws.Character or player_ws.CharacterAdded:Wait()
+    local humanoid_ws = char_ws:WaitForChild("Humanoid")
+    local originalWalkSpeed_ws = humanoid_ws.WalkSpeed
+    local originalJumpHeight_ws = humanoid_ws.JumpHeight
+    local walkEnabled, jumpEnabled = false, false
+    local walkMultiplier, jumpMultiplier = 2, 2
+
+    PlayerT:Slider({
+        Title    = "ตัวคูณความเร็วเดิน",
+        Desc     = "ปรับความเร็วเดินของคุณ",
+        IsTooltip = true,
+        Step     = 1,
+        Value    = { Min = 0, Max = 200, Default = 2 },
+        Callback = function(Value)
+            walkMultiplier = Value
+            if walkEnabled then humanoid_ws.WalkSpeed = originalWalkSpeed_ws * walkMultiplier end
+        end
+    })
+
+    PlayerT:Toggle({
+        Title = "ความเร็วเดิน",
+        Desc  = "เมื่อเปิด คุณจะไม่สามารถเก็บ/โต้ตอบสิ่งใดได้!",
+        Value = false,
+        Callback = function(Value)
+            walkEnabled = Value
+            if Value then turnOnInvisibility(); humanoid_ws.WalkSpeed = originalWalkSpeed_ws * walkMultiplier
+            else turnOffInvisibility(); humanoid_ws.WalkSpeed = originalWalkSpeed_ws end
+        end
+    })
+
+    PlayerT:Section({ Title = "↳ ความสูงกระโดด" })
+
+    PlayerT:Slider({
+        Title    = "ตัวคูณความสูงกระโดด",
+        Desc     = "ปรับความสูงในการกระโดดของคุณ",
+        IsTooltip = true,
+        Step     = 1,
+        Value    = { Min = 0, Max = 200, Default = 2 },
+        Callback = function(Value)
+            jumpMultiplier = Value
+            if jumpEnabled then humanoid_ws.JumpHeight = originalJumpHeight_ws * jumpMultiplier end
+        end
+    })
+
+    PlayerT:Toggle({
+        Title = "ความสูงกระโดด",
+        Desc  = "เมื่อเปิด คุณจะไม่สามารถเก็บ/โต้ตอบสิ่งใดได้!",
+        Value = false,
+        Callback = function(Value)
+            jumpEnabled = Value
+            if Value then turnOnInvisibility(); humanoid_ws.JumpHeight = originalJumpHeight_ws * jumpMultiplier
+            else turnOffInvisibility(); humanoid_ws.JumpHeight = originalJumpHeight_ws end
+        end
+    })
+
+    -- ══════════════════════════════
+    --       แท็บ เบ็ดเตล็ด
+    -- ══════════════════════════════
+
+    local BuildingBank = { Enabled = false, Connections = {} }
+
+    local function sendBuildingAlert_misc(child)
+        if not BuildingBank.Enabled then return end
+        WindUI:Notify({ Title = "Ark", Content = "สิ่งก่อสร้างใหม่: {" .. child.Name .. "}" })
+        if child.Name == "Bank" then
+            local bank = workspace.Towns.MediumTownTemplate.Buildings:FindFirstChild("Bank")
+            local is = bank and "+" or "-"
+            WindUI:Notify({ Title = "Ark Hub", Content = "ธนาคาร: " .. is })
+            if bank then
+                local valute = bank.Vault.Combination.Value
+                WindUI:Notify({ Title = "Ark Hub", Content = "รหัสธนาคาร: " .. valute })
+            end
+        end
+    end
+    local function sendUnicornAlert()
+        if not BuildingBank.Enabled then return end
+        WindUI:Notify({ Title = "Ark Hub", Content = "ยูนิคอร์นปรากฏตัว!" })
+    end
+    local function enableAlerts_misc()
+        local folder = workspace.RandomBuildings
+        table.insert(BuildingBank.Connections, folder.ChildAdded:Connect(sendBuildingAlert_misc))
+        local fold2 = workspace.Towns
+        table.insert(BuildingBank.Connections, fold2.ChildAdded:Connect(sendBuildingAlert_misc))
+        local newfold = workspace.Baseplates
+        table.insert(BuildingBank.Connections, newfold.ChildAdded:Connect(function(child)
+            table.insert(BuildingBank.Connections, child:WaitForChild("CenterBaseplate").Animals.ChildAdded:Connect(function(children)
+                if children.Name == "Unicorn" then sendUnicornAlert() end
+            end))
+        end))
+        for _, v in pairs(newfold:GetChildren()) do
+            table.insert(BuildingBank.Connections, v:WaitForChild("CenterBaseplate").Animals.ChildAdded:Connect(function(children)
+                if children.Name == "Unicorn" then sendUnicornAlert() end
+            end))
+        end
+    end
+    local function disableAlerts_misc()
+        for _, connection in pairs(BuildingBank.Connections) do if connection then connection:Disconnect() end end
+        BuildingBank.Connections = {}
+    end
+
+    local player2_misc = game.Players.LocalPlayer
+    local humanoid_misc = player2_misc.Character and player2_misc.Character:FindFirstChildOfClass("Humanoid")
+    local defaultSpeed_misc = humanoid_misc and humanoid_misc.WalkSpeed or 16
+    local speedBoost_misc = 1.2
+    local speedLoop_misc
+    local stepIncrease_misc = 0.2
+
+    MiscT:Toggle({
+        Title = "เพิ่มความเร็ว",
+        Value = false,
+        Callback = function(Value)
+            if humanoid_misc then
+                if Value then
+                    local boostedSpeed = humanoid_misc.WalkSpeed + speedBoost_misc
+                    speedLoop_misc = game:GetService("RunService").RenderStepped:Connect(function()
+                        if humanoid_misc.WalkSpeed < boostedSpeed then
+                            humanoid_misc.WalkSpeed = math.min(humanoid_misc.WalkSpeed + stepIncrease_misc, boostedSpeed)
+                        end
+                    end)
+                else
+                    if speedLoop_misc then speedLoop_misc:Disconnect(); speedLoop_misc = nil end
+                    humanoid_misc.WalkSpeed = defaultSpeed_misc
+                end
+            end
+        end
+    })
+
+    local player3_misc = game:GetService("Players").LocalPlayer
+    local userInputService_misc = game:GetService("UserInputService")
+    local runService_jb = game:GetService("RunService")
+    local jumpBoost_misc = 13.5
+    local jumpConnection_misc = nil
+
+    MiscT:Toggle({
+        Title = "เพิ่มพลังกระโดด",
+        Value = false,
+        Callback = function(Value)
+            local function applyJumpBoost(character)
+                local hum = character:WaitForChild("Humanoid")
+                local rootPart = character:WaitForChild("HumanoidRootPart")
+                local function onJumpRequest()
+                    if hum:GetState() == Enum.HumanoidStateType.Jumping then
+                        rootPart.Velocity = Vector3.new(rootPart.Velocity.X, rootPart.Velocity.Y + jumpBoost_misc, rootPart.Velocity.Z)
+                    end
+                end
+                if Value then
+                    jumpConnection_misc = userInputService_misc.JumpRequest:Connect(onJumpRequest)
+                else
+                    if jumpConnection_misc then jumpConnection_misc:Disconnect(); jumpConnection_misc = nil end
+                end
+            end
+            if player3_misc.Character then applyJumpBoost(player3_misc.Character) end
+            player3_misc.CharacterAdded:Connect(applyJumpBoost)
+        end
+    })
+
+    MiscT:Toggle({
+        Title = "แจ้งเตือนสิ่งก่อสร้าง",
+        Desc  = "• แจ้งเตือนเมื่อมีสิ่งก่อสร้างใหม่",
+        Value = false,
+        Callback = function(v)
+            BuildingBank.Enabled = v
+            if v then enableAlerts_misc() else disableAlerts_misc() end
+        end
+    })
+
+    MiscT:Button({
+        Title = "ปลดล็อคกล้อง",
+        Desc  = "• ปลดล็อคมุมมองบุคคลที่สาม",
+        Callback = function()
+            local player_cu = game.Players.LocalPlayer
+            local camera_cu = game.Workspace.CurrentCamera
+            local function unlockCamera()
+                if player_cu.CameraMode == Enum.CameraMode.Classic and player_cu.CameraMaxZoomDistance >= 20 then
+                    WindUI:Notify({ Title = "Ark Hub", Content = "ปลดล็อคกล้องแล้ว!" }); return
+                end
+                player_cu.CameraMode = Enum.CameraMode.Classic
+                player_cu.CameraMinZoomDistance = 0.5; player_cu.CameraMaxZoomDistance = 50
+                camera_cu.CameraSubject = player_cu.Character and player_cu.Character:FindFirstChild("Humanoid") or camera_cu.CameraSubject
+                camera_cu.CameraType = Enum.CameraType.Custom
+                WindUI:Notify({ Title = "Ark Hub", Content = "ปลดล็อคมุมมองบุคคลที่สามสำเร็จ! เลื่อนกล้องออก" })
+            end
+            unlockCamera()
+        end
+    })
+
+    local fullBrightEnabled_misc = false
+    local autoNightLoop_misc
+
+    local function applyFullBright_misc()
+        if not fullBrightEnabled_misc then return end
+        local hour = game.Lighting:GetMinutesAfterMidnight() / 60
+        if hour >= 18 or hour < 6 then
+            game.Lighting.Ambient = Color3.new(1, 1, 1); game.Lighting.Brightness = 10; game.Lighting.GlobalShadows = false
+        else
+            game.Lighting.Ambient = Color3.new(0.5, 0.5, 0.5); game.Lighting.Brightness = 1; game.Lighting.GlobalShadows = true
+        end
+    end
+
+    MiscT:Toggle({
+        Title = "ความสว่างอัตโนมัติ",
+        Desc  = "เพิ่มความสว่างอัตโนมัติตอนกลางคืน",
+        Value = false,
+        Callback = function(Value)
+            fullBrightEnabled_misc = Value
+            if Value then
+                if autoNightLoop_misc then autoNightLoop_misc:Disconnect() end
+                applyFullBright_misc()
+                autoNightLoop_misc = game.Lighting:GetPropertyChangedSignal("ClockTime"):Connect(applyFullBright_misc)
+            else
+                if autoNightLoop_misc then autoNightLoop_misc:Disconnect(); autoNightLoop_misc = nil end
+                game.Lighting.Ambient = Color3.new(0.5, 0.5, 0.5); game.Lighting.Brightness = 1; game.Lighting.GlobalShadows = true
+            end
+        end
+    })
+
+    local lightingg_misc = game:GetService("Lighting")
+    local runService5_misc = game:GetService("RunService")
+    local noFogEnabled_misc = false
+    local fogLoop_misc
+
+    local function removeFog()
+        if lightingg_misc.FogEnd ~= 1000000 then lightingg_misc.FogEnd = 1000000 end
+        if lightingg_misc.FogStart ~= 0 then lightingg_misc.FogStart = 0 end
+        if lightingg_misc:FindFirstChild("Atmosphere") then
+            local atmosphere = lightingg_misc.Atmosphere
+            if atmosphere.Density ~= 0 then atmosphere.Density = 0 end
+            if atmosphere.Offset ~= 0 then atmosphere.Offset = 0 end
+            if atmosphere.Haze ~= 0 then atmosphere.Haze = 0 end
+            if atmosphere.Color ~= Color3.new(1,1,1) then atmosphere.Color = Color3.new(1,1,1) end
+        end
+    end
+    local function restoreFog()
+        lightingg_misc.FogEnd = 1000; lightingg_misc.FogStart = 200
+        if lightingg_misc:FindFirstChild("Atmosphere") then
+            local atmosphere = lightingg_misc.Atmosphere
+            atmosphere.Density = 0.3; atmosphere.Offset = 0; atmosphere.Haze = 0.5
+            atmosphere.Color = Color3.fromRGB(200, 200, 200)
+        end
+    end
+
+    MiscT:Toggle({
+        Title = "ลบหมอก",
+        Value = false,
+        Callback = function(Value)
+            noFogEnabled_misc = Value
+            if noFogEnabled_misc then
+                removeFog()
+                fogLoop_misc = runService5_misc.Heartbeat:Connect(function() removeFog() end)
+            else
+                if fogLoop_misc then fogLoop_misc:Disconnect(); fogLoop_misc = nil end
+                restoreFog()
+            end
+        end
+    })
+
+    MiscT:Section({ Title = "↳ บายพาส" })
+
+    local player_bypass = game:GetService("Players").LocalPlayer
+    local UserInputService_bypass = game:GetService("UserInputService")
+    local StarterGui_bypass = game:GetService("StarterGui")
+
+    getgenv().bandageBypassEnabled = false
+    local bandageConnection_misc
+    local bandageDebounce_misc = false
+
+    local function detectMobile_bypass()
+        return UserInputService_bypass.TouchEnabled and not UserInputService_bypass.KeyboardEnabled and not UserInputService_bypass.MouseEnabled
+    end
+    local function useBandage_misc()
+        if bandageDebounce_misc then return end
+        bandageDebounce_misc = true
+        local character = player_bypass.Character
+        if character then
+            local bandage = character:FindFirstChild("Bandage")
+            if bandage and bandage:IsA("Tool") then bandage.Use:FireServer() end
+        end
+        bandageDebounce_misc = false
+    end
+
+    MiscT:Toggle({
+        Title = "บายพาสดีเลย์ผ้าพันแผล",
+        Desc  = "กด 'R' เพื่อใช้ผ้าพันแผลทันที",
+        Value = false,
+        Callback = function(Value)
+            getgenv().bandageBypassEnabled = Value
+        end
+    })
+
+    UserInputService_bypass.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if getgenv().bandageBypassEnabled and input.KeyCode == Enum.KeyCode.R then useBandage_misc() end
+    end)
+
+    local ReloadStatus_misc = false
+    local originalReloadTimes_misc = {}
+
+    local function bypassReloadDelay()
+        local p = game:GetService("Players").LocalPlayer
+        while ReloadStatus_misc do
+            local character = p.Character
+            if character then
+                for _, tool in pairs(character:GetChildren()) do
+                    if tool:IsA("Tool") and tool:FindFirstChild("WeaponConfiguration") then
+                        local config = tool.WeaponConfiguration
+                        local reloadDuration = config:FindFirstChild("ReloadDuration")
+                        if reloadDuration then
+                            if not originalReloadTimes_misc[tool] then originalReloadTimes_misc[tool] = reloadDuration.Value end
+                            reloadDuration.Value = 0
+                        end
+                    end
+                end
+            end
+            task.wait(0.1)
+        end
+    end
+    local function restoreReloadDelay()
+        local p = game:GetService("Players").LocalPlayer; local character = p.Character
+        if character then
+            for _, tool in pairs(character:GetChildren()) do
+                if tool:IsA("Tool") and tool:FindFirstChild("WeaponConfiguration") then
+                    local config = tool.WeaponConfiguration
+                    local reloadDuration = config:FindFirstChild("ReloadDuration")
+                    if reloadDuration and originalReloadTimes_misc[tool] then reloadDuration.Value = originalReloadTimes_misc[tool] end
+                end
+            end
+        end
+        table.clear(originalReloadTimes_misc)
+    end
+
+    MiscT:Toggle({
+        Title = "บายพาสดีเลย์การโหลดกระสุน",
+        Value = false,
+        Callback = function(Value)
+            ReloadStatus_misc = Value
+            if Value then bypassReloadDelay() else restoreReloadDelay() end
+        end
+    })
+    game.Players.LocalPlayer.CharacterAdded:Connect(function()
+        if not ReloadStatus_misc then restoreReloadDelay() end
+    end)
+
+    local FireStatus_misc = false
+    local originalFireTimes_misc = {}
+
+    local function bypassFireDelay()
+        local p = game:GetService("Players").LocalPlayer
+        while FireStatus_misc do
+            local character = p.Character
+            if character then
+                for _, tool in pairs(character:GetChildren()) do
+                    if tool:IsA("Tool") and tool:FindFirstChild("WeaponConfiguration") then
+                        local config = tool.WeaponConfiguration
+                        local fireDuration = config:FindFirstChild("FireDelay")
+                        if fireDuration then
+                            if not originalFireTimes_misc[tool] then originalFireTimes_misc[tool] = fireDuration.Value end
+                            fireDuration.Value = 0.15
+                        end
+                    end
+                end
+            end
+            task.wait(0.1)
+        end
+    end
+    local function restoreFireDelay()
+        local p = game:GetService("Players").LocalPlayer; local character = p.Character
+        if character then
+            for _, tool in pairs(character:GetChildren()) do
+                if tool:IsA("Tool") and tool:FindFirstChild("WeaponConfiguration") then
+                    local config = tool.WeaponConfiguration
+                    local fireDuration = config:FindFirstChild("FireDelay")
+                    if fireDuration and originalFireTimes_misc[tool] then fireDuration.Value = originalFireTimes_misc[tool] end
+                end
+            end
+        end
+        table.clear(originalFireTimes_misc)
+    end
+
+    MiscT:Toggle({
+        Title = "บายพาสดีเลย์การยิง",
+        Value = false,
+        Callback = function(Value)
+            FireStatus_misc = Value
+            if Value then bypassFireDelay() else restoreFireDelay() end
+        end
+    })
+    game.Players.LocalPlayer.CharacterAdded:Connect(function()
+        if not FireStatus_misc then restoreFireDelay() end
+    end)
+
+    local skipHoldEnabled = false
+    local function skipHoldPrompt_misc(prompt)
+        if prompt and prompt:IsA("ProximityPrompt") and prompt.HoldDuration > 0 then
+            if prompt:GetAttribute("OriginalHold") == nil then prompt:SetAttribute("OriginalHold", prompt.HoldDuration) end
+            prompt.HoldDuration = 0
+        end
+    end
+    local function enableSkipHold()
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("ProximityPrompt") then skipHoldPrompt_misc(obj) end
+        end
+        local connection
+        connection = workspace.DescendantAdded:Connect(function(obj)
+            task.wait(0.1)
+            if skipHoldEnabled then skipHoldPrompt_misc(obj) else connection:Disconnect() end
+        end)
+    end
+    local function disableSkipHold()
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("ProximityPrompt") then
+                local originalHold = obj:GetAttribute("OriginalHold")
+                if originalHold then obj.HoldDuration = originalHold; obj:SetAttribute("OriginalHold", nil) end
+            end
+        end
+    end
+
+    MiscT:Toggle({
+        Title = "บายพาสการกดค้าง",
+        Value = false,
+        Callback = function(v)
+            skipHoldEnabled = v
+            if v then enableSkipHold() else disableSkipHold() end
+        end
+    })
+
+    MiscT:Section({ Title = "↳ เบ็ดเตล็ด" })
+
+    MiscT:Toggle({
+        Title = "เพิ่ม FPS",
+        Value = false,
+        Callback = function(Value)
+            if Value then
+                for _, v in pairs(game:GetDescendants()) do
+                    if v:IsA("BasePart") then v.Material = Enum.Material.SmoothPlastic; v.Reflectance = 0 end
+                end
+            end
+        end
+    })
+
+    getgenv().antiAfkEnabled = true
+    local afkConnection_misc
+
+    local function startAntiAfk()
+        local p = game:GetService("Players").LocalPlayer
+        local virtualUser = game:GetService("VirtualUser")
+        if afkConnection_misc then afkConnection_misc:Disconnect() end
+        afkConnection_misc = p.Idled:Connect(function()
+            if getgenv().antiAfkEnabled then virtualUser:CaptureController(); virtualUser:ClickButton2(Vector2.new()) end
+        end)
+    end
+
+    MiscT:Toggle({
+        Title = "ป้องกันการอยู่เฉย",
+        Value = true,
+        Callback = function(Value)
+            getgenv().antiAfkEnabled = Value
+            if Value then
+                WindUI:Notify({ Title = "Ark", Content = "เปิดใช้งานป้องกันการอยู่เฉยแล้ว!" })
+                startAntiAfk()
+            else
+                WindUI:Notify({ Title = "Ark", Content = "ปิดใช้งานป้องกันการอยู่เฉยแล้ว!" })
+                if afkConnection_misc then afkConnection_misc:Disconnect(); afkConnection_misc = nil end
+            end
+        end
+    })
+    startAntiAfk()
+
+    -- ══════════════════════════════
+    --         แท็บ ตั้งค่า
+    -- ══════════════════════════════
+
+    Settings:Toggle({
+        Title = "รันสคริปต์อัตโนมัติ",
+        Value = false,
+        Callback = function(Value)
+            if Value then
+                task.spawn(function()
+                    pcall(function()
+                        if queue_on_teleport then
+                            local SkullHubScript1 = [[
+task.wait(3)
+loadstring(game:HttpGet('https://raw.githubusercontent.com/hungquan99/SkullHub/main/loader.lua'))()
+]]
+                            queue_on_teleport(SkullHubScript1)
+                        end
+                    end)
+                end)
+                WindUI:Notify({ Title = "ARK HUB", Content = "เปิดใช้งานรันอัตโนมัติแล้ว!" })
+            else
+                WindUI:Notify({ Title = "ARK HUB", Content = "ปิดใช้งานรันอัตโนมัติแล้ว!" })
+            end
+        end
+    })
+
+end
+
+-- เลือกแท็บแรกโดยอัตโนมัติ
+FarT:Select()
+
+WindUI:Notify({
+    Title   = "Ark Hub",
+    Content = "โหลดสคริปต์ Dead Rails สำเร็จ! 🎉",
+})
+
+-- ══════════════════════════════════════════════════════════════════
+--   ปุ่มลอย (Draggable Minimize Button) — สำหรับซ่อน/แสดง UI
+-- ══════════════════════════════════════════════════════════════════
+
+local UserInputService_ = game:GetService("UserInputService")
+local CoreGui_ = game:GetService("CoreGui")
+local TweenService_ = game:GetService("TweenService")
+local VirtualInputManager_ = game:GetService("VirtualInputManager")
+
+local ExistingUI = CoreGui_:FindFirstChild("SkullHubMinimizeUI")
+if ExistingUI then ExistingUI:Destroy() end
+
+local DragUI = Instance.new("ScreenGui")
+DragUI.Name = "SkullHubMinimizeUI"; DragUI.ResetOnSpawn = false
+DragUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; DragUI.Parent = CoreGui_
+
+local Button_min = Instance.new("ImageButton")
+Button_min.Parent = DragUI; Button_min.Size = UDim2.new(0, 50, 0, 50)
+Button_min.Position = UDim2.new(0, 10, 1, -85)
+Button_min.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Button_min.BackgroundTransparency = 0.3; Button_min.BorderSizePixel = 0
+Button_min.ClipsDescendants = true
+Button_min.Image = "rbxassetid://90508203972003"
+Button_min.ScaleType = Enum.ScaleType.Fit; Button_min.Active = true; Button_min.ZIndex = 1000
+Instance.new("UICorner", Button_min).CornerRadius = UDim.new(1, 0)
+
+local tweenInfo_min = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+local function SimulateKeyPress()
+    VirtualInputManager_:SendKeyEvent(true, minimizeUI, false, game)
+    task.wait(0.1)
+    VirtualInputManager_:SendKeyEvent(false, minimizeUI, false, game)
+end
+
+local isDragging_min = false
+local dragThreshold_min = 10
+
+Button_min.MouseButton1Click:Connect(function()
+    if isDragging_min then return end
+    local tween = TweenService_:Create(Button_min, tweenInfo_min, {BackgroundTransparency = 0.5, Size = UDim2.new(0, 45, 0, 45), Rotation = 5})
+    tween:Play(); task.wait(0.1)
+    TweenService_:Create(Button_min, tweenInfo_min, {BackgroundTransparency = 0.3, Size = UDim2.new(0, 50, 0, 50), Rotation = 0}):Play()
+    SimulateKeyPress()
+end)
+
+Button_min.MouseEnter:Connect(function() TweenService_:Create(Button_min, tweenInfo_min, {Size = UDim2.new(0, 55, 0, 55)}):Play() end)
+Button_min.MouseLeave:Connect(function() TweenService_:Create(Button_min, tweenInfo_min, {Size = UDim2.new(0, 50, 0, 50)}):Play() end)
+
+local dragging_min, dragStart_min, startPos_min
+
+local function StartDrag_min(input)
+    isDragging_min = false; dragging_min = true; dragStart_min = input.Position; startPos_min = Button_min.Position
+    input.Changed:Connect(function()
+        if input.UserInputState == Enum.UserInputState.End then dragging_min = false end
+    end)
+end
+local function OnDrag_min(input)
+    if dragging_min then
+        local delta = (input.Position - dragStart_min).Magnitude
+        if delta > dragThreshold_min then isDragging_min = true end
+        Button_min.Position = UDim2.new(startPos_min.X.Scale, startPos_min.X.Offset + (input.Position.X - dragStart_min.X), startPos_min.Y.Scale, startPos_min.Y.Offset + (input.Position.Y - dragStart_min.Y))
+    end
+end
+
+Button_min.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then StartDrag_min(input) end
+end)
+Button_min.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then OnDrag_min(input) end
+end)
