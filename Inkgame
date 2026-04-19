@@ -1,0 +1,636 @@
+-- ts file was generated at discord.gg/25ms
+
+local fenv = getfenv()
+local _ = fenv.bit_lib
+local _6 = loadstring(game:HttpGet('https://github.com/Footagesus/WindUI/releases/latest/download/main.lua'))()
+local _LocalPlayer13 = game:GetService('Players').LocalPlayer
+local _call17 = _6:CreateWindow({
+    Folder = 'Ringta Scripts',
+    HasOutline = true,
+    Title = 'Ark',
+    Transparent = false,
+    Theme = 'Dark',
+    Author = 'discord.gg/ARK',
+    Icon = 'star',
+    Size = UDim2.fromOffset(500, 350),
+})
+
+_call17:EditOpenButton({
+    StrokeThickness = 2,
+    Title = 'Open ARK SCRIPTS',
+    Color = ColorSequence.new(Color3.fromRGB(200, 0, 255), Color3.fromRGB(0, 200, 255)),
+    Draggable = true,
+    Icon = 'pointer',
+    CornerRadius = UDim.new(0, 6),
+})
+
+local _call29 = _call17:Tab({
+    Title = 'RedLight',
+    Icon = 'lightbulb',
+})
+local _call31 = _call17:Tab({
+    Title = 'Dalgona',
+    Icon = 'cookie',
+})
+local _call33 = _call17:Tab({
+    Title = 'Tug Of War',
+    Icon = 'sword',
+})
+local _call35 = _call17:Tab({
+    Title = 'Hide And Seek',
+    Icon = 'eye-off',
+})
+local _call37 = _call17:Tab({
+    Title = 'Glass Bridge',
+    Icon = 'grid-2x2',
+})
+local _call39 = _call17:Tab({
+    Title = 'Mingle',
+    Icon = 'tent',
+})
+local _call41 = _call17:Tab({
+    Title = 'Random Features',
+    Icon = 'dices',
+})
+local _call43 = _call17:Tab({
+    Title = 'Rebel',
+    Icon = 'shield-question-mark',
+})
+local _call45 = _call17:Tab({
+    Title = 'Final',
+    Icon = 'swords',
+})
+
+game:GetService('ReplicatedStorage').Remotes.Effects.OnClientEvent:Connect(function(...)
+    local _51_vararg1 = ...
+    local _ = _51_vararg1.EffectName
+
+    return nil
+end)
+
+local __namecall54 = getrawmetatable(game).__namecall
+
+newcclosure(function(...)
+    getnamecallmethod()
+    error('line 17: attempt to call a nil value')
+end)
+hookfunction(__namecall54, function(...)
+    getnamecallmethod()
+    error('line 17: attempt to call a nil value')
+end)
+_call29:Toggle({
+    Callback = function(...)
+        return nil
+    end,
+    Default = false,
+    Title = 'Red Light God Mode',
+})
+_call29:Button({
+    Title = 'Teleport to End',
+    Callback = function(...)
+        local _call71 = game:GetService('Players').LocalPlayer.Character:WaitForChild('HumanoidRootPart')
+
+        _call71.CFrame = CFrame.new(Vector3.new(-45, 1026, 136.7))
+
+        return nil
+    end,
+})
+_call29:Button({
+    Title = 'Remove Injury',
+    Callback = function(...)
+        local _LocalPlayer81 = game:GetService('Players').LocalPlayer
+        local _Character82 = _LocalPlayer81.Character
+        local _call84 = _Character82:FindFirstChild('Humanoid')
+        local _call86 = _Character82:FindFirstChild('HumanoidRootPart')
+        local _call88 = _Character82:FindFirstChild('Torso')
+
+        _call84.PlatformStand = false
+
+        _call84:ChangeState(Enum.HumanoidStateType.GettingUp)
+        _call84:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
+        _call84:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        _call84:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+        _call84:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        _call84:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+        _call84:SetStateEnabled(Enum.HumanoidStateType.Swimming, false)
+        _call84:SetStateEnabled(Enum.HumanoidStateType.Flying, false)
+        _call84:SetStateEnabled(Enum.HumanoidStateType.StrafingNoPhysics, false)
+        _call84:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+
+        for _131, _131_2 in pairs(_call86:GetChildren())do
+            _131_2:IsA('BallSocketConstraint')
+            _131_2:Destroy()
+        end
+
+        local _call137 = _call88:FindFirstChild('Left Hip')
+
+        _call137:IsA('Motor6D')
+
+        local _ = _call137.Part0
+        local _call142 = _call88:FindFirstChild('Left Shoulder')
+
+        _call142:IsA('Motor6D')
+
+        local _ = _call142.Part0
+        local _call147 = _call88:FindFirstChild('Neck')
+
+        _call147:IsA('Motor6D')
+
+        local _ = _call147.Part0
+        local _call152 = _call88:FindFirstChild('Right Hip')
+
+        _call152:IsA('Motor6D')
+
+        local _ = _call152.Part0
+        local _call157 = _call88:FindFirstChild('Right Shoulder')
+
+        _call157:IsA('Motor6D')
+
+        local _ = _call157.Part0
+
+        for _163, _163_2 in pairs(_Character82:GetChildren())do
+            _163_2:IsA('BasePart')
+            _163_2:FindFirstChild('BoneCustom')
+            _163_2.BoneCustom:Destroy()
+        end
+
+        _Character82:FindFirstChild('Ragdoll'):Destroy()
+        _Character82:FindFirstChild('Stun'):Destroy()
+        _Character82:FindFirstChild('RotateDisabled'):Destroy()
+        _Character82:FindFirstChild('RagdollWakeupImmunity'):Destroy()
+        workspace:FindFirstChild('Effects'):FindFirstChild('LocalRagdolls'):FindFirstChild(_LocalPlayer81.Name):Destroy()
+
+        return nil
+    end,
+})
+_call29:Button({
+    Title = 'Help Player',
+    Callback = function(...)
+        local _call200 = game:GetService('Players')
+        local _call203 = Vector2.new(-52, -515)
+        local _call205 = Vector2.new(115, -515)
+        local _call207 = Vector2.new(115, 84)
+        local _call209 = Vector2.new(-216, 84)
+
+        for _212, _212_2 in pairs(_call200:GetPlayers())do
+            local _ = _212_2 == _call200.LocalPlayer
+
+            workspace:FindFirstChild('Live')
+
+            local _call221 = workspace.Live:FindFirstChild(_212_2.Name):FindFirstChild('HumanoidRootPart')
+            local _call227 = Vector2.new(_call221.Position.X, _call221.Position.Z)
+            local _ = _call203.X
+            local _ = _call209.X
+            local _ = _call227.Y < _call203.Y
+            local _ = _call227.Y < _call209.Y
+            local _ = _call205.X
+            local _ = _call203.X
+            local _ = _call227.Y < _call205.Y
+            local _ = _call227.Y < _call203.Y
+            local _ = _call207.X
+            local _ = _call205.X
+            local _ = _call227.Y < _call207.Y
+            local _ = _call227.Y < _call205.Y
+            local _ = _call209.X
+            local _ = _call207.X
+            local _ = _call227.Y < _call209.Y
+            local _ = _call227.Y < _call207.Y
+        end
+
+        return nil
+    end,
+})
+
+local _ = game.ReplicatedStorage.Modules.Games.DalgonaClient
+
+_call31:Button({
+    Title = 'Auto Complete Dalgona',
+    Callback = function(...)
+        for _268, _268_2 in ipairs(getreg())do
+            type(_268_2)
+        end
+
+        return nil
+    end,
+})
+
+local _TemporaryReachedBindable272 = game:GetService('ReplicatedStorage').Remotes.TemporaryReachedBindable
+
+_call33:Toggle({
+    Callback = function(...)
+        game:GetService('RunService').Heartbeat:Connect(function(...)
+            _TemporaryReachedBindable272:FireServer({PerfectQTE = true})
+
+            return nil
+        end)
+
+        return nil
+    end,
+    Default = false,
+    Title = 'Auto Pull',
+})
+_call35:Button({
+    Title = 'Teleport 100 Blocks Up',
+    Callback = function(...)
+        local _call287 = _LocalPlayer13.Character:FindFirstChild('HumanoidRootPart')
+        local _Position288 = _call287.Position
+
+        _call287.CFrame = CFrame.new(Vector3.new(_Position288.X, (_Position288.Y + 100), _Position288.Z))
+
+        return nil
+    end,
+})
+_call35:Button({
+    Title = 'Teleport 40 Blocks Down',
+    Callback = function(...)
+        local _call302 = _LocalPlayer13.Character:FindFirstChild('HumanoidRootPart')
+        local _Position303 = _call302.Position
+
+        _call302.CFrame = CFrame.new(_Position303.X, (_Position303.Y - 40), _Position303.Z)
+
+        return nil
+    end,
+})
+
+local _call311 = game:GetService('Players')
+local _LocalPlayer312 = _call311.LocalPlayer
+local _call314 = game:GetService('RunService')
+local _call316 = Color3.new(1, 0, 0)
+
+Color3.new(0, 0.5, 1)
+_call35:Toggle({
+    Callback = function(...)
+        for _324, _324_2 in ipairs(_call311:GetPlayers())do
+            _324_2.CharacterAdded:Connect(function(...)
+                wait(1)
+
+                for _331, _331_2 in ipairs(_call311:GetPlayers())do
+                    local _ = _LocalPlayer312 == _331_2
+
+                    _331_2:FindFirstChild('Backpack')
+                    _331_2.Backpack:FindFirstChild('Knife')
+
+                    local _ = _331_2.Character
+
+                    _331_2.Character:FindFirstChild('Head')
+                    _331_2.Character.Head:FindFirstChild('RoleESP'):Destroy()
+
+                    local _ = _331_2.Character
+
+                    for _352, _352_2 in ipairs(_331_2.Character:GetChildren())do
+                        _352_2:IsA('BasePart')
+                        _352_2:FindFirstChild('ESPBox')
+                        _352_2.ESPBox:Destroy()
+                    end
+
+                    local _ = _331_2.Character
+
+                    _331_2.Character:FindFirstChild('Head')
+                    _331_2.Character.Head:FindFirstChild('RoleESP')
+                    _331_2.Character.Head.RoleESP:Destroy()
+
+                    local _call374 = Instance.new('BillboardGui')
+
+                    _call374.Name = 'RoleESP'
+                    _call374.Adornee = _331_2.Character.Head
+                    _call374.Size = UDim2.new(0, 100, 0, 40)
+                    _call374.StudsOffset = Vector3.new(0, 2, 0)
+                    _call374.AlwaysOnTop = true
+
+                    local _call382 = Instance.new('Frame')
+
+                    _call382.Size = UDim2.new(1, 0, 1, 0)
+                    _call382.BackgroundColor3 = _call316
+                    _call382.BackgroundTransparency = 0.3
+                    _call382.BorderSizePixel = 0
+                    _call382.Parent = _call374
+
+                    local _call386 = Instance.new('TextLabel')
+
+                    _call386.Size = UDim2.new(1, 0, 1, 0)
+                    _call386.BackgroundTransparency = 1
+                    _call386.Text = 'Seeker'
+                    _call386.TextColor3 = _call316
+                    _call386.TextStrokeTransparency = 0.5
+                    _call386.Font = Enum.Font.SourceSansBold
+                    _call386.TextScaled = true
+                    _call386.Parent = _call374
+                    _call374.Parent = _331_2.Character.Head
+
+                    local _ = _331_2.Character
+
+                    for _397, _397_2 in ipairs(_331_2.Character:GetChildren())do
+                        _397_2:IsA('BasePart')
+
+                        local _ = _397_2.Name
+
+                        _397_2:FindFirstChild('ESPBox')
+                        _397_2.ESPBox:Destroy()
+
+                        local _call407 = Instance.new('BoxHandleAdornment')
+
+                        _call407.Name = 'ESPBox'
+                        _call407.Size = _397_2.Size
+                        _call407.Adornee = _397_2
+                        _call407.AlwaysOnTop = true
+                        _call407.ZIndex = 10
+                        _call407.Transparency = 0.5
+                        _call407.Color3 = _call316
+                        _call407.Parent = _397_2
+                    end
+                end
+
+                return nil
+            end)
+        end
+
+        _call314.RenderStepped:Connect(function(...)
+            for _415, _415_2 in ipairs(_call311:GetPlayers())do
+                local _ = _LocalPlayer312 == _415_2
+
+                _415_2:FindFirstChild('Backpack')
+                _415_2.Backpack:FindFirstChild('Knife')
+
+                local _ = _415_2.Character
+
+                _415_2.Character:FindFirstChild('Head')
+                _415_2.Character.Head:FindFirstChild('RoleESP')
+                error('internal 579: <25ms: infinitelooperror>')
+            end
+        end)
+
+        return nil
+    end,
+    Default = false,
+    Title = 'Esp Hider & Seeker',
+})
+
+local _call432 = Color3.fromRGB(255, 255, 0)
+
+Color3.fromRGB(0, 191, 255)
+Vector3.new(0, 1, 0)
+Vector3.new(0, 2, 0)
+_call35:Toggle({
+    Callback = function(...)
+        local _call443 = workspace:FindFirstChild('HideAndSeekMap')
+
+        for _448, _448_2 in ipairs(_call443:FindFirstChild('KEYS'):GetChildren())do
+            _448_2:IsA('Model')
+
+            local _ = _448_2.PrimaryPart
+            local _ = _448_2.Name .. ' (Key)'
+
+            _448_2:IsA('Model')
+
+            local _ = _448_2.PrimaryPart
+            local _call458 = Instance.new('Highlight')
+
+            _call458.Adornee = _448_2
+            _call458.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            _call458.FillColor = _call432
+            _call458.FillTransparency = 0.75
+            _call458.OutlineColor = _call432
+            _call458.OutlineTransparency = 0
+            _call458.Parent = _448_2
+
+            local _call462 = Instance.new('BillboardGui')
+
+            _call462.Adornee = _448_2
+            _call462.AlwaysOnTop = true
+            _call462.ClipsDescendants = false
+
+            local _call464 = UDim2.new(0, 1, 0, 1)
+
+            _call462.Size = _call464
+            _call462.StudsOffset = _call464
+            _call462.Parent = _448_2
+
+            local _call466 = Instance.new('TextLabel')
+
+            _call466.BackgroundTransparency = 1
+            _call466.Font = Enum.Font.Oswald
+
+            local _call470 = UDim2.new(1, 0, 1, 0)
+
+            _call466.Size = _call470
+            _call466.Text = _call470
+            _call466.TextColor3 = _call432
+            _call466.TextSize = 22
+            _call466.TextStrokeColor3 = Color3.new(0, 0, 0)
+            _call466.TextStrokeTransparency = 0.75
+            _call466.Parent = _call462
+
+            game:GetService('RunService').RenderStepped:Connect(function(...)
+                _448_2:IsDescendantOf(workspace)
+
+                return nil
+            end)
+        end
+        for _485, _485_2 in ipairs(_call443:FindFirstChild('NEWFIXEDDOORS'):GetChildren())do
+            _485_2.Name:match('^Floor')
+
+            for _491, _491_2 in ipairs(_485_2:GetChildren())do
+                _491_2:IsA('Model')
+
+                local _ = _491_2.Name
+            end
+        end
+
+        workspace.DescendantAdded:Connect(function(...)
+            local _ = workspace.FindFirstChild
+
+            error('internal 579: <25ms: infinitelooperror>')
+        end)
+
+        return nil
+    end,
+    Default = false,
+    Title = 'ESP Keys & Exit Doors',
+})
+_call35:Toggle({
+    Callback = function(...)
+        _call314.Heartbeat:Connect(function(...)
+            workspace:FindFirstChild('Live')
+            error('internal 579: <25ms: infinitelooperror>')
+        end)
+
+        return nil
+    end,
+    Default = false,
+    Title = 'Infinite Stamina',
+})
+_call35:Button({
+    Title = 'Teleport to Random Hider',
+    Callback = function(...)
+        local _call515 = game:GetService('Players')
+        local _LocalPlayer516 = _call515.LocalPlayer
+
+        for _519, _519_2 in ipairs(_call515:GetPlayers())do
+            local _ = _519_2 == _LocalPlayer516
+
+            _519_2:FindFirstChild('Backpack')
+            _519_2.Backpack:FindFirstChild('DODGE!')
+        end
+
+        workspace:FindFirstChild('Live')
+
+        local _call531 = workspace.Live:FindFirstChild(_519_2.Name)
+        local _call536 = _LocalPlayer516.Character:FindFirstChild('HumanoidRootPart')
+
+        _call536.CFrame = (_call531:FindFirstChild('HumanoidRootPart').CFrame + Vector3.new(0, 2, 0))
+
+        return nil
+    end,
+})
+workspace.ChildAdded:Connect(function(...)
+    local _544_vararg1 = ...
+    local _ = _544_vararg1.Name
+
+    return nil
+end)
+workspace:FindFirstChild('GlassBridge')
+workspace.GlassBridge:FindFirstChild('GlassHolder')
+
+local _ = workspace.GlassBridge.GlassHolder
+local _call556 = workspace:FindFirstChild('GlassBridge'):FindFirstChild('GlassHolder')
+
+_call556.DescendantAdded:Connect(function(...)
+    local _560_vararg1 = ...
+    local _ = _560_vararg1.Name
+
+    return nil
+end)
+
+for _564, _564_2 in ipairs(_call556:GetChildren())do
+    for _567, _567_2 in ipairs(_564_2:GetChildren())do
+        local _call569 = _567_2:FindFirstChild('glasspart')
+
+        _call569.Color = Color3.fromRGB(106, 106, 106)
+        _call569.Transparency = 0.45
+        _call569.Material = Enum.Material.SmoothPlastic
+    end
+end
+
+_call37:Toggle({
+    Callback = function(...)
+        for _579, _579_2 in ipairs(_call556:GetChildren())do
+            for _582, _582_2 in ipairs(_579_2:GetChildren())do
+                local _call584 = _582_2:FindFirstChild('glasspart')
+
+                _call584:GetAttribute('exploitingisevil')
+
+                _call584.Color = Color3.fromRGB(248, 87, 87)
+                _call584.Transparency = 0
+                _call584.Material = Enum.Material.Neon
+            end
+        end
+
+        return nil
+    end,
+    Default = false,
+    Title = 'Enable Glass ESP',
+})
+
+local _LocalPlayer593 = game:GetService('Players').LocalPlayer
+
+_call39:Toggle({
+    Callback = function(...)
+        local _ = _LocalPlayer593.Character
+        local _Character598 = _LocalPlayer593.Character
+
+        _Character598.ChildAdded:Connect(function(...)
+            local _602_vararg1 = ...
+
+            _602_vararg1:IsA('RemoteEvent')
+            error('internal 579: <25ms: infinitelooperror>')
+        end)
+
+        for _608, _608_2 in ipairs(_Character598:GetChildren())do
+            _608_2:IsA('RemoteEvent')
+
+            local _ = _608_2.Name
+        end
+
+        _LocalPlayer593.CharacterAdded:Connect(function(...) end)
+
+        return nil
+    end,
+    Default = false,
+    Title = 'Auto Choke',
+})
+_call41:Toggle({
+    Callback = function(...) end,
+    Default = false,
+    Title = 'Unlock Dash Free',
+})
+_call41:Toggle({
+    Callback = function(...) end,
+    Default = false,
+    Title = 'Unlock Phantom Dash Free',
+})
+_call41:Toggle({
+    Callback = function(...) end,
+    Default = false,
+    Title = 'WalkSpeed Increase',
+})
+_call41:Slider({
+    Value = {
+        Max = 50,
+        Default = 16,
+        Min = 1,
+    },
+    Callback = function(...) end,
+    Step = 1,
+    Title = 'WalkSpeed Amount',
+})
+_call41:Button({
+    Title = 'Reset WalkSpeed to Normal',
+    Callback = function(...) end,
+})
+_call41:Toggle({
+    Callback = function(...) end,
+    Default = false,
+    Title = 'AntiFling',
+})
+_call41:Toggle({
+    Callback = function(...) end,
+    Default = false,
+    Title = 'Noclip',
+})
+game:GetService('RunService').Stepped:Connect(function(...) end)
+
+local _ = game:GetService('Players').LocalPlayer
+
+_call41:Toggle({
+    Callback = function(...) end,
+    Default = false,
+    Title = 'Auto Rescue on Low Health',
+})
+game:GetService('RunService')
+workspace:FindFirstChild('Live')
+_call43:Toggle({
+    Callback = function(...) end,
+    Default = false,
+    Title = 'RebelGuard ESP',
+})
+_call43:Divider()
+_call43:Section({
+    Title = 'BE CARFUL USING THIS\n COULD RISK IN BAN',
+})
+game:GetService('RunService')
+
+local _ = game:GetService('Players').LocalPlayer
+local _ = game:GetService('Workspace').CurrentCamera
+
+_call43:Toggle({
+    Callback = function(...) end,
+    Default = false,
+    Title = 'Aimbot',
+})
+_call45:Toggle({
+    Callback = function(...) end,
+    Default = false,
+    Title = 'Autokill',
+})
+
+return nil
