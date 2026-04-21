@@ -1,0 +1,388 @@
+--[[
+	WARNING: Heads up! This script has not been verified by ScriptBlox. Use at your own risk!
+	UI Updated to WindUI + Thai Translation + Mobile Support
+	Ark Hub By Ark
+]]
+
+-- // Load WindUI \\ --
+local cloneref = (cloneref or clonereference or function(instance) return instance end)
+local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
+local RunService = cloneref(game:GetService("RunService"))
+
+local WindUI
+local ok, result = pcall(function()
+	return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+end)
+
+if ok and result then
+	WindUI = result
+else
+	warn("Failed to load WindUI")
+	return
+end
+
+local ThemeName = "Dark"
+
+local Window = WindUI:CreateWindow({
+	Title = "Ark Hub",
+	Author = "โดย Ark",
+	Icon = "solar:gamepad-bold",
+	Theme = ThemeName,
+	NewElements = true,
+	Transparent = true,
+	ToggleKey = Enum.KeyCode.RightControl, -- ซ่อน UI ด้วย RightControl (PC) มือถือจะมีปุ่มแยกบนจอ
+	Acrylic = true,
+})
+
+-- // Constants & Services \\ --
+local Services = setmetatable({}, {__index = function(Self, Index)
+	local NewService = game.GetService(game, Index)
+	if NewService then
+		Self[Index] = NewService
+	end
+	return NewService
+end})
+
+local LocalPlayer = Services.Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- [ Weapon Names ] --
+local WeaponNames = {
+	Knife = {
+		Index = "Murderer";
+		Color = Color3.fromRGB(255, 0, 0)
+	};
+	Gun = {
+		Index = "Sheriff";
+		Color = Color3.fromRGB(0, 0, 255)
+	};
+}
+
+local AttackAnimations = {
+	"rbxassetid://2467567750";
+	"rbxassetid://1957618848";
+	"rbxassetid://2470501967";
+	"rbxassetid://2467577524";
+}
+
+-- // Variables \\ --
+local Roles = {
+	Murderer = nil;
+	Sheriff = nil;
+	Closest = nil;
+}
+
+local ESPInstances = {}
+local ESPToggle = true
+local SilentAIMEnabled = true
+local SprintEnabled = false
+
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
+
+LocalPlayer.CharacterAdded:Connect(function(NewCharacter)
+	Character = NewCharacter
+	Humanoid = Character:WaitForChild("Humanoid")
+end)
+
+local RaycastParameters = RaycastParams.new()
+RaycastParameters.IgnoreWater = true
+RaycastParameters.FilterType = Enum.RaycastFilterType.Blacklist
+RaycastParameters.FilterDescendantsInstances = {LocalPlayer.Character}
+
+-- // Core Functions \\ --
+local Functions = {}
+
+-- ESP --
+function Functions.ESP(Part, Color)
+	if Part:FindFirstChildOfClass('BoxHandleAdornment') then
+		return Part:FindFirstChildOfClass('BoxHandleAdornment')
+	end
+
+	local Box = Instance.new("BoxHandleAdornment")
+	Box.Size = Part.Size + Vector3.new(0.1, 0.1, 0.1)
+	Box.Name = "Mesh"
+	Box.Visible = ESPToggle
+	Box.Adornee = Part
+	Box.Color3 = Color
+	Box.AlwaysOnTop = true
+	Box.ZIndex = 5
+	Box.Transparency = 0.5
+	Box.Parent = Part
+
+	table.insert(ESPInstances, Box)
+	return Box
+end
+
+-- Notify Roles --
+function Functions.NotifyRoles()
+	if Roles.Murderer then
+		local Image, Ready = Services.Players:GetUserThumbnailAsync(Roles.Murderer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
+		WindUI:Notify({
+			Title = 'ฆาตกร (Murderer)',
+			Content = Roles.Murderer.Name,
+			Duration = 5,
+		})
+	end
+
+	if Roles.Sheriff then
+		local Image, Ready = Services.Players:GetUserThumbnailAsync(Roles.Sheriff.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
+		WindUI:Notify({
+			Title = 'นายอำเภอ (Sheriff)',
+			Content = Roles.Sheriff.Name,
+			Duration = 5,
+		})
+	end
+    
+    if not Roles.Murderer and not Roles.Sheriff then
+        WindUI:Notify({
+			Title = 'ข้อมูลบทบาท',
+			Content = 'ยังไม่มีผู้เล่นถืออาวุธ',
+			Duration = 3,
+		})
+    end
+end
+
+-- GetClosestPlayer --
+function Functions.GetClosestPlayer(MaxDistance)
+	local ClosestPlayer = nil
+	local FarthestDistance = MaxDistance or math.huge
+
+	for i, v in ipairs(Services.Players.GetPlayers(Services.Players)) do
+		if v ~= LocalPlayer then
+			pcall(function()
+				local DistanceFromPlayer = (LocalPlayer.Character.PrimaryPart.Position - v.Character.PrimaryPart.Position).Magnitude
+				if DistanceFromPlayer < FarthestDistance then
+					FarthestDistance = DistanceFromPlayer
+					ClosestPlayer = v
+				end
+			end)
+		end
+	end
+
+	return ClosestPlayer
+end
+
+-- [ Event Functions ] --
+local EventFunctions = {}
+
+function EventFunctions.Initialize(Player)
+	local function CharacterAdded(Character)
+		Player:WaitForChild("Backpack").ChildAdded:Connect(function(Child)
+			local Role = WeaponNames[Child.Name]
+			if Role then
+				Roles[Role.Index] = Player
+
+				local Cham = Functions.ESP(Player.Character.HumanoidRootPart, Role.Color)
+
+				local Animator = Player.Character:FindFirstChildWhichIsA("Humanoid"):WaitForChild("Animator")
+				Animator.AnimationPlayed:Connect(function(AnimationTrack)
+					if (AnimationTrack and AnimationTrack.Animation) == nil then return end
+
+					if table.find(AttackAnimations, AnimationTrack.Animation.AnimationId) then
+						Cham.Color3 = Color3.fromRGB(255, 0, 255)
+
+						task.spawn(function()
+							while true do
+								Services.RunService.Heartbeat:Wait(0.01)
+								local PlayingAnimations = Animator:GetPlayingAnimationTracks()
+								local StillAttacking = false
+								for i,v in ipairs(PlayingAnimations) do
+									if table.find(AttackAnimations, v.Animation.AnimationId) then
+										StillAttacking = true
+									end
+								end
+								if StillAttacking == false then
+									break
+								end
+							end
+							Cham.Color3 = Role.Color
+						end)
+					end
+				end)
+			end
+		end)
+	end
+
+	CharacterAdded(Player.Character or Player.CharacterAdded:Wait())
+	Player.CharacterAdded:Connect(CharacterAdded)
+end
+
+function EventFunctions.GunAdded(Child)
+	if Child.Name == "GunDrop" then
+		Functions.ESP(Child, Color3.fromRGB(255, 255, 255))
+	end
+end
+
+-- // Metatable Hook (Silent Aim) \\ --
+local RawMetatable = getrawmetatable(game)
+local OldNameCall = RawMetatable.__namecall
+setreadonly(RawMetatable, false)
+
+RawMetatable.__namecall = newcclosure(function(Object, ...)
+	local NamecallMethod = getnamecallmethod()
+	local Arguments = {...}
+
+	if SilentAIMEnabled == true then
+		RaycastParameters.FilterDescendantsInstances = {LocalPlayer.Character}
+		if NamecallMethod == "FireServer" and tostring(Object) == "Throw" then
+			local Success, Error = pcall(function()
+				local Closest = Functions.GetClosestPlayer()
+				local PrimaryPart = Closest.Character.PrimaryPart
+				local Velocity = PrimaryPart.AssemblyLinearVelocity * Vector3.new(1, 0, 1)
+				local Magnitude = (PrimaryPart.Position - LocalPlayer.Character.PrimaryPart.Position).Magnitude
+				local Prediction = Velocity * 0.5 * Magnitude / 100
+				local Result = workspace.Raycast(workspace, LocalPlayer.Character.PrimaryPart.Position, (PrimaryPart.Position - (LocalPlayer.Character.PrimaryPart.Position + Prediction)).Unit * 200, RaycastParameters)
+				Arguments[2] = Result.Position
+			end)
+			if not Success then warn(Error) end
+		elseif NamecallMethod == "InvokeServer" and tostring(Object) == "ShootGun" and Roles.Murderer then
+			local Success, Error = pcall(function()
+				local PrimaryPart = Roles.Murderer.Character.PrimaryPart
+				local Prediction = PrimaryPart.AssemblyLinearVelocity / 40
+				if math.abs(PrimaryPart.AssemblyLinearVelocity.Y) < 10 then
+					Arguments[2] = PrimaryPart.Position + Prediction
+				else
+					return "Nullify Remote"
+				end
+			end)
+			if not Success then
+				warn(Error)
+			elseif Success == "Nullify Remote" then
+				return
+			end
+		end
+	end
+
+	return OldNameCall(Object, unpack(Arguments))
+end)
+setreadonly(RawMetatable, true)
+
+-- Initialize Listeners
+for i,v in ipairs(Services.Players:GetPlayers()) do
+	EventFunctions.Initialize(v)
+end
+Services.Players.PlayerAdded:Connect(EventFunctions.Initialize)
+workspace.ChildAdded:Connect(EventFunctions.GunAdded)
+
+-- // UI Layout & Controls \\ --
+local TabMain = Window:Tab({
+	Title = "เมนูหลัก (Main)",
+	Icon = "solar:sword-bold",
+})
+
+TabMain:Section({
+	Title = "ฟังก์ชันการต่อสู้และผู้เล่น (Combat & Player)",
+	Desc = "การตั้งค่าช่วยเหลือในการเล่น",
+})
+
+TabMain:Toggle({
+	Title = "มองทะลุผู้เล่น (ESP)",
+	Value = true,
+	Callback = function(State)
+		ESPToggle = State
+		for i,v in ipairs(ESPInstances) do
+			if v.Parent == nil then
+				table.remove(ESPInstances, i)
+			else
+				v.Visible = ESPToggle
+			end
+		end
+	end,
+})
+
+TabMain:Toggle({
+	Title = "ล็อกเป้าอัตโนมัติ (Silent Aim)",
+	Value = true,
+	Callback = function(State)
+		SilentAIMEnabled = State
+	end,
+})
+
+TabMain:Toggle({
+	Title = "วิ่งเร็ว (Sprint Speed)",
+	Value = false,
+	Callback = function(State)
+		SprintEnabled = State
+		if SprintEnabled then
+			Humanoid.WalkSpeed = 20
+		else
+			Humanoid.WalkSpeed = 16.5
+		end
+	end,
+})
+
+-- Handle walking speed resets upon death
+LocalPlayer.CharacterAdded:Connect(function(NewChar)
+    local Hum = NewChar:WaitForChild("Humanoid")
+    Hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+        if SprintEnabled and Hum.WalkSpeed < 20 then
+            Hum.WalkSpeed = 20
+        end
+    end)
+end)
+
+TabMain:Space({ Columns = 1 })
+
+local Group1 = TabMain:Group()
+Group1:Button({
+	Title = "แจ้งเตือนบทบาท (Notify Roles)",
+	Justify = "Center",
+	Icon = "solar:bell-bold",
+	IconAlign = "Left",
+	Size = "Medium",
+	Callback = function()
+		Functions.NotifyRoles()
+	end,
+})
+
+
+-- // Settings Tab \\ --
+local TabSettings = Window:Tab({
+	Title = "ตั้งค่า UI (Settings)",
+	Icon = "solar:settings-bold",
+})
+
+TabSettings:Section({
+	Title = "ปรับแต่งหน้าต่าง (UI Customization)",
+})
+
+-- Get all available themes
+local Themes = {}
+local ThemesModule = WindUI.Themes
+for _ThemeName, ThemeData in pairs(ThemesModule) do
+	table.insert(Themes, _ThemeName)
+end
+
+TabSettings:Dropdown({
+	Title = "เลือกธีม (Select Theme)",
+	Value = ThemeName,
+	Values = Themes,
+	Callback = function(value)
+		ThemeName = value
+		WindUI:SetTheme(ThemeName)
+	end,
+})
+
+TabSettings:Toggle({
+	Title = "หน้าต่างโปร่งใส (Transparent Background)",
+	Value = Window.Transparent,
+	Callback = function(v)
+		Window:ToggleTransparency(v)
+	end,
+})
+
+TabSettings:Space({ Columns = 1 })
+
+TabSettings:Button({
+	Title = "ปิดสคริปต์ (Unload Hub)",
+	Justify = "Center",
+	Icon = "solar:logout-3-bold",
+	IconAlign = "Left",
+	Size = "Small",
+	Callback = function()
+		Window:Destroy()
+	end,
+})
+
+TabMain:Select()
