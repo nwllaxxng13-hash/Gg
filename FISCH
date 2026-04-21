@@ -1,0 +1,837 @@
+--[[
+    Ark Hub - Fisch
+    ภาษาไทยเต็มรูปแบบ (Full Thai Language)
+    By Ark
+]]
+
+local cloneref = (cloneref or clonereference or function(instance)
+	return instance
+end)
+
+local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
+local RunService = cloneref(game:GetService("RunService"))
+local Players = cloneref(game:GetService("Players"))
+local UserInputService = cloneref(game:GetService("UserInputService"))
+local TweenService = cloneref(game:GetService("TweenService"))
+local Lighting = cloneref(game:GetService("Lighting"))
+local VirtualUser = cloneref(game:GetService("VirtualUser"))
+
+local LocalPlayer = Players.LocalPlayer
+
+-- Initialize WindUI
+local WindUI
+
+do
+	local ok, result = pcall(function()
+		return require("./src/Init")
+	end)
+
+	if ok then
+		WindUI = result
+	else
+		if RunService:IsStudio() or not writefile then
+			WindUI = require(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init"))
+		else
+			WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+		end
+	end
+end
+
+-- Window Configuration
+local ThemeName = "Dark"
+
+local Window = WindUI:CreateWindow({
+	Title = "Ark Hub - Fisch",
+	Author = "By Ark",
+	Icon = "solar:fish-bold",
+	Theme = ThemeName,
+	NewElements = true,
+	Transparent = true,
+	ToggleKey = Enum.KeyCode.End,
+	Acrylic = true,
+})
+
+local Tag = Window:Tag({
+	Title = "เวอร์ชั่น 1.0",
+	Color = "Text",
+})
+
+local TopbarButton1 = Window.Topbar:Button({
+	Name = "Console",
+	Icon = "sfsymbols:printerFill",
+	IconSize = 22,
+})
+
+-- Create Tabs
+local TabMain = Window:Tab({
+	Title = "หลัก",
+	Icon = "solar:home-bold",
+})
+
+local TabTeleports = Window:Tab({
+	Title = "วาร์ป",
+	Icon = "solar:map-point-bold",
+})
+
+local TabAutos = Window:Tab({
+	Title = "ออโต้",
+	Icon = "solar:play-circle-bold",
+})
+
+local TabMisc = Window:Tab({
+	Title = "อื่นๆ",
+	Icon = "solar:widget-bold",
+})
+
+local TabSettings = Window:Tab({
+	Title = "ตั้งค่า",
+	Icon = "solar:settings-bold",
+})
+
+TabMain:Select()
+
+-- Variables
+local CurrentTool
+local TeleportOrigin
+local camera = workspace.CurrentCamera
+
+local Toggles = {
+	EnableSpeedHack = false,
+	EnableFlight = false,
+	EnableInfiniteJump = false,
+	AutoCast = false,
+	PerfectCast = false,
+	InstantBob = false,
+	AutoReel = false,
+	InstantReel = false,
+	PerfectReel = false,
+	AutoShake = false,
+	CenterShake = false,
+	AntiAFK = false,
+	NoClip = false,
+	FullBright = false,
+	NoFog = false,
+	InfZoom = false,
+	SpamTool = false,
+}
+
+local Options = {
+	Speed = 100,
+	FlightSpeed = 150,
+}
+
+local infiniteJumpConnection = nil
+
+-- Utility Functions
+local function TP(CF)
+	if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+		LocalPlayer.Character.HumanoidRootPart.CFrame = CF
+	end
+end
+
+local function GetToggleValue(Name)
+	return Toggles[Name] or false
+end
+
+-- ==================== --
+-- MAIN TAB (หลัก)
+-- ==================== --
+
+TabMain:Section({
+	Title = "การเคลื่อนที่",
+	Desc = "ควบคุมการเดินและบิน",
+})
+
+TabMain:Space({ Columns = 2 })
+
+local WalkSpeedToggle = TabMain:Toggle({
+	Title = "เพิ่มความเร็วเดิน",
+	Value = false,
+	Callback = function(value)
+		Toggles.EnableSpeedHack = value
+		if value then
+			task.spawn(function()
+				local function initSpeedHack()
+					local character = LocalPlayer.Character
+					if character then
+						local hrp = character:FindFirstChild("HumanoidRootPart")
+						if hrp then
+							local bv = hrp:FindFirstChild("SpeedHackVelocity")
+							if not bv then
+								bv = Instance.new("BodyVelocity")
+								bv.Name = "SpeedHackVelocity"
+								bv.MaxForce = Vector3.new(1e5, 0, 1e5)
+								bv.Velocity = Vector3.new(0, 0, 0)
+								bv.Parent = hrp
+							end
+							return bv
+						end
+					end
+					return nil
+				end
+				
+				local bv = initSpeedHack()
+				while not bv and Toggles.EnableSpeedHack do
+					task.wait(0.1)
+					bv = initSpeedHack()
+				end
+				
+				while Toggles.EnableSpeedHack and LocalPlayer and LocalPlayer.Character do
+					local character = LocalPlayer.Character
+					local hrp = character and character:FindFirstChild("HumanoidRootPart")
+					if hrp then
+						camera = workspace.CurrentCamera
+						local moveDirection = Vector3.new(0, 0, 0)
+						
+						if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+							moveDirection = moveDirection + camera.CFrame.LookVector
+						end
+						if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+							moveDirection = moveDirection - camera.CFrame.LookVector
+						end
+						if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+							moveDirection = moveDirection - camera.CFrame.RightVector
+						end
+						if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+							moveDirection = moveDirection + camera.CFrame.RightVector
+						end
+						
+						if moveDirection.Magnitude > 0 then
+							moveDirection = moveDirection.Unit * Options.Speed
+						else
+							moveDirection = Vector3.new(0, 0, 0)
+						end
+						
+						if bv then
+							bv.Velocity = Vector3.new(moveDirection.X, 0, moveDirection.Z)
+						end
+					end
+					task.wait()
+				end
+				
+				if LocalPlayer and LocalPlayer.Character then
+					local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+					if hrp then
+						local oldBV = hrp:FindFirstChild("SpeedHackVelocity")
+						if oldBV then
+							oldBV:Destroy()
+						end
+					end
+				end
+			end)
+		end
+	end,
+})
+
+TabMain:Space({ Columns = 1 })
+
+TabMain:Section({
+	Title = "ความเร็วในการเดิน",
+	TextSize = 16,
+	FontWeight = Enum.FontWeight.SemiBold,
+})
+
+local SpeedSlider = TabMain:Slider({
+	Title = "ความเร็ว",
+	IsTooltip = true,
+	Step = 10,
+	Value = {
+		Min = 10,
+		Max = 300,
+		Default = 100,
+	},
+	Icons = {
+		From = "solar:walking-bold",
+		To = "solar:running-bold",
+	},
+	Callback = function(value)
+		Options.Speed = value
+	end,
+})
+
+TabMain:Space({ Columns = 1 })
+
+local FlightToggle = TabMain:Toggle({
+	Title = "โหมดบิน",
+	Value = false,
+	Callback = function(value)
+		Toggles.EnableFlight = value
+		if value then
+			task.spawn(function()
+				while Toggles.EnableFlight do
+					local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+					local hrp = character and character:FindFirstChild("HumanoidRootPart")
+					if hrp then
+						camera = workspace.CurrentCamera
+						local moveDirection = Vector3.new(0, 0, 0)
+						
+						if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+							moveDirection = moveDirection + camera.CFrame.LookVector
+						end
+						if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+							moveDirection = moveDirection - camera.CFrame.LookVector
+						end
+						if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+							moveDirection = moveDirection - camera.CFrame.RightVector
+						end
+						if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+							moveDirection = moveDirection + camera.CFrame.RightVector
+						end
+						if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+							moveDirection = moveDirection + camera.CFrame.UpVector
+						end
+						if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+							moveDirection = moveDirection - camera.CFrame.UpVector
+						end
+						
+						if moveDirection.Magnitude > 0 then
+							moveDirection = moveDirection.Unit * Options.FlightSpeed
+						else
+							moveDirection = Vector3.new(0, 0, 0)
+						end
+						
+						hrp.Velocity = moveDirection
+					end
+					task.wait()
+				end
+			end)
+		else
+			if LocalPlayer and LocalPlayer.Character then
+				local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+				if hrp then
+					hrp.Velocity = Vector3.new(0, 0, 0)
+				end
+			end
+		end
+	end,
+})
+
+TabMain:Space({ Columns = 1 })
+
+TabMain:Section({
+	Title = "ความเร็วการบิน",
+	TextSize = 16,
+	FontWeight = Enum.FontWeight.SemiBold,
+})
+
+local FlightSpeedSlider = TabMain:Slider({
+	Title = "ความเร็วบิน",
+	IsTooltip = true,
+	Step = 10,
+	Value = {
+		Min = 10,
+		Max = 500,
+		Default = 150,
+	},
+	Icons = {
+		From = "solar:windsock-bold",
+		To = "solar:rocket-bold",
+	},
+	Callback = function(value)
+		Options.FlightSpeed = value
+	end,
+})
+
+TabMain:Space({ Columns = 1 })
+
+local InfiniteJumpToggle = TabMain:Toggle({
+	Title = "กระโดดไม่จำกัด",
+	Value = false,
+	Callback = function(value)
+		Toggles.EnableInfiniteJump = value
+		if value then
+			if infiniteJumpConnection then
+				infiniteJumpConnection:Disconnect()
+			end
+			infiniteJumpConnection = UserInputService.JumpRequest:Connect(function()
+				if Toggles.EnableInfiniteJump and LocalPlayer.Character then
+					local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+					if humanoid then
+						humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+					end
+				end
+			end)
+		else
+			if infiniteJumpConnection then
+				infiniteJumpConnection:Disconnect()
+				infiniteJumpConnection = nil
+			end
+		end
+	end,
+})
+
+-- ==================== --
+-- AUTOS TAB (ออโต้)
+-- ==================== --
+
+TabAutos:Section({
+	Title = "การโยนเบ็ด",
+	Desc = "ฟีเจอร์โยนเบ็ดอัตโนมัติ",
+})
+
+TabAutos:Space({ Columns = 2 })
+
+local Group1 = TabAutos:Group()
+
+Group1:Toggle({
+	Title = "โยนเบ็ดอัตโนมัติ",
+	Value = false,
+	Callback = function(value)
+		Toggles.AutoCast = value
+	end,
+})
+
+Group1:Space({ Columns = 0.5 })
+
+Group1:Toggle({
+	Title = "โยนเบ็ดสมบูรณ์แบบ",
+	Value = false,
+	Callback = function(value)
+		Toggles.PerfectCast = value
+	end,
+})
+
+TabAutos:Space({ Columns = 1 })
+
+local InstantBobToggle = TabAutos:Toggle({
+	Title = "ทุ่นตกน้ำทันที [เห็นได้ชัด]",
+	Value = false,
+	Callback = function(value)
+		Toggles.InstantBob = value
+	end,
+})
+
+TabAutos:Space({ Columns = 1 })
+
+TabAutos:Section({
+	Title = "การดึงเบ็ด",
+	Desc = "ฟีเจอร์ดึงเบ็ดอัตโนมัติ",
+})
+
+TabAutos:Space({ Columns = 2 })
+
+local Group2 = TabAutos:Group()
+
+Group2:Toggle({
+	Title = "ดึงเบ็ดอัตโนมัติ [ธรรมดา]",
+	Value = false,
+	Callback = function(value)
+		Toggles.AutoReel = value
+		if value then
+			Toggles.InstantReel = false
+		end
+	end,
+})
+
+Group2:Space({ Columns = 0.5 })
+
+Group2:Toggle({
+	Title = "ดึงเบ็ดทันที [เห็นได้ชัด]",
+	Value = false,
+	Callback = function(value)
+		Toggles.InstantReel = value
+		if value then
+			Toggles.AutoReel = false
+		end
+	end,
+})
+
+TabAutos:Space({ Columns = 1 })
+
+local PerfectReelToggle = TabAutos:Toggle({
+	Title = "ดึงเบ็ดสมบูรณ์แบบ",
+	Value = false,
+	Callback = function(value)
+		Toggles.PerfectReel = value
+	end,
+})
+
+TabAutos:Space({ Columns = 1 })
+
+TabAutos:Section({
+	Title = "การเขย่าเบ็ด",
+	Desc = "ฟีเจอร์เขย่าเบ็ดอัตโนมัติ",
+})
+
+TabAutos:Space({ Columns = 2 })
+
+local Group3 = TabAutos:Group()
+
+Group3:Toggle({
+	Title = "เขย่าเบ็ดอัตโนมัติ",
+	Value = false,
+	Callback = function(value)
+		Toggles.AutoShake = value
+	end,
+})
+
+Group3:Space({ Columns = 0.5 })
+
+Group3:Toggle({
+	Title = "จัดกลางหน้าจอ [ปรับปรุง]",
+	Value = false,
+	Callback = function(value)
+		Toggles.CenterShake = value
+	end,
+})
+
+-- ==================== --
+-- TELEPORTS TAB (วาร์ป)
+-- ==================== --
+
+TabTeleports:Section({
+	Title = "วาร์ปสถานที่",
+	Desc = "เทเลพอร์ตไปยังสถานที่ต่างๆ",
+})
+
+TabTeleports:Space({ Columns = 2 })
+
+local TeleportLocations = {
+	["เกาะเริ่มต้น"] = CFrame.new(0, 50, 0),
+	["ท่าเรือ"] = CFrame.new(100, 50, 100),
+	["ป่าไม้"] = CFrame.new(-200, 50, 200),
+	["ชายหาด"] = CFrame.new(300, 50, -150),
+	["ถ้ำ"] = CFrame.new(-400, 20, -300),
+}
+
+local TeleportDropdownValues = {}
+for location, _ in pairs(TeleportLocations) do
+	table.insert(TeleportDropdownValues, location)
+end
+table.sort(TeleportDropdownValues)
+
+local SelectedTeleport = TeleportDropdownValues[1]
+
+TabTeleports:Dropdown({
+	Title = "เลือกสถานที่",
+	Value = SelectedTeleport,
+	Values = TeleportDropdownValues,
+	Callback = function(value)
+		SelectedTeleport = value
+	end,
+})
+
+TabTeleports:Space({ Columns = 1 })
+
+local Group4 = TabTeleports:Group()
+
+Group4:Button({
+	Title = "เทเลพอร์ต",
+	Justify = "Center",
+	Icon = "solar:map-arrow-right-bold",
+	IconAlign = "Left",
+	Size = "Medium",
+	Callback = function()
+		local position = TeleportLocations[SelectedTeleport]
+		if position then
+			TeleportOrigin = LocalPlayer.Character:GetPivot()
+			TP(position)
+			WindUI:Notify({
+				Title = "เทเลพอร์ต",
+				Content = "เทเลพอร์ตไปยัง " .. SelectedTeleport,
+			})
+		end
+	end,
+})
+
+Group4:Space({ Columns = 0.5 })
+
+Group4:Button({
+	Title = "กลับตำแหน่งเดิม",
+	Justify = "Center",
+	Icon = "solar:undo-left-round-bold",
+	IconAlign = "Left",
+	Size = "Medium",
+	Callback = function()
+		if TeleportOrigin then
+			TP(TeleportOrigin)
+			WindUI:Notify({
+				Title = "กลับตำแหน่งเดิม",
+				Content = "กลับไปยังตำแหน่งเดิมแล้ว",
+			})
+		else
+			WindUI:Notify({
+				Title = "ข้อผิดพลาด",
+				Content = "ไม่มีตำแหน่งเดิมที่บันทึกไว้",
+			})
+		end
+	end,
+})
+
+-- ==================== --
+-- MISC TAB (อื่นๆ)
+-- ==================== --
+
+TabMisc:Section({
+	Title = "ฟีเจอร์ทั่วไป",
+	Desc = "ฟีเจอร์เสริมต่างๆ",
+})
+
+TabMisc:Space({ Columns = 2 })
+
+local AntiAFKToggle = TabMisc:Toggle({
+	Title = "ป้องกันถูกเตะ (Anti-AFK)",
+	Value = false,
+	Callback = function(value)
+		Toggles.AntiAFK = value
+	end,
+})
+
+TabMisc:Space({ Columns = 0.5 })
+
+local NoClipToggle = TabMisc:Toggle({
+	Title = "เดินทะลุกำแพง (NoClip)",
+	Value = false,
+	Callback = function(value)
+		Toggles.NoClip = value
+	end,
+})
+
+TabMisc:Space({ Columns = 1 })
+
+TabMisc:Section({
+	Title = "การมองเห็น",
+	Desc = "ปรับแต่งการมองเห็น",
+})
+
+TabMisc:Space({ Columns = 2 })
+
+local FullBrightToggle = TabMisc:Toggle({
+	Title = "สว่างเต็มที่",
+	Value = false,
+	Callback = function(value)
+		Toggles.FullBright = value
+		if value then
+			Lighting.Brightness = 2
+			Lighting.ClockTime = 14
+			Lighting.FogEnd = 100000
+			Lighting.GlobalShadows = false
+			Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+		else
+			Lighting.Brightness = 1
+			Lighting.ClockTime = 12
+			Lighting.FogEnd = 100000
+			Lighting.GlobalShadows = true
+			Lighting.OutdoorAmbient = Color3.fromRGB(70, 70, 70)
+		end
+	end,
+})
+
+TabMisc:Space({ Columns = 0.5 })
+
+local NoFogToggle = TabMisc:Toggle({
+	Title = "ปิดหมอก",
+	Value = false,
+	Callback = function(value)
+		Toggles.NoFog = value
+		if value then
+			Lighting.FogEnd = 100000
+		else
+			Lighting.FogEnd = 10000
+		end
+	end,
+})
+
+TabMisc:Space({ Columns = 1 })
+
+local InfZoomToggle = TabMisc:Toggle({
+	Title = "ซูมไม่จำกัด",
+	Value = false,
+	Callback = function(value)
+		Toggles.InfZoom = value
+		if value then
+			LocalPlayer.CameraMaxZoomDistance = 9999
+		else
+			LocalPlayer.CameraMaxZoomDistance = 128
+		end
+	end,
+})
+
+TabMisc:Space({ Columns = 1 })
+
+TabMisc:Section({
+	Title = "เครื่องมือ",
+	Desc = "ฟีเจอร์เครื่องมือ",
+})
+
+TabMisc:Space({ Columns = 2 })
+
+local SpamToolToggle = TabMisc:Toggle({
+	Title = "ใช้เครื่องมือซ้ำ",
+	Value = false,
+	Callback = function(value)
+		Toggles.SpamTool = value
+	end,
+})
+
+-- ==================== --
+-- SETTINGS TAB (ตั้งค่า)
+-- ==================== --
+
+TabSettings:Section({
+	Title = "ธีมและการตั้งค่า",
+	Desc = "ปรับแต่งธีมและการตั้งค่าของคุณ",
+})
+
+TabSettings:Space({ Columns = 2 })
+
+-- Get all available themes
+local Themes = {}
+local ThemesModule = WindUI.Themes
+for themeName, themeData in pairs(ThemesModule) do
+	table.insert(Themes, themeName)
+end
+
+local CachedPRData = {}
+local Remote = ReplicatedStorage:FindFirstChild("GetPullRequestData")
+
+TabSettings:Dropdown({
+	Title = "เลือกธีม",
+	Value = ThemeName,
+	Values = Themes,
+	Callback = function(value)
+		ThemeName = value
+		Window:SetTitle("Ark Hub - Fisch (" .. ThemeName .. ")")
+		WindUI:SetTheme(ThemeName)
+		WindUI:Notify({
+			Title = "เปลี่ยนธีม",
+			Content = "ใช้ธีม " .. ThemeName .. " แล้ว",
+		})
+		
+		if Remote then
+			local PRNumber = WindUI.Themes[ThemeName]
+				and WindUI.Themes[ThemeName].Metadata
+				and WindUI.Themes[ThemeName].Metadata.PullRequest
+			
+			if PRNumber then
+				Window:SetAuthor("กำลังโหลด...")
+				if not CachedPRData[PRNumber] then
+					local Success, Data = pcall(function()
+						return Remote:InvokeServer("Footagesus", "WindUI", PRNumber)
+					end)
+					
+					if Success and Data and Data.html_url then
+						CachedPRData[PRNumber] = Data
+						Window:SetAuthor(
+							"โดย " .. Data.user.login
+						)
+					end
+				else
+					local Data = CachedPRData[PRNumber]
+					Window:SetAuthor(
+						"โดย " .. Data.user.login
+					)
+				end
+			else
+				Window:SetAuthor("By Ark")
+			end
+		end
+	end,
+})
+
+TabSettings:Space({ Columns = 0.5 })
+
+local TransparencyToggle = TabSettings:Toggle({
+	Title = "เปิด/ปิดความโปร่งใส",
+	Value = Window.Transparent,
+	Callback = function(value)
+		Window:ToggleTransparency(value)
+	end,
+})
+
+TabSettings:Space({ Columns = 1 })
+
+TabSettings:Section({
+	Title = "การควบคุมหน้าต่าง",
+	TextSize = 16,
+	FontWeight = Enum.FontWeight.SemiBold,
+})
+
+TabSettings:Space({ Columns = 2 })
+
+local UnloadButton = TabSettings:Button({
+	Title = "ปิดสคริปต์",
+	Justify = "Center",
+	Icon = "solar:logout-3-bold",
+	IconAlign = "Left",
+	Size = "Medium",
+	Callback = function()
+		Window:Destroy()
+		WindUI:Notify({
+			Title = "ปิดสคริปต์",
+			Content = "สคริปต์ถูกปิดแล้ว",
+		})
+	end,
+})
+
+-- ==================== --
+-- CONNECTIONS & LOOPS
+-- ==================== --
+
+-- Anti-AFK Connection
+LocalPlayer.Idled:Connect(function()
+	if GetToggleValue("AntiAFK") then
+		VirtualUser:CaptureController()
+		VirtualUser:ClickButton2(Vector2.new())
+	end
+end)
+
+-- NoClip Loop
+RunService.Stepped:Connect(function()
+	if GetToggleValue("NoClip") then
+		for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = false
+			end
+		end
+	end
+end)
+
+-- Tool Spam Loop
+RunService.RenderStepped:Connect(function()
+	if GetToggleValue("SpamTool") then
+		if CurrentTool then
+			for i = 20, 1, -1 do
+				CurrentTool:Activate()
+			end
+		end
+	end
+end)
+
+-- Track Current Tool
+LocalPlayer.Character.ChildAdded:Connect(function(child)
+	if child:IsA("Tool") then
+		CurrentTool = child
+	end
+end)
+
+LocalPlayer.Character.ChildRemoved:Connect(function(child)
+	if child:IsA("Tool") and child == CurrentTool then
+		CurrentTool = nil
+	end
+end)
+
+-- Character Added
+LocalPlayer.CharacterAdded:Connect(function(character)
+	task.wait(0.5)
+	CurrentTool = nil
+end)
+
+-- Initial Setup
+if LocalPlayer.Character then
+	for _, child in pairs(LocalPlayer.Character:GetChildren()) do
+		if child:IsA("Tool") then
+			CurrentTool = child
+			break
+		end
+	end
+end
+
+print("✅ Ark Hub - Fisch โหลดสำเร็จ!")
+print("🎣 พิมพ์ภาษาไทยเต็มรูปแบบ")
+print("🌟 กด " .. tostring(Window.ToggleKey.Name) .. " เพื่อเปิด/ปิดเมนู")
+
+WindUI:Notify({
+	Title = "Ark Hub",
+	Content = "โหลดสคริปต์สำเร็จ! ยินดีต้อนรับ",
+})
