@@ -1,7 +1,7 @@
 --[[
-    Auto Farm Beam (Multi-Kaiju) - V1, V2, V3, Auto Hop & Auto Save Config
+    Auto Farm Beam (Multi-Kaiju) - V1, V2, V3, V4, Auto Hop & Auto Save Config
     Written by Fox for Jack
-    FIXED: V1 Warp -40 studs + Hook Beam to target + Smart Auto Hop V2 + Admin Detection (Username)
+    FIXED: V1 Warp -40 studs + Hook Beam to target + Smart Auto Hop V2 + Admin Detection + V4 Skip Dead Targets
 ]]
 
 local Players = game:GetService("Players")
@@ -52,6 +52,7 @@ local BeamRemote = Remotes:WaitForChild("BeamRemote")
 local FarmingV1Enabled = false
 local FarmingV2Enabled = false
 local FarmingV3Enabled = false
+local FarmingV4Enabled = false
 local AutoHopEnabled = false
 local AutoHopV2Enabled = false
 
@@ -64,6 +65,7 @@ local LastHopTime = 0
 local LastValidPosition = nil
 local AirStuckCounter = 0
 local KaijuName = "Biollante"
+local KilledTargets = {} -- V4: Track killed targets
 
 -- ==========================================
 -- CONFIG SYSTEM (AUTO SAVE/LOAD)
@@ -77,6 +79,7 @@ local function SaveConfig()
                 V1 = FarmingV1Enabled,
                 V2 = FarmingV2Enabled,
                 V3 = FarmingV3Enabled,
+                V4 = FarmingV4Enabled,
                 Hop = AutoHopEnabled,
                 HopV2 = AutoHopV2Enabled,
                 KaijuName = KaijuName
@@ -94,6 +97,7 @@ local function LoadConfig()
                 FarmingV1Enabled = decoded.V1 or false
                 FarmingV2Enabled = decoded.V2 or false
                 FarmingV3Enabled = decoded.V3 or false
+                FarmingV4Enabled = decoded.V4 or false
                 AutoHopEnabled = decoded.Hop or false
                 AutoHopV2Enabled = decoded.HopV2 or false
                 KaijuName = decoded.KaijuName or "Biollante"
@@ -114,6 +118,7 @@ local function ResetAllState()
     LastHopTime = tick()
     LastValidPosition = nil
     AirStuckCounter = 0
+    KilledTargets = {}
 end
 
 -- ==========================================
@@ -252,6 +257,41 @@ local function GetAllValidPlayers()
     return validTargets
 end
 
+-- V4: Get valid players excluding killed targets
+local function GetAllValidPlayersV4()
+    local validTargets = {}
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= L and IsTargetValid(p) and not KilledTargets[p.Name] then
+            table.insert(validTargets, p)
+        end
+    end
+    return validTargets
+end
+
+-- V4: Get nearest player excluding killed targets
+local function GetNearestPlayerV4()
+    local myChar = L.Character
+    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if not myHRP or not myHRP.Parent then return nil end
+
+    local nearest = nil
+    local minDist = math.huge
+
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= L and IsTargetValid(p) and not KilledTargets[p.Name] then
+            local enemyHRP = p.Character.HumanoidRootPart
+            if enemyHRP and enemyHRP.Parent then
+                local dist = (enemyHRP.Position - myHRP.Position).Magnitude
+                if dist < minDist then
+                    minDist = dist
+                    nearest = p
+                end
+            end
+        end
+    end
+    return nearest
+end
+
 -- ==========================================
 -- AUTO HOP LOGIC (V1 - 3 MIN)
 -- ==========================================
@@ -337,7 +377,7 @@ screenGui.Name = "FoxKaijuUI"
 screenGui.Parent = CoreGui
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 250, 0, 290)
+frame.Size = UDim2.new(0, 250, 0, 340)
 frame.Position = UDim2.new(0.5, -125, 0.2, 0)
 frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 frame.BorderSizePixel = 2
@@ -400,11 +440,13 @@ end
 local toggleV1Btn = createToggle("V1Btn", 70, "FARM V1 (WARP -40): OFF")
 local toggleV2Btn = createToggle("V2Btn", 105, "FARM V2 (RAPID): OFF")
 local toggleV3Btn = createToggle("V3Btn", 140, "FARM V3 (0-STUD LOCK): OFF")
-local toggleHopBtn = createToggle("HopBtn", 175, "AUTO HOP V1 (3 MIN): OFF")
-local toggleHopV2Btn = createToggle("HopV2Btn", 210, "AUTO HOP V2 (2 MIN): OFF")
+local toggleV4Btn = createToggle("V4Btn", 175, "FARM V4 (SKIP DEAD): OFF")
+local toggleHopBtn = createToggle("HopBtn", 210, "AUTO HOP V1 (3 MIN): OFF")
+local toggleHopV2Btn = createToggle("HopV2Btn", 245, "AUTO HOP V2 (2 MIN): OFF")
 
 toggleHopBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 20)
 toggleHopV2Btn.BackgroundColor3 = Color3.fromRGB(30, 25, 15)
+toggleV4Btn.BackgroundColor3 = Color3.fromRGB(25, 30, 35)
 
 -- Drag Logic
 local dragging, dragInput, dragStart, startPos
@@ -440,6 +482,9 @@ local function UpdateUI()
 
     toggleV3Btn.Text = FarmingV3Enabled and "FARM V3 (0-STUD LOCK): ON" or "FARM V3 (0-STUD LOCK): OFF"
     toggleV3Btn.TextColor3 = FarmingV3Enabled and Color3.fromRGB(255, 255, 50) or Color3.fromRGB(255, 50, 50)
+
+    toggleV4Btn.Text = FarmingV4Enabled and "FARM V4 (SKIP DEAD): ON" or "FARM V4 (SKIP DEAD): OFF"
+    toggleV4Btn.TextColor3 = FarmingV4Enabled and Color3.fromRGB(100, 150, 200) or Color3.fromRGB(255, 50, 50)
     
     toggleHopBtn.Text = AutoHopEnabled and "AUTO HOP V1 (3 MIN): ON" or "AUTO HOP V1 (3 MIN): OFF"
     toggleHopBtn.TextColor3 = AutoHopEnabled and Color3.fromRGB(255, 150, 50) or Color3.fromRGB(255, 50, 50)
@@ -447,9 +492,9 @@ local function UpdateUI()
     toggleHopV2Btn.Text = AutoHopV2Enabled and "AUTO HOP V2 (2 MIN): ON" or "AUTO HOP V2 (2 MIN): OFF"
     toggleHopV2Btn.TextColor3 = AutoHopV2Enabled and Color3.fromRGB(100, 200, 100) or Color3.fromRGB(255, 50, 50)
 
-    if not (FarmingV1Enabled or FarmingV3Enabled) then CurrentTarget = nil end
+    if not (FarmingV1Enabled or FarmingV3Enabled or FarmingV4Enabled) then CurrentTarget = nil end
 
-    if FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled then
+    if FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled then
         frame.BorderColor3 = Color3.fromRGB(50, 255, 50)
     else
         frame.BorderColor3 = Color3.fromRGB(0, 255, 255)
@@ -461,21 +506,28 @@ UpdateUI()
 -- Toggle Actions (Mutually Exclusive for Farms + Save)
 toggleV1Btn.MouseButton1Click:Connect(function()
     FarmingV1Enabled = not FarmingV1Enabled
-    if FarmingV1Enabled then FarmingV2Enabled = false; FarmingV3Enabled = false end
+    if FarmingV1Enabled then FarmingV2Enabled = false; FarmingV3Enabled = false; FarmingV4Enabled = false end
     UpdateUI()
     SaveConfig()
 end)
 
 toggleV2Btn.MouseButton1Click:Connect(function()
     FarmingV2Enabled = not FarmingV2Enabled
-    if FarmingV2Enabled then FarmingV1Enabled = false; FarmingV3Enabled = false end
+    if FarmingV2Enabled then FarmingV1Enabled = false; FarmingV3Enabled = false; FarmingV4Enabled = false end
     UpdateUI()
     SaveConfig()
 end)
 
 toggleV3Btn.MouseButton1Click:Connect(function()
     FarmingV3Enabled = not FarmingV3Enabled
-    if FarmingV3Enabled then FarmingV1Enabled = false; FarmingV2Enabled = false end
+    if FarmingV3Enabled then FarmingV1Enabled = false; FarmingV2Enabled = false; FarmingV4Enabled = false end
+    UpdateUI()
+    SaveConfig()
+end)
+
+toggleV4Btn.MouseButton1Click:Connect(function()
+    FarmingV4Enabled = not FarmingV4Enabled
+    if FarmingV4Enabled then FarmingV1Enabled = false; FarmingV2Enabled = false; FarmingV3Enabled = false end
     UpdateUI()
     SaveConfig()
 end)
@@ -513,7 +565,7 @@ end)
 -- Air Stuck Detection Loop (Every frame)
 task.spawn(function()
     while true do
-        if FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled then
+        if FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled then
             CheckAndFixAirStuck()
         end
         task.wait(0.1)
@@ -555,7 +607,7 @@ end)
 -- Base Utility Loop: Spawn & Auto Stat (Dynamic Kaiju name)
 task.spawn(function()
     while true do
-        if (FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled) and InitialSpawnDone and (tick() - LastHopTime) > 2 then
+        if (FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled) and InitialSpawnDone and (tick() - LastHopTime) > 2 then
             pcall(function()
                 local spawnArgs = {
                     "Spawn",
@@ -699,6 +751,65 @@ task.spawn(function()
                             myHRP.CFrame = targetHRP.CFrame
                             myHRP.AssemblyLinearVelocity = Vector3.zero
                             myHRP.AssemblyAngularVelocity = Vector3.zero
+                        else
+                            CurrentTarget = nil
+                        end
+                    else
+                        CurrentTarget = nil
+                    end
+                end
+            end
+        end
+        task.wait(0.1)
+    end
+end)
+
+-- V4 0-Stud Lock Target & Attack Loop (Skip Killed Targets) - (Every 0.1s)
+task.spawn(function()
+    while true do
+        if FarmingV4Enabled and InitialSpawnDone and (tick() - LastHopTime) > 2 then
+            local myChar = L.Character
+            local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            
+            if myHRP and myHRP.Parent then
+                pcall(function()
+                    CombatRemote:FireServer("UseSkill", "Attack1")
+                    CombatRemote:FireServer("UseSkill", "Attack2")
+                    CombatRemote:FireServer("UseSkill", "Attack3")
+                end)
+
+                -- Check if current target is still valid (alive and not killed)
+                if not IsTargetValid(CurrentTarget) or KilledTargets[CurrentTarget.Name] then
+                    CurrentTarget = nil
+                end
+                
+                -- Find new target if needed
+                if not CurrentTarget then
+                    CurrentTarget = GetNearestPlayerV4()
+                end
+
+                -- If all players are killed, hop server
+                local validTargets = GetAllValidPlayersV4()
+                if #validTargets == 0 then
+                    ServerHopV2Smart()
+                    task.wait(5)
+                end
+
+                if CurrentTarget then
+                    local targetChar = CurrentTarget.Character
+                    if targetChar and targetChar.Parent then
+                        local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+                        local targetHum = targetChar:FindFirstChild("Humanoid")
+                        if targetHRP and targetHRP.Parent then
+                            -- Mark target as killed if health is 0
+                            if targetHum and targetHum.Health <= 0 then
+                                KilledTargets[CurrentTarget.Name] = true
+                                CurrentTarget = nil
+                            else
+                                myHRP.CFrame = targetHRP.CFrame
+                                myHRP.AssemblyLinearVelocity = Vector3.zero
+                                myHRP.AssemblyAngularVelocity = Vector3.zero
+                            end
                         else
                             CurrentTarget = nil
                         end
