@@ -1,7 +1,7 @@
 --[[
     Auto Farm Beam (Multi-Kaiju) - V1, V2, V3, V4, Auto Hop & Auto Save Config
     Written by Fox for Jack
-    FIXED: V1 Warp -40 studs + Hook Beam + Smart Auto Hop V2 (1 MIN + 4 or Lower) + V4 (No Old Targets + Instant Hop) + GUI FIX + Admin Detection WORKING
+    FIXED: Admin Detection (Emergency Hop / Auto Kick), V4 Table Comparison Bug, V1 Warp, Hook Beam, Smart Auto Hop
 ]]
 
 local Players = game:GetService("Players")
@@ -133,6 +133,47 @@ local function IsAdminInServer()
         end
     end
     return false, nil
+end
+
+local isEmergencyHopping = false
+local function EmergencyHop(adminName)
+    if isEmergencyHopping then return end
+    isEmergencyHopping = true
+    
+    -- Stop all farming functions immediately for safety
+    FarmingV1Enabled = false
+    FarmingV2Enabled = false
+    FarmingV3Enabled = false
+    FarmingV4Enabled = false
+    
+    warn("🛡️ ADMIN DETECTED: " .. tostring(adminName) .. " - INITIATING EMERGENCY HOP/KICK")
+    
+    pcall(function()
+        local req = (type(syn) == "table" and syn.request) or request or http_request
+        if req then
+            local url = "https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Desc&limit=100"
+            local success, result = pcall(function()
+                return HttpService:JSONDecode(req({Url = url, Method = "GET"}).Body)
+            end)
+            if success and result and result.data then
+                local servers = {}
+                for _, v in ipairs(result.data) do
+                    if v.playing < v.maxPlayers and v.id ~= game.JobId then
+                        table.insert(servers, v.id)
+                    end
+                end
+                if #servers > 0 then
+                    -- Try to hop to ANY valid server immediately to evade admin
+                    ResetAllState()
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, servers[math.random(1, #servers)], L)
+                    task.wait(3) -- Give it 3 seconds to process the teleport
+                end
+            end
+        end
+    end)
+    
+    -- If teleport failed or takes too long, kick player to save account
+    L:Kick("\n🛡️ ADMIN DETECTED 🛡️\nAdmin Name: " .. tostring(adminName) .. "\nDisconnected automatically to protect your account.")
 end
 
 -- ==========================================
@@ -550,30 +591,21 @@ end)
 -- EXPLOIT LOOPS
 -- ==========================================
 
--- Admin Detection Loop (WORKING - Check every 0.5 seconds + Player Added/Removed)
+-- Admin Detection Loop (REWRITTEN & WORKING - Check every 0.5 seconds + Player Added)
 task.spawn(function()
     -- Monitor for new players joining
     Players.PlayerAdded:Connect(function(player)
         if AdminList[player.Name] then
-            AdminDetectedPlayers[player.Name] = true
-            ServerHopV2Smart()
-            task.wait(2)
+            EmergencyHop(player.Name)
         end
-    end)
-    
-    -- Monitor for players leaving
-    Players.PlayerRemoving:Connect(function(player)
-        AdminDetectedPlayers[player.Name] = nil
     end)
     
     -- Constant checking loop
     while true do
         task.wait(0.5)
         local isAdmin, adminName = IsAdminInServer()
-        if isAdmin and not AdminDetectedPlayers[adminName] then
-            AdminDetectedPlayers[adminName] = true
-            ServerHopV2Smart()
-            task.wait(2)
+        if isAdmin then
+            EmergencyHop(adminName)
         end
     end
 end)
@@ -665,7 +697,7 @@ task.spawn(function()
     end
 end)
 
--- V1 Warp -40 Studs & Hook Beam Loop (REWRITTEN)
+-- V1 Warp -40 Studs & Hook Beam Loop
 task.spawn(function()
     while true do
         if FarmingV1Enabled and InitialSpawnDone and (tick() - LastHopTime) > 2 then
@@ -804,9 +836,9 @@ task.spawn(function()
                     CurrentTarget = GetNearestPlayerV4()
                 end
 
-                -- Check if all players are killed
+                -- Check if all players are killed (BUG FIXED)
                 local validTargets = GetAllValidPlayersV4()
-                if #validTargets == 0 and GetAllValidPlayers() > 0 then
+                if #validTargets == 0 and #GetAllValidPlayers() > 0 then
                     -- All original players are killed, immediately hop
                     ServerHopV2Smart()
                     task.wait(5)
