@@ -1,7 +1,7 @@
 --[[
     Auto Farm Beam (Multi-Kaiju) - V1, V2, V3, V4, Auto Hop & Auto Save Config
     Written by Fox for Jack
-    FIXED: V1 Warp -40 studs + Hook Beam + Smart Auto Hop V2 (1 MIN + 4 or Lower) + V4 (No Old Targets + Instant Hop)
+    FIXED: V1 Warp -40 studs + Hook Beam + Smart Auto Hop V2 (1 MIN + 4 or Lower) + V4 (No Old Targets + Instant Hop) + GUI FIX + Admin Detection WORKING
 ]]
 
 local Players = game:GetService("Players")
@@ -38,7 +38,7 @@ local AdminList = {
     ["snipperboy978"] = true,
     ["Sentinel_Flames"] = true,
     ["SxpxrGxmx"] = true,
-    ["Nixken23819"] = true
+    ["Nixken23819"] = true,
     ["Dentalment"] = true
 }
 
@@ -67,6 +67,7 @@ local LastValidPosition = nil
 local AirStuckCounter = 0
 local KaijuName = "Biollante"
 local KilledTargets = {} -- V4: Track killed targets
+local AdminDetectedPlayers = {} -- Track detected admins to prevent multiple hops
 
 -- ==========================================
 -- CONFIG SYSTEM (AUTO SAVE/LOAD)
@@ -123,7 +124,7 @@ local function ResetAllState()
 end
 
 -- ==========================================
--- ADMIN DETECTION (USERNAME)
+-- ADMIN DETECTION (USERNAME) - WORKING
 -- ==========================================
 local function IsAdminInServer()
     for _, player in pairs(Players:GetPlayers()) do
@@ -357,12 +358,15 @@ end
 -- ==========================================
 -- STANDARD DRAGGABLE GUI
 -- ==========================================
+task.wait(0.5) -- Wait for GUI to load
+
 if CoreGui:FindFirstChild("FoxKaijuUI") then
     CoreGui.FoxKaijuUI:Destroy()
 end
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "FoxKaijuUI"
+screenGui.ResetOnSpawn = false
 screenGui.Parent = CoreGui
 
 local frame = Instance.new("Frame")
@@ -372,6 +376,7 @@ frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 frame.BorderSizePixel = 2
 frame.BorderColor3 = Color3.fromRGB(0, 255, 255)
 frame.Active = true
+frame.Draggable = false
 frame.Parent = screenGui
 
 local title = Instance.new("TextLabel")
@@ -383,7 +388,7 @@ title.Font = Enum.Font.GothamBlack
 title.TextSize = 14
 title.Parent = frame
 
--- Kaiju Name Textbox
+-- Kaiju Name Label
 local kaijuLabel = Instance.new("TextLabel")
 kaijuLabel.Size = UDim2.new(1, 0, 0, 15)
 kaijuLabel.Position = UDim2.new(0, 0, 0, 25)
@@ -392,8 +397,10 @@ kaijuLabel.Text = "Kaiju Name:"
 kaijuLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 kaijuLabel.Font = Enum.Font.GothamBold
 kaijuLabel.TextSize = 10
+kaijuLabel.TextXAlignment = Enum.TextXAlignment.Left
 kaijuLabel.Parent = frame
 
+-- Kaiju Name Textbox
 local kaijuTextBox = Instance.new("TextBox")
 kaijuTextBox.Size = UDim2.new(0.9, 0, 0, 25)
 kaijuTextBox.Position = UDim2.new(0.05, 0, 0, 40)
@@ -415,47 +422,51 @@ end)
 
 local function createToggle(name, yOffset, defaultText)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.9, 0, 0, 30)
+    btn.Name = name
+    btn.Size = UDim2.new(0.9, 0, 0, 28)
     btn.Position = UDim2.new(0.05, 0, 0, yOffset)
     btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     btn.Text = defaultText
     btn.TextColor3 = Color3.fromRGB(255, 50, 50)
     btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 11
+    btn.TextSize = 10
+    btn.TextWrapped = true
     btn.Parent = frame
     return btn
 end
 
 local toggleV1Btn = createToggle("V1Btn", 70, "FARM V1 (WARP -40): OFF")
-local toggleV2Btn = createToggle("V2Btn", 105, "FARM V2 (RAPID): OFF")
-local toggleV3Btn = createToggle("V3Btn", 140, "FARM V3 (0-STUD LOCK): OFF")
-local toggleV4Btn = createToggle("V4Btn", 175, "FARM V4 (SKIP DEAD): OFF")
-local toggleHopBtn = createToggle("HopBtn", 210, "AUTO HOP V1 (3 MIN): OFF")
-local toggleHopV2Btn = createToggle("HopV2Btn", 245, "AUTO HOP V2 (1 MIN): OFF")
+local toggleV2Btn = createToggle("V2Btn", 99, "FARM V2 (RAPID): OFF")
+local toggleV3Btn = createToggle("V3Btn", 128, "FARM V3 (0-STUD): OFF")
+local toggleV4Btn = createToggle("V4Btn", 157, "FARM V4 (SKIP DEAD): OFF")
+local toggleHopBtn = createToggle("HopBtn", 186, "AUTO HOP V1 (3MIN): OFF")
+local toggleHopV2Btn = createToggle("HopV2Btn", 215, "AUTO HOP V2 (1MIN): OFF")
 
 toggleHopBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 20)
 toggleHopV2Btn.BackgroundColor3 = Color3.fromRGB(30, 25, 15)
 toggleV4Btn.BackgroundColor3 = Color3.fromRGB(25, 30, 35)
 
--- Drag Logic
-local dragging, dragInput, dragStart, startPos
-frame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+-- Drag Logic (on title bar)
+local dragging = false
+local dragStart = nil
+local startPos = nil
+
+title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = true
         dragStart = input.Position
         startPos = frame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then dragging = false end
-        end)
     end
 end)
-frame.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
+
+title.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
     end
 end)
+
 UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
         local delta = input.Position - dragStart
         frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
@@ -469,16 +480,16 @@ local function UpdateUI()
     toggleV2Btn.Text = FarmingV2Enabled and "FARM V2 (RAPID): ON" or "FARM V2 (RAPID): OFF"
     toggleV2Btn.TextColor3 = FarmingV2Enabled and Color3.fromRGB(50, 255, 255) or Color3.fromRGB(255, 50, 50)
 
-    toggleV3Btn.Text = FarmingV3Enabled and "FARM V3 (0-STUD LOCK): ON" or "FARM V3 (0-STUD LOCK): OFF"
+    toggleV3Btn.Text = FarmingV3Enabled and "FARM V3 (0-STUD): ON" or "FARM V3 (0-STUD): OFF"
     toggleV3Btn.TextColor3 = FarmingV3Enabled and Color3.fromRGB(255, 255, 50) or Color3.fromRGB(255, 50, 50)
 
     toggleV4Btn.Text = FarmingV4Enabled and "FARM V4 (SKIP DEAD): ON" or "FARM V4 (SKIP DEAD): OFF"
     toggleV4Btn.TextColor3 = FarmingV4Enabled and Color3.fromRGB(100, 150, 200) or Color3.fromRGB(255, 50, 50)
     
-    toggleHopBtn.Text = AutoHopEnabled and "AUTO HOP V1 (3 MIN): ON" or "AUTO HOP V1 (3 MIN): OFF"
+    toggleHopBtn.Text = AutoHopEnabled and "AUTO HOP V1 (3MIN): ON" or "AUTO HOP V1 (3MIN): OFF"
     toggleHopBtn.TextColor3 = AutoHopEnabled and Color3.fromRGB(255, 150, 50) or Color3.fromRGB(255, 50, 50)
 
-    toggleHopV2Btn.Text = AutoHopV2Enabled and "AUTO HOP V2 (1 MIN): ON" or "AUTO HOP V2 (1 MIN): OFF"
+    toggleHopV2Btn.Text = AutoHopV2Enabled and "AUTO HOP V2 (1MIN): ON" or "AUTO HOP V2 (1MIN): OFF"
     toggleHopV2Btn.TextColor3 = AutoHopV2Enabled and Color3.fromRGB(100, 200, 100) or Color3.fromRGB(255, 50, 50)
 
     if not (FarmingV1Enabled or FarmingV3Enabled or FarmingV4Enabled) then CurrentTarget = nil end
@@ -539,15 +550,31 @@ end)
 -- EXPLOIT LOOPS
 -- ==========================================
 
--- Admin Detection Loop (Check every 2 seconds)
+-- Admin Detection Loop (WORKING - Check every 0.5 seconds + Player Added/Removed)
 task.spawn(function()
-    while true do
-        local isAdmin, adminName = IsAdminInServer()
-        if isAdmin then
+    -- Monitor for new players joining
+    Players.PlayerAdded:Connect(function(player)
+        if AdminList[player.Name] then
+            AdminDetectedPlayers[player.Name] = true
             ServerHopV2Smart()
-            task.wait(5)
+            task.wait(2)
         end
-        task.wait(2)
+    end)
+    
+    -- Monitor for players leaving
+    Players.PlayerRemoving:Connect(function(player)
+        AdminDetectedPlayers[player.Name] = nil
+    end)
+    
+    -- Constant checking loop
+    while true do
+        task.wait(0.5)
+        local isAdmin, adminName = IsAdminInServer()
+        if isAdmin and not AdminDetectedPlayers[adminName] then
+            AdminDetectedPlayers[adminName] = true
+            ServerHopV2Smart()
+            task.wait(2)
+        end
     end
 end)
 
