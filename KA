@@ -1,7 +1,7 @@
 --[[
     Auto Farm Beam (Multi-Kaiju) - V1, V2, V3, V4, Auto Hop & Auto Save Config
     Written by Fox for Jack
-    FIXED: V1 Warp -40 studs + Hook Beam to target + Smart Auto Hop V2 + Admin Detection + V4 Skip Dead Targets
+    FIXED: V1 Warp -40 studs + Hook Beam + Smart Auto Hop V2 (1 MIN + 4 or Lower) + V4 (No Old Targets + Instant Hop)
 ]]
 
 local Players = game:GetService("Players")
@@ -39,6 +39,7 @@ local AdminList = {
     ["Sentinel_Flames"] = true,
     ["SxpxrGxmx"] = true,
     ["Nixken23819"] = true
+    ["Dentalment"] = true
 }
 
 -- ==========================================
@@ -321,7 +322,7 @@ local function ServerHop()
 end
 
 -- ==========================================
--- AUTO HOP V2 LOGIC (2 MIN - Smart)
+-- AUTO HOP V2 LOGIC (1 MIN - STRICT 4 or Lower)
 -- ==========================================
 local function ServerHopV2Smart()
     local req = (type(syn) == "table" and syn.request) or request or http_request
@@ -332,37 +333,25 @@ local function ServerHopV2Smart()
         end)
         if success and result and result.data then
             local qualifyingServers = {}
-            local anyServers = {}
             
             for _, v in ipairs(result.data) do
                 if v.id ~= game.JobId and v.playing < v.maxPlayers then
-                    table.insert(anyServers, v)
-                    -- Servers with 4 players or lower
+                    -- STRICT: Only 4 players or lower (no fallback)
                     if v.playing <= 4 then
                         table.insert(qualifyingServers, v)
                     end
                 end
             end
             
-            local targetServer = nil
-            
-            -- Priority: 4 players or lower
             if #qualifyingServers > 0 then
-                targetServer = qualifyingServers[math.random(1, #qualifyingServers)]
-            -- Fallback: any server with space
-            elseif #anyServers > 0 then
-                targetServer = anyServers[math.random(1, #anyServers)]
-            end
-            
-            if targetServer then
+                local targetServer = qualifyingServers[math.random(1, #qualifyingServers)]
                 ResetAllState()
                 TeleportService:TeleportToPlaceInstance(game.PlaceId, targetServer.id, L)
                 return
             end
         end
     end
-    ResetAllState()
-    TeleportService:Teleport(game.PlaceId, L)
+    -- If no 4-or-lower servers found, do nothing (wait for next cycle)
 end
 
 -- ==========================================
@@ -442,7 +431,7 @@ local toggleV2Btn = createToggle("V2Btn", 105, "FARM V2 (RAPID): OFF")
 local toggleV3Btn = createToggle("V3Btn", 140, "FARM V3 (0-STUD LOCK): OFF")
 local toggleV4Btn = createToggle("V4Btn", 175, "FARM V4 (SKIP DEAD): OFF")
 local toggleHopBtn = createToggle("HopBtn", 210, "AUTO HOP V1 (3 MIN): OFF")
-local toggleHopV2Btn = createToggle("HopV2Btn", 245, "AUTO HOP V2 (2 MIN): OFF")
+local toggleHopV2Btn = createToggle("HopV2Btn", 245, "AUTO HOP V2 (1 MIN): OFF")
 
 toggleHopBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 20)
 toggleHopV2Btn.BackgroundColor3 = Color3.fromRGB(30, 25, 15)
@@ -489,7 +478,7 @@ local function UpdateUI()
     toggleHopBtn.Text = AutoHopEnabled and "AUTO HOP V1 (3 MIN): ON" or "AUTO HOP V1 (3 MIN): OFF"
     toggleHopBtn.TextColor3 = AutoHopEnabled and Color3.fromRGB(255, 150, 50) or Color3.fromRGB(255, 50, 50)
 
-    toggleHopV2Btn.Text = AutoHopV2Enabled and "AUTO HOP V2 (2 MIN): ON" or "AUTO HOP V2 (2 MIN): OFF"
+    toggleHopV2Btn.Text = AutoHopV2Enabled and "AUTO HOP V2 (1 MIN): ON" or "AUTO HOP V2 (1 MIN): OFF"
     toggleHopV2Btn.TextColor3 = AutoHopV2Enabled and Color3.fromRGB(100, 200, 100) or Color3.fromRGB(255, 50, 50)
 
     if not (FarmingV1Enabled or FarmingV3Enabled or FarmingV4Enabled) then CurrentTarget = nil end
@@ -588,13 +577,13 @@ task.spawn(function()
     end
 end)
 
--- Auto Hop V2 Loop (2 MIN - Smart)
+-- Auto Hop V2 Loop (1 MIN - STRICT 4 or Lower Only)
 task.spawn(function()
     while true do
         task.wait(1)
         if AutoHopV2Enabled then
             HopTimerV2 = HopTimerV2 + 1
-            if HopTimerV2 >= 120 then
+            if HopTimerV2 >= 60 then
                 ServerHopV2Smart()
                 HopTimerV2 = 0
             end
@@ -764,7 +753,7 @@ task.spawn(function()
     end
 end)
 
--- V4 0-Stud Lock Target & Attack Loop (Skip Killed Targets) - (Every 0.1s)
+-- V4 0-Stud Lock Target & Attack Loop (Skip Killed Targets) - (Every 0.1s) - INSTANT HOP
 task.spawn(function()
     while true do
         if FarmingV4Enabled and InitialSpawnDone and (tick() - LastHopTime) > 2 then
@@ -779,7 +768,7 @@ task.spawn(function()
                 end)
 
                 -- Check if current target is still valid (alive and not killed)
-                if not IsTargetValid(CurrentTarget) or KilledTargets[CurrentTarget.Name] then
+                if CurrentTarget and (not IsTargetValid(CurrentTarget) or KilledTargets[CurrentTarget.Name]) then
                     CurrentTarget = nil
                 end
                 
@@ -788,11 +777,15 @@ task.spawn(function()
                     CurrentTarget = GetNearestPlayerV4()
                 end
 
-                -- If all players are killed, hop server
+                -- Check if all players are killed
                 local validTargets = GetAllValidPlayersV4()
-                if #validTargets == 0 then
+                if #validTargets == 0 and GetAllValidPlayers() > 0 then
+                    -- All original players are killed, immediately hop
                     ServerHopV2Smart()
                     task.wait(5)
+                elseif #validTargets == 0 and #GetAllValidPlayers() == 0 then
+                    -- No valid players at all, wait a bit
+                    task.wait(1)
                 end
 
                 if CurrentTarget then
@@ -801,11 +794,12 @@ task.spawn(function()
                         local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
                         local targetHum = targetChar:FindFirstChild("Humanoid")
                         if targetHRP and targetHRP.Parent then
-                            -- Mark target as killed if health is 0
+                            -- Check if target is dead and mark as killed
                             if targetHum and targetHum.Health <= 0 then
                                 KilledTargets[CurrentTarget.Name] = true
                                 CurrentTarget = nil
                             else
+                                -- Farm the target
                                 myHRP.CFrame = targetHRP.CFrame
                                 myHRP.AssemblyLinearVelocity = Vector3.zero
                                 myHRP.AssemblyAngularVelocity = Vector3.zero
