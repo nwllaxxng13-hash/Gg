@@ -1,7 +1,8 @@
 --[[
     Auto Farm Beam (Multi-Kaiju) - V1, V2, V3, V4, Auto Hop & Auto Save Config
     Converted to WindUI with Persistent Admin Hop Counter, Auto Lock Beam, Skill Selectors.
-    FIXED: Instant Evasion (No HTTP Yield) & Self-Detection Bug
+    SECURITY UPGRADE: Instant Evasion (No HTTP Yield) & Self-Detection Bug Fix.
+    ADDED: Misc Tab with Noclip Toggle.
 ]]
 
 local Players = game:GetService("Players")
@@ -58,6 +59,7 @@ local FarmingV4Enabled = false
 local AutoHopEnabled = false
 local AutoHopV2Enabled = false
 local AutoLockBeamEnabled = false
+local NoclipEnabled = false
 
 local CurrentTarget = nil
 local V2TargetIndex = 1
@@ -97,7 +99,8 @@ local function SaveConfig()
                 KaijuName = KaijuName,
                 AdminHopCount = AdminHopCount,
                 AutoLockBeam = AutoLockBeamEnabled,
-                SelectedSkills = SelectedSkills
+                SelectedSkills = SelectedSkills,
+                Noclip = NoclipEnabled
             }
             writefile(ConfigFile, HttpService:JSONEncode(data))
         end
@@ -118,6 +121,7 @@ local function LoadConfig()
                 KaijuName = decoded.KaijuName or "Biollante"
                 AdminHopCount = decoded.AdminHopCount or 0
                 AutoLockBeamEnabled = decoded.AutoLockBeam or false
+                NoclipEnabled = decoded.Noclip or false
                 if decoded.SelectedSkills then
                     for skill, val in pairs(decoded.SelectedSkills) do
                         SelectedSkills[skill] = val
@@ -357,7 +361,6 @@ end
 -- ==========================================
 local function IsAdminInServer()
     for _, player in pairs(Players:GetPlayers()) do
-        -- BUG FIX: Ensure we do NOT flag ourselves
         if player.UserId ~= L.UserId and AdminList[player.Name] then
             return true, player.Name
         end
@@ -370,14 +373,12 @@ local function EmergencyHop(adminName)
     if isEmergencyHopping then return end
     isEmergencyHopping = true
     
-    -- 1. INSTANTLY STOP ALL FARMING ACTIONS (Prevents sending data to server)
     FarmingV1Enabled = false
     FarmingV2Enabled = false
     FarmingV3Enabled = false
     FarmingV4Enabled = false
     AutoLockBeamEnabled = false
     
-    -- 2. INSTANTLY VANISH FROM THE MAP (So the admin can't click you)
     pcall(function()
         if L.Character then L.Character:Destroy() end
     end)
@@ -387,12 +388,10 @@ local function EmergencyHop(adminName)
     
     warn("🛡️ ADMIN DETECTED: " .. tostring(adminName) .. " - INITIATING INSTANT EVASION")
     
-    -- 3. INSTANT HOP (Bypass HTTP Request delay to evade instantly)
     pcall(function()
         TeleportService:Teleport(game.PlaceId, L)
     end)
     
-    -- 4. KICK FALLBACK (If Teleport takes more than 0.5 seconds, kick to save the account)
     task.wait(0.5)
     L:Kick("\n🛡️ ADMIN DETECTED 🛡️\nAdmin: " .. tostring(adminName) .. "\nDisconnected instantly to protect your account.")
 end
@@ -421,7 +420,7 @@ local Window = WindUI:CreateWindow({
 })
 
 Window:Tag({
-    Title = "v1.3.0-WindUI",
+    Title = "v1.4.0-WindUI",
     Color = "ElementBackground",
 })
 
@@ -433,6 +432,11 @@ local FarmTab = Window:Tab({
 local HopTab = Window:Tab({
     Title = "Server Manager",
     Icon = "globe",
+})
+
+local MiscTab = Window:Tab({
+    Title = "Misc",
+    Icon = "wrench",
 })
 
 local StatsTab = Window:Tab({
@@ -551,6 +555,19 @@ local ToggleHop2 = HopSection:Toggle({
     end,
 })
 
+-- --- Misc Tab Configurations ---
+local MiscSection = MiscTab:Section({ Title = "Character Exploits" })
+
+MiscSection:Toggle({
+    Title = "Noclip",
+    Desc = "Allows your character to pass completely through all solid walls and objects.",
+    Value = NoclipEnabled,
+    Callback = function(val)
+        NoclipEnabled = val
+        SaveConfig()
+    end,
+})
+
 -- --- Stats Tab Configuration ---
 local SecuritySection = StatsTab:Section({ Title = "Anti-Moderation Diagnostics" })
 
@@ -583,6 +600,19 @@ local function FireActiveSkills()
     end
 end
 
+-- Dedicated Noclip Loop (Runs right before physics simulation)
+task.spawn(function()
+    RunService.Stepped:Connect(function()
+        if NoclipEnabled and L.Character then
+            for _, part in ipairs(L.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+        end
+    end)
+end)
+
 -- Dedicated Auto Lock Beam Thread (Independent, works with all farming modes)
 task.spawn(function()
     while true do
@@ -601,7 +631,7 @@ task.spawn(function()
                 end
             end
         end
-        task.wait(0.1) -- Rapid fire calculation lock rate
+        task.wait(0.1) 
     end
 end)
 
@@ -613,7 +643,7 @@ task.spawn(function()
         end
     end)
     while true do
-        task.wait(0.2) -- Check extremely fast
+        task.wait(0.2) 
         local isAdmin, adminName = IsAdminInServer()
         if isAdmin then
             EmergencyHop(adminName)
