@@ -3,6 +3,7 @@
     Converted to WindUI with Persistent Admin Hop Counter, Auto Lock Beam, Skill Selectors.
     SECURITY UPGRADE: Instant Evasion (No HTTP Yield) & Self-Detection Bug Fix.
     ADDED: Misc Tab with Noclip Toggle.
+    FIXED: V4 Logic (Strict Target Skipping & Instant Hop on Server Cleared).
 ]]
 
 local Players = game:GetService("Players")
@@ -269,16 +270,6 @@ local function GetAllValidPlayers()
     return validTargets
 end
 
-local function GetAllValidPlayersV4()
-    local validTargets = {}
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= L and IsTargetValid(p) and not KilledTargets[p.Name] then
-            table.insert(validTargets, p)
-        end
-    end
-    return validTargets
-end
-
 local function GetNearestPlayerV4()
     local myChar = L.Character
     local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -420,7 +411,7 @@ local Window = WindUI:CreateWindow({
 })
 
 Window:Tag({
-    Title = "v1.4.0-WindUI",
+    Title = "v1.5.0-WindUI",
     Color = "ElementBackground",
 })
 
@@ -613,7 +604,7 @@ task.spawn(function()
     end)
 end)
 
--- Dedicated Auto Lock Beam Thread (Independent, works with all farming modes)
+-- Dedicated Auto Lock Beam Thread
 task.spawn(function()
     while true do
         if AutoLockBeamEnabled and (FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled) and InitialSpawnDone and (tick() - LastHopTime) > 2 then
@@ -811,7 +802,7 @@ task.spawn(function()
     end
 end)
 
--- V4 0-Stud Lock Target & Attack Loop (Skip Killed Targets)
+-- V4 0-Stud Lock Target & Attack Loop (Skip Killed Targets & Auto Hop when cleared)
 task.spawn(function()
     while true do
         if FarmingV4Enabled and InitialSpawnDone and (tick() - LastHopTime) > 2 then
@@ -820,36 +811,53 @@ task.spawn(function()
             if myHRP and myHRP.Parent then
                 FireActiveSkills()
                 
-                if CurrentTarget and (not IsTargetValid(CurrentTarget) or KilledTargets[CurrentTarget.Name]) then
-                    CurrentTarget = nil
+                -- ตรวจสอบว่า CurrentTarget ตายหรือยัง เพื่อบันทึกลง KilledTargets ทันทีก่อนมันจะ Invalid
+                if CurrentTarget then
+                    local targetChar = CurrentTarget.Character
+                    local targetHum = targetChar and targetChar:FindFirstChild("Humanoid")
+                    
+                    if targetHum and targetHum.Health <= 0 then
+                        KilledTargets[CurrentTarget.Name] = true
+                        CurrentTarget = nil
+                    elseif not IsTargetValid(CurrentTarget) then
+                        CurrentTarget = nil
+                    end
                 end
-                if not CurrentTarget then CurrentTarget = GetNearestPlayerV4() end
-                local validTargets = GetAllValidPlayersV4()
-                if #validTargets == 0 and #GetAllValidPlayers() > 0 then
-                    ServerHopV2Smart()
-                    task.wait(5)
-                elseif #validTargets == 0 and #GetAllValidPlayers() == 0 then
-                    task.wait(1)
+                
+                -- ตรวจสอบประชากรในเซิฟเวอร์ (นับว่าฆ่าครบทุกคนหรือยัง)
+                local otherPlayersCount = 0
+                local killedCount = 0
+                for _, p in pairs(Players:GetPlayers()) do
+                    if p ~= L then
+                        otherPlayersCount = otherPlayersCount + 1
+                        if KilledTargets[p.Name] then
+                            killedCount = killedCount + 1
+                        end
+                    end
                 end
+                
+                -- ถ้าฆ่าครบทุกคนในเซิฟเวอร์ (หรือผู้เล่นทุกคนในเซิฟอยู่ใน KilledTargets หมดแล้ว) -> HOP ทันที
+                if otherPlayersCount > 0 and killedCount >= otherPlayersCount then
+                    warn("ฟาร์มผู้เล่นครบทั้งเซิฟเวอร์แล้ว! กำลังทำการ Server Hop...")
+                    ServerHop()
+                    task.wait(2)
+                end
+                
+                -- หาเป้าหมายใหม่ (ดึงเฉพาะคนที่ยังไม่ได้อยู่ใน KilledTargets)
+                if not CurrentTarget then 
+                    CurrentTarget = GetNearestPlayerV4() 
+                end
+                
+                -- วาร์ปไปฟาร์มเป้าหมาย
                 if CurrentTarget then
                     local targetChar = CurrentTarget.Character
                     if targetChar and targetChar.Parent then
                         local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
-                        local targetHum = targetChar:FindFirstChild("Humanoid")
                         if targetHRP and targetHRP.Parent then
-                            if targetHum and targetHum.Health <= 0 then
-                                KilledTargets[CurrentTarget.Name] = true
-                                CurrentTarget = nil
-                            else
-                                myHRP.CFrame = targetHRP.CFrame
-                                myHRP.AssemblyLinearVelocity = Vector3.zero
-                                myHRP.AssemblyAngularVelocity = Vector3.zero
-                            end
-                        else
-                            CurrentTarget = nil
+                            myHRP.CFrame = targetHRP.CFrame
+                            myHRP.AssemblyLinearVelocity = Vector3.zero
+                            myHRP.AssemblyAngularVelocity = Vector3.zero
                         end
-                    else
-                        CurrentTarget = nil
                     end
                 end
             end
