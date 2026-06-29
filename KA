@@ -1,7 +1,6 @@
 --[[
     Auto Farm Beam (Multi-Kaiju) - V1, V2, V3, V4, Auto Hop & Auto Save Config
-    Written by Fox for Jack
-    FIXED: Admin Detection (Emergency Hop / Auto Kick), V4 Table Comparison Bug, V1 Warp, Hook Beam, Smart Auto Hop
+    Converted to WindUI with persistent Admin Detection Hop Counter
 ]]
 
 local Players = game:GetService("Players")
@@ -12,6 +11,7 @@ local UserInputService = game:GetService("UserInputService")
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 
+local cloneref = (cloneref or clonereference or function(instance) return instance end)
 local L = Players.LocalPlayer
 
 -- ==========================================
@@ -66,8 +66,9 @@ local LastHopTime = 0
 local LastValidPosition = nil
 local AirStuckCounter = 0
 local KaijuName = "Biollante"
-local KilledTargets = {} -- V4: Track killed targets
-local AdminDetectedPlayers = {} -- Track detected admins to prevent multiple hops
+local KilledTargets = {} 
+local AdminDetectedPlayers = {} 
+local AdminHopCount = 0 -- Persistent Counter
 
 -- ==========================================
 -- CONFIG SYSTEM (AUTO SAVE/LOAD)
@@ -84,7 +85,8 @@ local function SaveConfig()
                 V4 = FarmingV4Enabled,
                 Hop = AutoHopEnabled,
                 HopV2 = AutoHopV2Enabled,
-                KaijuName = KaijuName
+                KaijuName = KaijuName,
+                AdminHopCount = AdminHopCount
             }
             writefile(ConfigFile, HttpService:JSONEncode(data))
         end
@@ -103,6 +105,7 @@ local function LoadConfig()
                 AutoHopEnabled = decoded.Hop or false
                 AutoHopV2Enabled = decoded.HopV2 or false
                 KaijuName = decoded.KaijuName or "Biollante"
+                AdminHopCount = decoded.AdminHopCount or 0
             end
         end
     end)
@@ -124,59 +127,6 @@ local function ResetAllState()
 end
 
 -- ==========================================
--- ADMIN DETECTION (USERNAME) - WORKING
--- ==========================================
-local function IsAdminInServer()
-    for _, player in pairs(Players:GetPlayers()) do
-        if AdminList[player.Name] then
-            return true, player.Name
-        end
-    end
-    return false, nil
-end
-
-local isEmergencyHopping = false
-local function EmergencyHop(adminName)
-    if isEmergencyHopping then return end
-    isEmergencyHopping = true
-    
-    -- Stop all farming functions immediately for safety
-    FarmingV1Enabled = false
-    FarmingV2Enabled = false
-    FarmingV3Enabled = false
-    FarmingV4Enabled = false
-    
-    warn("🛡️ ADMIN DETECTED: " .. tostring(adminName) .. " - INITIATING EMERGENCY HOP/KICK")
-    
-    pcall(function()
-        local req = (type(syn) == "table" and syn.request) or request or http_request
-        if req then
-            local url = "https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Desc&limit=100"
-            local success, result = pcall(function()
-                return HttpService:JSONDecode(req({Url = url, Method = "GET"}).Body)
-            end)
-            if success and result and result.data then
-                local servers = {}
-                for _, v in ipairs(result.data) do
-                    if v.playing < v.maxPlayers and v.id ~= game.JobId then
-                        table.insert(servers, v.id)
-                    end
-                end
-                if #servers > 0 then
-                    -- Try to hop to ANY valid server immediately to evade admin
-                    ResetAllState()
-                    TeleportService:TeleportToPlaceInstance(game.PlaceId, servers[math.random(1, #servers)], L)
-                    task.wait(3) -- Give it 3 seconds to process the teleport
-                end
-            end
-        end
-    end)
-    
-    -- If teleport failed or takes too long, kick player to save account
-    L:Kick("\n🛡️ ADMIN DETECTED 🛡️\nAdmin Name: " .. tostring(adminName) .. "\nDisconnected automatically to protect your account.")
-end
-
--- ==========================================
 -- AIR STUCK DETECTION & FIX
 -- ==========================================
 local function CheckAndFixAirStuck()
@@ -185,12 +135,10 @@ local function CheckAndFixAirStuck()
     local hum = myChar and myChar:FindFirstChild("Humanoid")
     
     if not myHRP or not myHRP.Parent or not hum then return end
-    
     local currentPos = myHRP.Position
     
     if LastValidPosition then
         local distance = (currentPos - LastValidPosition).Magnitude
-        
         if distance < 0.5 and hum.Health > 0 then
             AirStuckCounter = AirStuckCounter + 1
         else
@@ -300,7 +248,6 @@ local function GetAllValidPlayers()
     return validTargets
 end
 
--- V4: Get valid players excluding killed targets
 local function GetAllValidPlayersV4()
     local validTargets = {}
     for _, p in pairs(Players:GetPlayers()) do
@@ -311,7 +258,6 @@ local function GetAllValidPlayersV4()
     return validTargets
 end
 
--- V4: Get nearest player excluding killed targets
 local function GetNearestPlayerV4()
     local myChar = L.Character
     local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -336,7 +282,7 @@ local function GetNearestPlayerV4()
 end
 
 -- ==========================================
--- AUTO HOP LOGIC (V1 - 3 MIN)
+-- AUTO HOP LOGIC
 -- ==========================================
 local function ServerHop()
     local req = (type(syn) == "table" and syn.request) or request or http_request
@@ -363,9 +309,6 @@ local function ServerHop()
     TeleportService:Teleport(game.PlaceId, L)
 end
 
--- ==========================================
--- AUTO HOP V2 LOGIC (1 MIN - STRICT 4 or Lower)
--- ==========================================
 local function ServerHopV2Smart()
     local req = (type(syn) == "table" and syn.request) or request or http_request
     if req then
@@ -375,16 +318,13 @@ local function ServerHopV2Smart()
         end)
         if success and result and result.data then
             local qualifyingServers = {}
-            
             for _, v in ipairs(result.data) do
                 if v.id ~= game.JobId and v.playing < v.maxPlayers then
-                    -- STRICT: Only 4 players or lower (no fallback)
                     if v.playing <= 4 then
                         table.insert(qualifyingServers, v)
                     end
                 end
             end
-            
             if #qualifyingServers > 0 then
                 local targetServer = qualifyingServers[math.random(1, #qualifyingServers)]
                 ResetAllState()
@@ -393,214 +333,216 @@ local function ServerHopV2Smart()
             end
         end
     end
-    -- If no 4-or-lower servers found, do nothing (wait for next cycle)
 end
 
 -- ==========================================
--- STANDARD DRAGGABLE GUI
+-- ADMIN DETECTION (WITH COUNTER LOGIC)
 -- ==========================================
-task.wait(0.5) -- Wait for GUI to load
-
-if CoreGui:FindFirstChild("FoxKaijuUI") then
-    CoreGui.FoxKaijuUI:Destroy()
+local function IsAdminInServer()
+    for _, player in pairs(Players:GetPlayers()) do
+        if AdminList[player.Name] then
+            return true, player.Name
+        end
+    end
+    return false, nil
 end
 
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "FoxKaijuUI"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = CoreGui
-
-local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 250, 0, 340)
-frame.Position = UDim2.new(0.5, -125, 0.2, 0)
-frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-frame.BorderSizePixel = 2
-frame.BorderColor3 = Color3.fromRGB(0, 255, 255)
-frame.Active = true
-frame.Draggable = false
-frame.Parent = screenGui
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 25)
-title.BackgroundTransparency = 1
-title.Text = "KAIJU OMNI-FARM"
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.Font = Enum.Font.GothamBlack
-title.TextSize = 14
-title.Parent = frame
-
--- Kaiju Name Label
-local kaijuLabel = Instance.new("TextLabel")
-kaijuLabel.Size = UDim2.new(1, 0, 0, 15)
-kaijuLabel.Position = UDim2.new(0, 0, 0, 25)
-kaijuLabel.BackgroundTransparency = 1
-kaijuLabel.Text = "Kaiju Name:"
-kaijuLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-kaijuLabel.Font = Enum.Font.GothamBold
-kaijuLabel.TextSize = 10
-kaijuLabel.TextXAlignment = Enum.TextXAlignment.Left
-kaijuLabel.Parent = frame
-
--- Kaiju Name Textbox
-local kaijuTextBox = Instance.new("TextBox")
-kaijuTextBox.Size = UDim2.new(0.9, 0, 0, 25)
-kaijuTextBox.Position = UDim2.new(0.05, 0, 0, 40)
-kaijuTextBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-kaijuTextBox.TextColor3 = Color3.fromRGB(100, 255, 100)
-kaijuTextBox.Text = KaijuName
-kaijuTextBox.Font = Enum.Font.GothamBold
-kaijuTextBox.TextSize = 11
-kaijuTextBox.Parent = frame
-
-kaijuTextBox.FocusLost:Connect(function()
-    if kaijuTextBox.Text ~= "" then
-        KaijuName = kaijuTextBox.Text
-        SaveConfig()
-    else
-        kaijuTextBox.Text = KaijuName
-    end
-end)
-
-local function createToggle(name, yOffset, defaultText)
-    local btn = Instance.new("TextButton")
-    btn.Name = name
-    btn.Size = UDim2.new(0.9, 0, 0, 28)
-    btn.Position = UDim2.new(0.05, 0, 0, yOffset)
-    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    btn.Text = defaultText
-    btn.TextColor3 = Color3.fromRGB(255, 50, 50)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 10
-    btn.TextWrapped = true
-    btn.Parent = frame
-    return btn
-end
-
-local toggleV1Btn = createToggle("V1Btn", 70, "FARM V1 (WARP -40): OFF")
-local toggleV2Btn = createToggle("V2Btn", 99, "FARM V2 (RAPID): OFF")
-local toggleV3Btn = createToggle("V3Btn", 128, "FARM V3 (0-STUD): OFF")
-local toggleV4Btn = createToggle("V4Btn", 157, "FARM V4 (SKIP DEAD): OFF")
-local toggleHopBtn = createToggle("HopBtn", 186, "AUTO HOP V1 (3MIN): OFF")
-local toggleHopV2Btn = createToggle("HopV2Btn", 215, "AUTO HOP V2 (1MIN): OFF")
-
-toggleHopBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 20)
-toggleHopV2Btn.BackgroundColor3 = Color3.fromRGB(30, 25, 15)
-toggleV4Btn.BackgroundColor3 = Color3.fromRGB(25, 30, 35)
-
--- Drag Logic (on title bar)
-local dragging = false
-local dragStart = nil
-local startPos = nil
-
-title.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStart = input.Position
-        startPos = frame.Position
-    end
-end)
-
-title.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-        local delta = input.Position - dragStart
-        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
-
--- UI Update Logic
-local function UpdateUI()
-    toggleV1Btn.Text = FarmingV1Enabled and "FARM V1 (WARP -40): ON" or "FARM V1 (WARP -40): OFF"
-    toggleV1Btn.TextColor3 = FarmingV1Enabled and Color3.fromRGB(50, 255, 50) or Color3.fromRGB(255, 50, 50)
-
-    toggleV2Btn.Text = FarmingV2Enabled and "FARM V2 (RAPID): ON" or "FARM V2 (RAPID): OFF"
-    toggleV2Btn.TextColor3 = FarmingV2Enabled and Color3.fromRGB(50, 255, 255) or Color3.fromRGB(255, 50, 50)
-
-    toggleV3Btn.Text = FarmingV3Enabled and "FARM V3 (0-STUD): ON" or "FARM V3 (0-STUD): OFF"
-    toggleV3Btn.TextColor3 = FarmingV3Enabled and Color3.fromRGB(255, 255, 50) or Color3.fromRGB(255, 50, 50)
-
-    toggleV4Btn.Text = FarmingV4Enabled and "FARM V4 (SKIP DEAD): ON" or "FARM V4 (SKIP DEAD): OFF"
-    toggleV4Btn.TextColor3 = FarmingV4Enabled and Color3.fromRGB(100, 150, 200) or Color3.fromRGB(255, 50, 50)
+local isEmergencyHopping = false
+local function EmergencyHop(adminName)
+    if isEmergencyHopping then return end
+    isEmergencyHopping = true
     
-    toggleHopBtn.Text = AutoHopEnabled and "AUTO HOP V1 (3MIN): ON" or "AUTO HOP V1 (3MIN): OFF"
-    toggleHopBtn.TextColor3 = AutoHopEnabled and Color3.fromRGB(255, 150, 50) or Color3.fromRGB(255, 50, 50)
+    FarmingV1Enabled = false
+    FarmingV2Enabled = false
+    FarmingV3Enabled = false
+    FarmingV4Enabled = false
+    
+    -- Increment and Save Counter
+    AdminHopCount = AdminHopCount + 1
+    SaveConfig()
+    
+    warn("🛡️ ADMIN DETECTED: " .. tostring(adminName) .. " - HOP COUNTER: " .. tostring(AdminHopCount))
+    
+    pcall(function()
+        local req = (type(syn) == "table" and syn.request) or request or http_request
+        if req then
+            local url = "https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Desc&limit=100"
+            local success, result = pcall(function()
+                return HttpService:JSONDecode(req({Url = url, Method = "GET"}).Body)
+            end)
+            if success and result and result.data then
+                local servers = {}
+                for _, v in ipairs(result.data) do
+                    if v.playing < v.maxPlayers and v.id ~= game.JobId then
+                        table.insert(servers, v.id)
+                    end
+                end
+                if #servers > 0 then
+                    ResetAllState()
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, servers[math.random(1, #servers)], L)
+                    task.wait(3)
+                end
+            end
+        end
+    end)
+    
+    L:Kick("\n🛡️ ADMIN DETECTED 🛡️\nAdmin Name: " .. tostring(adminName) .. "\nAuto-Hop triggered (" .. tostring(AdminHopCount) .. " total evasions). Account protected.")
+end
 
-    toggleHopV2Btn.Text = AutoHopV2Enabled and "AUTO HOP V2 (1MIN): ON" or "AUTO HOP V2 (1MIN): OFF"
-    toggleHopV2Btn.TextColor3 = AutoHopV2Enabled and Color3.fromRGB(100, 200, 100) or Color3.fromRGB(255, 50, 50)
-
-    if not (FarmingV1Enabled or FarmingV3Enabled or FarmingV4Enabled) then CurrentTarget = nil end
-
-    if FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled then
-        frame.BorderColor3 = Color3.fromRGB(50, 255, 50)
+-- ==========================================
+-- WINDUI GUI INITIALIZATION
+-- ==========================================
+local WindUI
+do
+    local ok, result = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+    end)
+    if ok then
+        WindUI = result
     else
-        frame.BorderColor3 = Color3.fromRGB(0, 255, 255)
+        WindUI = require(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init"))
     end
 end
 
-UpdateUI()
+local Window = WindUI:CreateWindow({
+    Title = "Kaiju Omni-Farm",
+    Author = "Fox for Jack",
+    Icon = "solar:wind-bold",
+    Theme = "Dark",
+    ToggleKey = Enum.KeyCode.RightControl,
+})
 
--- Toggle Actions (Mutually Exclusive for Farms + Save)
-toggleV1Btn.MouseButton1Click:Connect(function()
-    FarmingV1Enabled = not FarmingV1Enabled
-    if FarmingV1Enabled then FarmingV2Enabled = false; FarmingV3Enabled = false; FarmingV4Enabled = false end
-    UpdateUI()
-    SaveConfig()
-end)
+Window:Tag({
+    Title = "v1.0.0-WindUI",
+    Color = "ElementBackground",
+})
 
-toggleV2Btn.MouseButton1Click:Connect(function()
-    FarmingV2Enabled = not FarmingV2Enabled
-    if FarmingV2Enabled then FarmingV1Enabled = false; FarmingV3Enabled = false; FarmingV4Enabled = false end
-    UpdateUI()
-    SaveConfig()
-end)
+local FarmTab = Window:Tab({
+    Title = "Auto Farm",
+    Icon = "crosshair",
+})
 
-toggleV3Btn.MouseButton1Click:Connect(function()
-    FarmingV3Enabled = not FarmingV3Enabled
-    if FarmingV3Enabled then FarmingV1Enabled = false; FarmingV2Enabled = false; FarmingV4Enabled = false end
-    UpdateUI()
-    SaveConfig()
-end)
+local HopTab = Window:Tab({
+    Title = "Server Manager",
+    Icon = "globe",
+})
 
-toggleV4Btn.MouseButton1Click:Connect(function()
-    FarmingV4Enabled = not FarmingV4Enabled
-    if FarmingV4Enabled then FarmingV1Enabled = false; FarmingV2Enabled = false; FarmingV3Enabled = false end
-    UpdateUI()
-    SaveConfig()
-end)
+local StatsTab = Window:Tab({
+    Title = "Stats & Security",
+    Icon = "shield-check",
+})
 
-toggleHopBtn.MouseButton1Click:Connect(function()
-    AutoHopEnabled = not AutoHopEnabled
-    if AutoHopEnabled then HopTimer = 0; AutoHopV2Enabled = false end
-    UpdateUI()
-    SaveConfig()
-end)
+-- --- Farm Tab Configurations ---
+local FarmSettingsSection = FarmTab:Section({ Title = "Target Settings" })
 
-toggleHopV2Btn.MouseButton1Click:Connect(function()
-    AutoHopV2Enabled = not AutoHopV2Enabled
-    if AutoHopV2Enabled then HopTimerV2 = 0; AutoHopEnabled = false end
-    UpdateUI()
-    SaveConfig()
-end)
+FarmSettingsSection:Input({
+    Title = "Kaiju Name",
+    Desc = "Type the exact target Kaiju deployment asset name.",
+    Icon = "pencil",
+    Placeholder = "e.g. Biollante",
+    Value = KaijuName,
+    Callback = function(text)
+        if text ~= "" then
+            KaijuName = text
+            SaveConfig()
+        end
+    end,
+})
 
--- ==========================================
--- EXPLOIT LOOPS
--- ==========================================
+local AttackSection = FarmTab:Section({ Title = "Farming Implementation Vectors" })
 
--- Admin Detection Loop (REWRITTEN & WORKING - Check every 0.5 seconds + Player Added)
+local ToggleV1 = AttackSection:Toggle({
+    Title = "FARM V1 (WARP -40)",
+    Value = FarmingV1Enabled,
+    Callback = function(val)
+        FarmingV1Enabled = val
+        if val then FarmingV2Enabled = false; FarmingV3Enabled = false; FarmingV4Enabled = false end
+        SaveConfig()
+    end,
+})
+
+local ToggleV2 = AttackSection:Toggle({
+    Title = "FARM V2 (RAPID)",
+    Value = FarmingV2Enabled,
+    Callback = function(val)
+        FarmingV2Enabled = val
+        if val then FarmingV1Enabled = false; FarmingV3Enabled = false; FarmingV4Enabled = false end
+        SaveConfig()
+    end,
+})
+
+local ToggleV3 = AttackSection:Toggle({
+    Title = "FARM V3 (0-STUD LOCK)",
+    Value = FarmingV3Enabled,
+    Callback = function(val)
+        FarmingV3Enabled = val
+        if val then FarmingV1Enabled = false; FarmingV2Enabled = false; FarmingV4Enabled = false end
+        SaveConfig()
+    end,
+})
+
+local ToggleV4 = AttackSection:Toggle({
+    Title = "FARM V4 (SKIP KILLED)",
+    Value = FarmingV4Enabled,
+    Callback = function(val)
+        FarmingV4Enabled = val
+        if val then FarmingV1Enabled = false; FarmingV2Enabled = false; FarmingV3Enabled = false end
+        SaveConfig()
+    end,
+})
+
+-- --- Hop Tab Configurations ---
+local HopSection = HopTab:Section({ Title = "Automated Server Cycling" })
+
+local ToggleHop1 = HopSection:Toggle({
+    Title = "AUTO HOP V1 (3 MIN DELAY)",
+    Value = AutoHopEnabled,
+    Callback = function(val)
+        AutoHopEnabled = val
+        if val then HopTimer = 0; AutoHopV2Enabled = false end
+        SaveConfig()
+    end,
+})
+
+local ToggleHop2 = HopSection:Toggle({
+    Title = "AUTO HOP V2 (1 MIN / MAX 4 PLR)",
+    Value = AutoHopV2Enabled,
+    Callback = function(val)
+        AutoHopV2Enabled = val
+        if val then HopTimerV2 = 0; AutoHopEnabled = false end
+        SaveConfig()
+    end,
+})
+
+-- --- Stats Tab Configuration (Counter Added Here) ---
+local SecuritySection = StatsTab:Section({ Title = "Anti-Moderation Diagnostics" })
+
+local TrackerParagraph = SecuritySection:Paragraph({
+    Title = "Admin Evasion Status",
+    Desc = "Admin Detections Logged: " .. tostring(AdminHopCount) .. "\nEmergency parameters are fully initialized.",
+})
+
+-- Dynamic update for UI profile data tracking
 task.spawn(function()
-    -- Monitor for new players joining
+    while true do
+        task.wait(1)
+        if TrackerParagraph then
+            TrackerParagraph:SetDesc("Admin Detections Logged: " .. tostring(AdminHopCount) .. "\nEmergency parameters are fully initialized.")
+        end
+    end
+end)
+
+-- ==========================================
+-- ORIGINAL EXPLOIT LOOPS (UNTOUCHED)
+-- ==========================================
+
+-- Admin Detection Loop
+task.spawn(function()
     Players.PlayerAdded:Connect(function(player)
         if AdminList[player.Name] then
             EmergencyHop(player.Name)
         end
     end)
-    
-    -- Constant checking loop
     while true do
         task.wait(0.5)
         local isAdmin, adminName = IsAdminInServer()
@@ -610,7 +552,7 @@ task.spawn(function()
     end
 end)
 
--- Air Stuck Detection Loop (Every frame)
+-- Air Stuck Detection Loop
 task.spawn(function()
     while true do
         if FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled then
@@ -636,7 +578,7 @@ task.spawn(function()
     end
 end)
 
--- Auto Hop V2 Loop (1 MIN - STRICT 4 or Lower Only)
+-- Auto Hop V2 Loop (1 MIN)
 task.spawn(function()
     while true do
         task.wait(1)
@@ -652,32 +594,18 @@ task.spawn(function()
     end
 end)
 
--- Base Utility Loop: Spawn & Auto Stat (Dynamic Kaiju name)
+-- Base Utility Loop: Spawn & Auto Stat
 task.spawn(function()
     while true do
         if (FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled) and InitialSpawnDone and (tick() - LastHopTime) > 2 then
             pcall(function()
-                local spawnArgs = {
-                    "Spawn",
-                    KaijuName,
-                    "Hong Kong"
-                }
+                local spawnArgs = {"Spawn", KaijuName, "Hong Kong"}
                 FireServerRemote:FireServer(unpack(spawnArgs))
                 
-                local regenArgs = {
-                    "UpdateStat",
-                    KaijuName,
-                    "Regen",
-                    "Increase"
-                }
+                local regenArgs = {"UpdateStat", KaijuName, "Regen", "Increase"}
                 FireServerRemote:FireServer(unpack(regenArgs))
                 
-                local strengthArgs = {
-                    "UpdateStat",
-                    KaijuName,
-                    "Strength",
-                    "Increase"
-                }
+                local strengthArgs = {"UpdateStat", KaijuName, "Strength", "Increase"}
                 FireServerRemote:FireServer(unpack(strengthArgs))
             end)
         end
@@ -685,7 +613,7 @@ task.spawn(function()
     end
 end)
 
--- V1 Attack Loop (Attack4 every 0.5s)
+-- V1 Attack Loop
 task.spawn(function()
     while true do
         if FarmingV1Enabled and InitialSpawnDone and (tick() - LastHopTime) > 2 then
@@ -703,29 +631,20 @@ task.spawn(function()
         if FarmingV1Enabled and InitialSpawnDone and (tick() - LastHopTime) > 2 then
             local myChar = L.Character
             local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
-            
             if myHRP and myHRP.Parent then
                 if not IsTargetValid(CurrentTarget) then CurrentTarget = nil end
                 if not CurrentTarget then CurrentTarget = GetNearestPlayer() end
-
                 if CurrentTarget then
                     local targetChar = CurrentTarget.Character
                     if targetChar and targetChar.Parent then
                         local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
                         if targetHRP and targetHRP.Parent then
-                            -- Calculate position -40 studs in front of target
                             local targetDirection = (targetHRP.CFrame.LookVector)
                             local warpPosition = targetHRP.Position - (targetDirection * 40)
-                            
-                            -- Warp to -40 studs position
                             myHRP.CFrame = CFrame.new(warpPosition, targetHRP.Position)
                             myHRP.AssemblyLinearVelocity = Vector3.zero
                             myHRP.AssemblyAngularVelocity = Vector3.zero
-                            
-                            -- Fire beam at target
-                            pcall(function() 
-                                BeamRemote:FireServer(targetHRP.Position) 
-                            end)
+                            pcall(function() BeamRemote:FireServer(targetHRP.Position) end)
                         else
                             CurrentTarget = nil
                         end
@@ -739,25 +658,22 @@ task.spawn(function()
     end
 end)
 
--- V2 Rapid Warp & Attack Loop (Every 0.1s) - WITH AIR STUCK FIX
+-- V2 Rapid Warp & Attack Loop
 task.spawn(function()
     while true do
         if FarmingV2Enabled and InitialSpawnDone and (tick() - LastHopTime) > 2 then
             local myChar = L.Character
             local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
-            
             if myHRP and myHRP.Parent then
                 pcall(function()
                     CombatRemote:FireServer("UseSkill", "Attack1")
                     CombatRemote:FireServer("UseSkill", "Attack2")
                     CombatRemote:FireServer("UseSkill", "Attack3")
                 end)
-
                 local targets = GetAllValidPlayers()
                 if #targets > 0 then
                     V2TargetIndex = V2TargetIndex + 1
                     if V2TargetIndex > #targets then V2TargetIndex = 1 end
-                    
                     local targetChar = targets[V2TargetIndex].Character
                     if targetChar and targetChar.Parent then
                         local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
@@ -774,23 +690,20 @@ task.spawn(function()
     end
 end)
 
--- V3 0-Stud Lock Target & Attack Loop (Every 0.1s) - WITH AIR STUCK FIX
+-- V3 0-Stud Lock Target & Attack Loop
 task.spawn(function()
     while true do
         if FarmingV3Enabled and InitialSpawnDone and (tick() - LastHopTime) > 2 then
             local myChar = L.Character
             local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
-            
             if myHRP and myHRP.Parent then
                 pcall(function()
                     CombatRemote:FireServer("UseSkill", "Attack1")
                     CombatRemote:FireServer("UseSkill", "Attack2")
                     CombatRemote:FireServer("UseSkill", "Attack3")
                 end)
-
                 if not IsTargetValid(CurrentTarget) then CurrentTarget = nil end
                 if not CurrentTarget then CurrentTarget = GetNearestPlayer() end
-
                 if CurrentTarget then
                     local targetChar = CurrentTarget.Character
                     if targetChar and targetChar.Parent then
@@ -812,53 +725,39 @@ task.spawn(function()
     end
 end)
 
--- V4 0-Stud Lock Target & Attack Loop (Skip Killed Targets) - (Every 0.1s) - INSTANT HOP
+-- V4 0-Stud Lock Target & Attack Loop (Skip Killed Targets)
 task.spawn(function()
     while true do
         if FarmingV4Enabled and InitialSpawnDone and (tick() - LastHopTime) > 2 then
             local myChar = L.Character
             local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
-            
             if myHRP and myHRP.Parent then
                 pcall(function()
                     CombatRemote:FireServer("UseSkill", "Attack1")
                     CombatRemote:FireServer("UseSkill", "Attack2")
                     CombatRemote:FireServer("UseSkill", "Attack3")
                 end)
-
-                -- Check if current target is still valid (alive and not killed)
                 if CurrentTarget and (not IsTargetValid(CurrentTarget) or KilledTargets[CurrentTarget.Name]) then
                     CurrentTarget = nil
                 end
-                
-                -- Find new target if needed
-                if not CurrentTarget then
-                    CurrentTarget = GetNearestPlayerV4()
-                end
-
-                -- Check if all players are killed (BUG FIXED)
+                if not CurrentTarget then CurrentTarget = GetNearestPlayerV4() end
                 local validTargets = GetAllValidPlayersV4()
                 if #validTargets == 0 and #GetAllValidPlayers() > 0 then
-                    -- All original players are killed, immediately hop
                     ServerHopV2Smart()
                     task.wait(5)
                 elseif #validTargets == 0 and #GetAllValidPlayers() == 0 then
-                    -- No valid players at all, wait a bit
                     task.wait(1)
                 end
-
                 if CurrentTarget then
                     local targetChar = CurrentTarget.Character
                     if targetChar and targetChar.Parent then
                         local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
                         local targetHum = targetChar:FindFirstChild("Humanoid")
                         if targetHRP and targetHRP.Parent then
-                            -- Check if target is dead and mark as killed
                             if targetHum and targetHum.Health <= 0 then
                                 KilledTargets[CurrentTarget.Name] = true
                                 CurrentTarget = nil
                             else
-                                -- Farm the target
                                 myHRP.CFrame = targetHRP.CFrame
                                 myHRP.AssemblyLinearVelocity = Vector3.zero
                                 myHRP.AssemblyAngularVelocity = Vector3.zero
