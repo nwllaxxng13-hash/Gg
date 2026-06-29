@@ -4,8 +4,9 @@
     SECURITY UPGRADE: Instant Evasion (No HTTP Yield) & Self-Detection Bug Fix.
     ADDED: Misc Tab with Noclip Toggle.
     ADDED: KaiTan Tab (Auto Space Godzilla Questline Sequence).
-    FIXED: Anti-Cheat Bypass (TweenService Movement to prevent Speed/Fly/Exploit kicks).
-    FIXED: Auto Farm Warp Logic (Replaced Instant CFrame with SafeWarp).
+    FIXED: V4 Logic (Strict Target Skipping & Instant Hop on Server Cleared).
+    UPDATED: Auto Space Godzilla Completion - Auto Select, Switch Off & Kick Feature.
+    FIXED: Anti-Teleport Failure (Error 772 / Server Full) Auto-Retry Mechanism.
 ]]
 
 local Players = game:GetService("Players")
@@ -15,7 +16,6 @@ local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
-local TweenService = game:GetService("TweenService")
 
 local cloneref = (cloneref or clonereference or function(instance) return instance end)
 local L = Players.LocalPlayer
@@ -24,13 +24,27 @@ local L = Players.LocalPlayer
 -- ADMIN LIST (USERNAME NOT DISPLAY NAME)
 -- ==========================================
 local AdminList = {
-    ["bookgohih555"] = true, ["THEGOLOFT"] = true, ["1TAD00R11YuJ1"] = true,
-    ["IMax_00123"] = true, ["7EAKHUN"] = true, ["hohome123123"] = true,
-    ["Leocool1178"] = true, ["wingsgoddragon"] = true, ["GlaceSenpai21"] = true,
-    ["Clericmaster11235"] = true, ["khunnapat1966"] = true, ["TAEKHUNN"] = true,
-    ["mojuay00"] = true, ["bookgohih566"] = true, ["Mr_Goji09"] = true,
-    ["AGN_G1"] = true, ["SolisTheAbsol"] = true, ["snipperboy978"] = true,
-    ["Sentinel_Flames"] = true, ["SxpxrGxmx"] = true, ["Nixken23819"] = true,
+    ["bookgohih555"] = true,
+    ["THEGOLOFT"] = true,
+    ["1TAD00R11YuJ1"] = true,
+    ["IMax_00123"] = true,
+    ["7EAKHUN"] = true,
+    ["hohome123123"] = true,
+    ["Leocool1178"] = true,
+    ["wingsgoddragon"] = true,
+    ["GlaceSenpai21"] = true,
+    ["Clericmaster11235"] = true,
+    ["khunnapat1966"] = true,
+    ["TAEKHUNN"] = true,
+    ["mojuay00"] = true,
+    ["bookgohih566"] = true,
+    ["Mr_Goji09"] = true,
+    ["AGN_G1"] = true,
+    ["SolisTheAbsol"] = true,
+    ["snipperboy978"] = true,
+    ["Sentinel_Flames"] = true,
+    ["SxpxrGxmx"] = true,
+    ["Nixken23819"] = true,
     ["Dentalment"] = true
 }
 
@@ -68,10 +82,12 @@ local AirStuckCounter = 0
 local KaijuName = "Biollante"
 local KilledTargets = {} 
 local AdminHopCount = 0
-local CurrentTween = nil
 
 local SelectedSkills = {
-    ["Attack1"] = true, ["Attack2"] = true, ["Attack3"] = true, ["Attack4"] = false
+    ["Attack1"] = true,
+    ["Attack2"] = true,
+    ["Attack3"] = true,
+    ["Attack4"] = false
 }
 
 -- ==========================================
@@ -83,11 +99,19 @@ local function SaveConfig()
     pcall(function()
         if writefile then
             local data = {
-                V1 = FarmingV1Enabled, V2 = FarmingV2Enabled, V3 = FarmingV3Enabled, V4 = FarmingV4Enabled,
-                Hop = AutoHopEnabled, HopV2 = AutoHopV2Enabled, KaijuName = KaijuName,
-                AdminHopCount = AdminHopCount, AutoLockBeam = AutoLockBeamEnabled,
-                SelectedSkills = SelectedSkills, Noclip = NoclipEnabled,
-                AutoSpaceG = AutoSpaceGodzilla, KStage = KaiTanStage
+                V1 = FarmingV1Enabled,
+                V2 = FarmingV2Enabled,
+                V3 = FarmingV3Enabled,
+                V4 = FarmingV4Enabled,
+                Hop = AutoHopEnabled,
+                HopV2 = AutoHopV2Enabled,
+                KaijuName = KaijuName,
+                AdminHopCount = AdminHopCount,
+                AutoLockBeam = AutoLockBeamEnabled,
+                SelectedSkills = SelectedSkills,
+                Noclip = NoclipEnabled,
+                AutoSpaceG = AutoSpaceGodzilla,
+                KStage = KaiTanStage
             }
             writefile(ConfigFile, HttpService:JSONEncode(data))
         end
@@ -112,41 +136,16 @@ local function LoadConfig()
                 AutoSpaceGodzilla = decoded.AutoSpaceG or false
                 KaiTanStage = decoded.KStage or 1
                 if decoded.SelectedSkills then
-                    for skill, val in pairs(decoded.SelectedSkills) do SelectedSkills[skill] = val end
+                    for skill, val in pairs(decoded.SelectedSkills) do
+                        SelectedSkills[skill] = val
+                    end
                 end
             end
         end
     end)
 end
+
 LoadConfig()
-
--- ==========================================
--- ANTI-CHEAT BYPASS: SAFE WARP (TWEEN)
--- ==========================================
-local function SafeWarp(targetCFrame)
-    local myChar = L.Character
-    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
-    if not myHRP then return end
-
-    local dist = (myHRP.Position - targetCFrame.Position).Magnitude
-
-    -- หากอยู่ไกลเกิน 15 Studs จะใช้การพุ่ง (Tween) เพื่อหลบ Anti-Speed/Teleport
-    if dist > 15 then
-        local safeSpeed = 250 -- ปรับแต่งความเร็วให้พอดี ไม่เกินลิมิตเกม
-        local timeToTravel = dist / safeSpeed
-        
-        -- ลบ Tween เก่าทิ้งก่อนเพื่อกันบั๊กกระตุก
-        if CurrentTween then CurrentTween:Cancel() end
-        
-        local tweenInfo = TweenInfo.new(timeToTravel, Enum.EasingStyle.Linear)
-        CurrentTween = TweenService:Create(myHRP, tweenInfo, {CFrame = targetCFrame})
-        CurrentTween:Play()
-    else
-        -- ถ้าระยะใกล้มากแล้ว ให้แตะติดแบบเนียนๆ
-        if CurrentTween then CurrentTween:Cancel(); CurrentTween = nil end
-        myHRP.CFrame = targetCFrame
-    end
-end
 
 -- ==========================================
 -- UTILITY FUNCTIONS
@@ -159,36 +158,55 @@ local function ResetAllState()
     LastValidPosition = nil
     AirStuckCounter = 0
     KilledTargets = {}
-    if CurrentTween then CurrentTween:Cancel(); CurrentTween = nil end
 end
 
 local function GetPlayerLevel()
     local levelNum = 0
     pcall(function()
-        if L:FindFirstChild("leaderstats") then
-            local lvl = L.leaderstats:FindFirstChild("Level") or L.leaderstats:FindFirstChild("Lv")
-            if lvl then levelNum = tonumber(lvl.Value) end
-        end
-    end)
-    if levelNum and levelNum > 0 then return levelNum end
-    
-    pcall(function()
-        local lvl = L:FindFirstChild("Level") or L:FindFirstChild("PlayerLevel")
-        if lvl then levelNum = tonumber(lvl.Value) end
-    end)
-    if levelNum and levelNum > 0 then return levelNum end
-
-    pcall(function()
         local liveChar = workspace:FindFirstChild("Live") and workspace.Live:FindFirstChild(L.Name)
         if liveChar then
             local overhead = liveChar:FindFirstChild("Overhead")
             if overhead and overhead:FindFirstChild("Frame") and overhead.Frame:FindFirstChild("Level") and overhead.Frame.Level:FindFirstChild("TextLabel") then
-                local num = string.match(overhead.Frame.Level.TextLabel.Text, "%d+")
-                if num then levelNum = tonumber(num) end
+                local text = overhead.Frame.Level.TextLabel.Text
+                local num = string.match(text, "%d+")
+                if num then
+                    levelNum = tonumber(num)
+                end
             end
         end
     end)
-    return levelNum or 0
+    return levelNum
+end
+
+local function CheckAndFixAirStuck()
+    local myChar = L.Character
+    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    local hum = myChar and myChar:FindFirstChild("Humanoid")
+    
+    if not myHRP or not myHRP.Parent or not hum then return end
+    local currentPos = myHRP.Position
+    
+    if LastValidPosition then
+        local distance = (currentPos - LastValidPosition).Magnitude
+        if distance < 0.5 and hum.Health > 0 then
+            AirStuckCounter = AirStuckCounter + 1
+        else
+            AirStuckCounter = 0
+        end
+    end
+    
+    LastValidPosition = currentPos
+    
+    if AirStuckCounter > 5 then
+        hum.PlatformStand = false
+        myHRP.CFrame = myHRP.CFrame + Vector3.new(0, 10, 0)
+        myHRP.AssemblyLinearVelocity = Vector3.zero
+        myHRP.AssemblyAngularVelocity = Vector3.zero
+        task.wait(0.2)
+        AirStuckCounter = 0
+        LastValidPosition = nil
+        CurrentTarget = nil
+    end
 end
 
 local function InitializeCharacter()
@@ -202,6 +220,8 @@ local function InitializeCharacter()
         hum.PlatformStand = false
         hrp.CanCollide = true
         hrp.CFrame = hrp.CFrame + Vector3.new(0, 5, 0)
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
         task.wait(0.5)
         hum.PlatformStand = false
     end
@@ -217,28 +237,45 @@ L.CharacterAdded:Connect(function(char)
     InitializeCharacter()
 end)
 
-if L.Character then InitializeCharacter() end
+if L.Character then
+    InitializeCharacter()
+end
 
 local function IsTargetValid(target)
-    if not target or not target.Parent or target == L or not Players:FindFirstChild(target.Name) then return false end
+    if not target or not target.Parent then return false end
+    if target == L then return false end
+    if not Players:FindFirstChild(target.Name) then return false end
+    
     local char = target.Character
     if not char or not char.Parent then return false end
+    
     local hum = char:FindFirstChild("Humanoid")
     local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hum or not hrp or not hrp.Parent or hum.Health <= 0 then return false end
+    
+    if not hum or not hrp or not hrp.Parent then return false end
+    if hum.Health <= 0 then return false end
+    
     return true
 end
 
 local function GetNearestPlayer()
     local myChar = L.Character
     local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
-    if not myHRP then return nil end
+    if not myHRP or not myHRP.Parent then return nil end
 
-    local nearest, minDist = nil, math.huge
+    local nearest = nil
+    local minDist = math.huge
+
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= L and IsTargetValid(p) then
-            local dist = (p.Character.HumanoidRootPart.Position - myHRP.Position).Magnitude
-            if dist < minDist then minDist = dist; nearest = p end
+            local enemyHRP = p.Character.HumanoidRootPart
+            if enemyHRP and enemyHRP.Parent then
+                local dist = (enemyHRP.Position - myHRP.Position).Magnitude
+                if dist < minDist then
+                    minDist = dist
+                    nearest = p
+                end
+            end
         end
     end
     return nearest
@@ -247,7 +284,9 @@ end
 local function GetAllValidPlayers()
     local validTargets = {}
     for _, p in pairs(Players:GetPlayers()) do
-        if p ~= L and IsTargetValid(p) then table.insert(validTargets, p) end
+        if p ~= L and IsTargetValid(p) then
+            table.insert(validTargets, p)
+        end
     end
     return validTargets
 end
@@ -255,30 +294,51 @@ end
 local function GetNearestPlayerV4()
     local myChar = L.Character
     local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
-    if not myHRP then return nil end
+    if not myHRP or not myHRP.Parent then return nil end
 
-    local nearest, minDist = nil, math.huge
+    local nearest = nil
+    local minDist = math.huge
+
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= L and IsTargetValid(p) and not KilledTargets[p.Name] then
-            local dist = (p.Character.HumanoidRootPart.Position - myHRP.Position).Magnitude
-            if dist < minDist then minDist = dist; nearest = p end
+            local enemyHRP = p.Character.HumanoidRootPart
+            if enemyHRP and enemyHRP.Parent then
+                local dist = (enemyHRP.Position - myHRP.Position).Magnitude
+                if dist < minDist then
+                    minDist = dist
+                    nearest = p
+                end
+            end
         end
     end
     return nearest
 end
 
 -- ==========================================
--- ADMIN DETECTION & SERVER HOP
+-- AUTO HOP LOGIC & ANTI-FAILURE RETRY
 -- ==========================================
 local function ServerHop()
     local req = (type(syn) == "table" and syn.request) or request or http_request
     if req then
         local url = "https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Desc&limit=100"
-        local success, result = pcall(function() return HttpService:JSONDecode(req({Url = url, Method = "GET"}).Body) end)
+        local success, result = pcall(function()
+            return HttpService:JSONDecode(req({Url = url, Method = "GET"}).Body)
+        end)
         if success and result and result.data then
             local servers = {}
             for _, v in ipairs(result.data) do
-                if v.playing < (v.maxPlayers - 2) and v.id ~= game.JobId then table.insert(servers, v.id) end
+                -- ปรับกรองให้เซิร์ฟเวอร์เหลือที่ว่างอย่างน้อย 2 ช่อง เพื่อลดโอกาสเกิด Error 772 (เซิร์ฟเต็ม)
+                if v.playing < (v.maxPlayers - 2) and v.id ~= game.JobId then
+                    table.insert(servers, v.id)
+                end
+            end
+            -- ลูปสำรองหากเงื่อนไขแรกไม่เจอเซิร์ฟเวอร์เลย
+            if #servers == 0 then
+                for _, v in ipairs(result.data) do
+                    if v.playing < v.maxPlayers and v.id ~= game.JobId then
+                        table.insert(servers, v.id)
+                    end
+                end
             end
             if #servers > 0 then
                 ResetAllState()
@@ -291,22 +351,83 @@ local function ServerHop()
     TeleportService:Teleport(game.PlaceId, L)
 end
 
+local function ServerHopV2Smart()
+    local req = (type(syn) == "table" and syn.request) or request or http_request
+    if req then
+        local url = "https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Desc&limit=100"
+        local success, result = pcall(function()
+            return HttpService:JSONDecode(req({Url = url, Method = "GET"}).Body)
+        end)
+        if success and result and result.data then
+            local qualifyingServers = {}
+            for _, v in ipairs(result.data) do
+                if v.id ~= game.JobId and v.playing < (v.maxPlayers - 2) then
+                    if v.playing <= 4 then
+                        table.insert(qualifyingServers, v)
+                    end
+                end
+            end
+            if #qualifyingServers > 0 then
+                local targetServer = qualifyingServers[math.random(1, #qualifyingServers)]
+                ResetAllState()
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, targetServer.id, L)
+                return
+            end
+        end
+    end
+    ServerHop() -- ถ้าระบบ Smart หาห้องคนน้อยไม่เจอ ให้สลับไปเซิร์ฟเวอร์ปกติทดแทน
+end
+
+-- ระบบดักจับการวาร์ปล้มเหลว (เช่น Error 772 / เซิร์ฟเวอร์เต็ม) เพื่อลูปหาเซิร์ฟใหม่ทันที
+TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, errorMessage)
+    warn("🛑 Teleport Failed: " .. tostring(errorMessage) .. " - Retrying server discovery in 3 seconds...")
+    task.wait(3)
+    if AutoHopV2Enabled then
+        ServerHopV2Smart()
+    else
+        ServerHop()
+    end
+end)
+
+-- ==========================================
+-- ADMIN DETECTION (INSTANT EVASION)
+-- ==========================================
+local function IsAdminInServer()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player.UserId ~= L.UserId and AdminList[player.Name] then
+            return true, player.Name
+        end
+    end
+    return false, nil
+end
+
 local isEmergencyHopping = false
 local function EmergencyHop(adminName)
     if isEmergencyHopping then return end
     isEmergencyHopping = true
     
-    FarmingV1Enabled, FarmingV2Enabled, FarmingV3Enabled, FarmingV4Enabled = false, false, false, false
-    AutoLockBeamEnabled, AutoSpaceGodzilla = false, false
+    FarmingV1Enabled = false
+    FarmingV2Enabled = false
+    FarmingV3Enabled = false
+    FarmingV4Enabled = false
+    AutoLockBeamEnabled = false
+    AutoSpaceGodzilla = false
     
-    pcall(function() if L.Character then L.Character:Destroy() end end)
+    pcall(function()
+        if L.Character then L.Character:Destroy() end
+    end)
+    
     AdminHopCount = AdminHopCount + 1
     SaveConfig()
     
-    warn("🛡️ ADMIN DETECTED: " .. tostring(adminName) .. " - EVADING")
-    pcall(function() TeleportService:Teleport(game.PlaceId, L) end)
+    warn("🛡️ ADMIN DETECTED: " .. tostring(adminName) .. " - INITIATING INSTANT EVASION")
+    
+    pcall(function()
+        TeleportService:Teleport(game.PlaceId, L)
+    end)
+    
     task.wait(0.5)
-    L:Kick("\n🛡️ ADMIN DETECTED 🛡️\nDisconnected instantly to protect your account.")
+    L:Kick("\n🛡️ ADMIN DETECTED 🛡️\nAdmin: " .. tostring(adminName) .. "\nDisconnected instantly to protect your account.")
 end
 
 -- ==========================================
@@ -314,155 +435,602 @@ end
 -- ==========================================
 local WindUI
 do
-    local ok, result = pcall(function() return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))() end)
-    if ok then WindUI = result else WindUI = require(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init")) end
+    local ok, result = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+    end)
+    if ok then
+        WindUI = result
+    else
+        WindUI = require(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init"))
+    end
 end
 
 local Window = WindUI:CreateWindow({
-    Title = "Kaiju Omni-Farm [Bypass]",
+    Title = "Kaiju Omni-Farm",
     Author = "Fox for Jack",
     Icon = "solar:wind-bold",
     Theme = "Dark",
     ToggleKey = Enum.KeyCode.RightControl,
 })
 
-local FarmTab = Window:Tab({ Title = "Auto Farm", Icon = "crosshair" })
-local KaiTanTab = Window:Tab({ Title = "KaiTan", Icon = "rocket" })
-local HopTab = Window:Tab({ Title = "Server Manager", Icon = "globe" })
-local MiscTab = Window:Tab({ Title = "Misc", Icon = "wrench" })
+Window:Tag({
+    Title = "v1.6.0-WindUI",
+    Color = "ElementBackground",
+})
 
+local FarmTab = Window:Tab({
+    Title = "Auto Farm",
+    Icon = "crosshair",
+})
+
+local KaiTanTab = Window:Tab({
+    Title = "KaiTan",
+    Icon = "rocket",
+})
+
+local HopTab = Window:Tab({
+    Title = "Server Manager",
+    Icon = "globe",
+})
+
+local MiscTab = Window:Tab({
+    Title = "Misc",
+    Icon = "wrench",
+})
+
+local StatsTab = Window:Tab({
+    Title = "Stats & Security",
+    Icon = "shield-check",
+})
+
+-- --- Farm Tab Configurations ---
 local FarmSettingsSection = FarmTab:Section({ Title = "Target Settings" })
+
 FarmSettingsSection:Input({
     Title = "Kaiju Name",
+    Desc = "Type the exact target Kaiju deployment asset name.",
+    Icon = "pencil",
+    Placeholder = "e.g. Biollante",
     Value = KaijuName,
-    Callback = function(text) if text ~= "" then KaijuName = text; SaveConfig() end end,
+    Callback = function(text)
+        if text ~= "" then
+            KaijuName = text
+            SaveConfig()
+        end
+    end,
 })
+
 FarmSettingsSection:Toggle({
     Title = "Auto Lock Beam",
+    Desc = "Locks Beam to the current target or nearest player continuously.",
     Value = AutoLockBeamEnabled,
-    Callback = function(val) AutoLockBeamEnabled = val; SaveConfig() end,
+    Callback = function(val)
+        AutoLockBeamEnabled = val
+        SaveConfig()
+    end,
 })
 
-local AttackSection = FarmTab:Section({ Title = "Farming Implementation Vectors" })
-AttackSection:Toggle({ Title = "FARM V1 (WARP -40)", Value = FarmingV1Enabled, Callback = function(val) FarmingV1Enabled = val; SaveConfig() end })
-AttackSection:Toggle({ Title = "FARM V2 (RAPID)", Value = FarmingV2Enabled, Callback = function(val) FarmingV2Enabled = val; SaveConfig() end })
-AttackSection:Toggle({ Title = "FARM V3 (0-STUD LOCK)", Value = FarmingV3Enabled, Callback = function(val) FarmingV3Enabled = val; SaveConfig() end })
-AttackSection:Toggle({ Title = "FARM V4 (SKIP KILLED)", Value = FarmingV4Enabled, Callback = function(val) FarmingV4Enabled = val; SaveConfig() end })
+local SkillSection = FarmTab:Section({ Title = "Combat Loops Configuration" })
 
+local function CreateSkillToggle(skillLabel, internalName)
+    SkillSection:Toggle({
+        Title = "Loop " .. skillLabel,
+        Value = SelectedSkills[internalName],
+        Callback = function(val)
+            SelectedSkills[internalName] = val
+            SaveConfig()
+        end,
+    })
+end
+
+CreateSkillToggle("Skill 1 (Attack1)", "Attack1")
+CreateSkillToggle("Skill 2 (Attack2)", "Attack2")
+CreateSkillToggle("Skill 3 (Attack3)", "Attack3")
+CreateSkillToggle("Skill 4 (Attack4)", "Attack4")
+
+local AttackSection = FarmTab:Section({ Title = "Farming Implementation Vectors" })
+
+local ToggleV1 = AttackSection:Toggle({
+    Title = "FARM V1 (WARP -40)",
+    Value = FarmingV1Enabled,
+    Callback = function(val)
+        FarmingV1Enabled = val
+        if val then FarmingV2Enabled = false; FarmingV3Enabled = false; FarmingV4Enabled = false; AutoSpaceGodzilla = false end
+        SaveConfig()
+    end,
+})
+
+local ToggleV2 = AttackSection:Toggle({
+    Title = "FARM V2 (RAPID)",
+    Value = FarmingV2Enabled,
+    Callback = function(val)
+        FarmingV2Enabled = val
+        if val then FarmingV1Enabled = false; FarmingV3Enabled = false; FarmingV4Enabled = false; AutoSpaceGodzilla = false end
+        SaveConfig()
+    end,
+})
+
+local ToggleV3 = AttackSection:Toggle({
+    Title = "FARM V3 (0-STUD LOCK)",
+    Value = FarmingV3Enabled,
+    Callback = function(val)
+        FarmingV3Enabled = val
+        if val then FarmingV1Enabled = false; FarmingV2Enabled = false; FarmingV4Enabled = false; AutoSpaceGodzilla = false end
+        SaveConfig()
+    end,
+})
+
+local ToggleV4 = AttackSection:Toggle({
+    Title = "FARM V4 (SKIP KILLED)",
+    Value = FarmingV4Enabled,
+    Callback = function(val)
+        FarmingV4Enabled = val
+        if val then FarmingV1Enabled = false; FarmingV2Enabled = false; FarmingV3Enabled = false; AutoSpaceGodzilla = false end
+        SaveConfig()
+    end,
+})
+
+-- --- KaiTan Tab Configurations ---
 local KaiTanSection = KaiTanTab:Section({ Title = "Ultimate Space Godzilla Sequence" })
-KaiTanSection:Toggle({ Title = "Auto Space Godzilla", Value = AutoSpaceGodzilla, Callback = function(val) AutoSpaceGodzilla = val; SaveConfig() end })
+
+local StageParagraph = KaiTanSection:Paragraph({
+    Title = "Current Sequence Stage",
+    Desc = "Stage: " .. tostring(KaiTanStage) .. "/6\nLoading data...",
+})
+
+KaiTanSection:Toggle({
+    Title = "Auto Space Godzilla",
+    Desc = "Automates the entire Space Godzilla unlock path. Forces V3 Farm.",
+    Value = AutoSpaceGodzilla,
+    Callback = function(val)
+        AutoSpaceGodzilla = val
+        if val then
+            FarmingV3Enabled = true
+            FarmingV1Enabled = false
+            FarmingV2Enabled = false
+            FarmingV4Enabled = false
+        end
+        SaveConfig()
+    end,
+})
+
+KaiTanSection:Button({
+    Title = "Reset Quest Stage",
+    Desc = "Resets the tracker back to Gojira 1954 (Stage 1). Use if stuck.",
+    Callback = function()
+        KaiTanStage = 1
+        SaveConfig()
+    end
+})
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if StageParagraph then
+            local activeName = AutoSpaceGodzilla and CurrentKaiTanName or "OFF"
+            StageParagraph:SetDesc("Stage: " .. tostring(KaiTanStage) .. "/6\nCurrent Override: " .. activeName)
+        end
+    end
+end)
+
+-- --- Hop Tab Configurations ---
+local HopSection = HopTab:Section({ Title = "Automated Server Cycling" })
+
+HopSection:Toggle({
+    Title = "AUTO HOP V1 (3 MIN DELAY)",
+    Value = AutoHopEnabled,
+    Callback = function(val)
+        AutoHopEnabled = val
+        if val then HopTimer = 0; AutoHopV2Enabled = false end
+        SaveConfig()
+    end,
+})
+
+HopSection:Toggle({
+    Title = "AUTO HOP V2 (1 MIN / MAX 4 PLR)",
+    Value = AutoHopV2Enabled,
+    Callback = function(val)
+        AutoHopV2Enabled = val
+        if val then HopTimerV2 = 0; AutoHopEnabled = false end
+        SaveConfig()
+    end,
+})
+
+-- --- Misc Tab Configurations ---
+local MiscSection = MiscTab:Section({ Title = "Character Exploits" })
+
+MiscSection:Toggle({
+    Title = "Noclip",
+    Desc = "Allows your character to pass completely through all solid walls and objects.",
+    Value = NoclipEnabled,
+    Callback = function(val)
+        NoclipEnabled = val
+        SaveConfig()
+    end,
+})
+
+-- --- Stats Tab Configuration ---
+local SecuritySection = StatsTab:Section({ Title = "Anti-Moderation Diagnostics" })
+
+local TrackerParagraph = SecuritySection:Paragraph({
+    Title = "Admin Evasion Status",
+    Desc = "Admin Detections Logged: " .. tostring(AdminHopCount) .. "\nEmergency parameters are fully initialized.",
+})
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if TrackerParagraph then
+            TrackerParagraph:SetDesc("Admin Detections Logged: " .. tostring(AdminHopCount) .. "\nEmergency parameters are fully initialized.")
+        end
+    end
+end)
 
 -- ==========================================
 -- UNIVERSAL EXPLOIT LOOPS
 -- ==========================================
+
 local function FireActiveSkills()
     for skillName, isEnabled in pairs(SelectedSkills) do
-        if isEnabled then pcall(function() CombatRemote:FireServer("UseSkill", skillName) end) end
+        if isEnabled then
+            pcall(function()
+                CombatRemote:FireServer("UseSkill", skillName)
+            end)
+        end
     end
 end
 
--- Noclip Bypass (Avoids collision-based kicks)
+-- --- KAITAN AUTO SPACE GODZILLA LOOP ---
+task.spawn(function()
+    while true do
+        if AutoSpaceGodzilla then
+            FarmingV3Enabled = true
+            FarmingV1Enabled = false
+            FarmingV2Enabled = false
+            FarmingV4Enabled = false
+            
+            local cells = L:FindFirstChild("leaderstats") and L.leaderstats:FindFirstChild("Cells") and L.leaderstats.Cells.Value or 0
+            local currentKaiju = L:FindFirstChild("leaderstats") and L.leaderstats:FindFirstChild("Kaiju") and L.leaderstats.Kaiju.Value or ""
+            local level = GetPlayerLevel()
+            
+            -- บล็อกตรวจสอบเงื่อนไขความสำเร็จ: ถ้าเปลี่ยนร่างเป็น Space Godzilla สำเร็จแล้ว ให้ปิดการทำงานและเตะออกจากเกมทันที
+            if currentKaiju == "Space Godzilla" then
+                AutoSpaceGodzilla = false
+                FarmingV3Enabled = false
+                SaveConfig()
+                task.wait(0.5)
+                L:Kick("Finished Space Godzilla")
+                return
+            end
+            
+            pcall(function()
+                if KaiTanStage == 1 then
+                    CurrentKaiTanName = "Gojira 1954"
+                    if currentKaiju ~= "Gojira 1954" then
+                        FireServerRemote:FireServer("Select", "Gojira 1954")
+                    end
+                    if cells >= 50000 then 
+                        KaiTanStage = 2; SaveConfig() 
+                    end
+                    
+                elseif KaiTanStage == 2 then
+                    CurrentKaiTanName = "Biollante"
+                    FireServerRemote:FireServer("Buy", "Biollante")
+                    if currentKaiju ~= "Biollante" then
+                        FireServerRemote:FireServer("Select", "Biollante")
+                    end
+                    if currentKaiju == "Biollante" and level >= 75 and cells >= 125000 then
+                        KaiTanStage = 3; SaveConfig()
+                    end
+                    
+                elseif KaiTanStage == 3 then
+                    CurrentKaiTanName = "Heisei Godzilla"
+                    FireServerRemote:FireServer("Buy", "Heisei Godzilla")
+                    if currentKaiju ~= "Heisei Godzilla" then
+                        FireServerRemote:FireServer("Select", "Heisei Godzilla")
+                    end
+                    if currentKaiju == "Heisei Godzilla" and level >= 100 then
+                        KaiTanStage = 4; SaveConfig()
+                    end
+                    
+                elseif KaiTanStage == 4 then
+                    CurrentKaiTanName = "Junior Godzilla"
+                    if currentKaiju ~= "Junior Godzilla" then
+                        FireServerRemote:FireServer("Select", "Junior Godzilla")
+                    end
+                    if currentKaiju == "Junior Godzilla" and level >= 25 then
+                        KaiTanStage = 5; SaveConfig()
+                    end
+                    
+                elseif KaiTanStage == 5 then
+                    CurrentKaiTanName = "Biollante"
+                    if currentKaiju ~= "Biollante" then
+                        FireServerRemote:FireServer("Select", "Biollante")
+                    end
+                    if cells >= 500000 then
+                        KaiTanStage = 6; SaveConfig()
+                    end
+                    
+                elseif KaiTanStage == 6 then
+                    CurrentKaiTanName = "Biollante"
+                    -- ยิงคำสั่งซื้อพร้อมวนคำสั่งสวมใส่สลับกันจนกว่าข้อมูลจะอัปเดตบนเซิร์ฟเวอร์
+                    FireServerRemote:FireServer("Buy", "Space Godzilla")
+                    FireServerRemote:FireServer("Select", "Space Godzilla")
+                end
+            end)
+        end
+        task.wait(2) -- Prevent remote spam limits during sequence check
+    end
+end)
+
+-- Dedicated Noclip Loop (Runs right before physics simulation)
 task.spawn(function()
     RunService.Stepped:Connect(function()
         if NoclipEnabled and L.Character then
             for _, part in ipairs(L.Character:GetDescendants()) do
-                if part:IsA("BasePart") then part.CanCollide = false end
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
             end
         end
     end)
 end)
 
--- Auto Lock Beam
+-- Dedicated Auto Lock Beam Thread
 task.spawn(function()
-    while task.wait(0.1) do
-        if AutoLockBeamEnabled and InitialSpawnDone then
-            local target = CurrentTarget or GetNearestPlayer()
-            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                pcall(function() BeamRemote:FireServer(target.Character.HumanoidRootPart.Position) end)
+    while true do
+        if AutoLockBeamEnabled and (FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled) and InitialSpawnDone and (tick() - LastHopTime) > 2 then
+            local target = CurrentTarget
+            if not IsTargetValid(target) then
+                target = FarmingV4Enabled and GetNearestPlayerV4() or GetNearestPlayer()
             end
+            
+            if target and target.Character then
+                local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
+                if targetHRP then
+                    pcall(function()
+                        BeamRemote:FireServer(targetHRP.Position)
+                    end)
+                end
+            end
+        end
+        task.wait(0.1) 
+    end
+end)
+
+-- Admin Detection Loop (SUPER FAST)
+task.spawn(function()
+    Players.PlayerAdded:Connect(function(player)
+        if player.UserId ~= L.UserId and AdminList[player.Name] then
+            EmergencyHop(player.Name)
+        end
+    end)
+    while true do
+        task.wait(0.2) 
+        local isAdmin, adminName = IsAdminInServer()
+        if isAdmin then
+            EmergencyHop(adminName)
         end
     end
 end)
 
--- Base Utility (Spawn & Stats)
+-- Air Stuck Detection Loop
 task.spawn(function()
-    while task.wait(1) do
-        if (FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled) and InitialSpawnDone then
+    while true do
+        if FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled then
+            CheckAndFixAirStuck()
+        end
+        task.wait(0.1)
+    end
+end)
+
+-- Auto Hop V1 Loop (3 MIN)
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if AutoHopEnabled then
+            HopTimer = HopTimer + 1
+            if HopTimer >= 180 then
+                ServerHop()
+                HopTimer = 0
+            end
+        else
+            HopTimer = 0
+        end
+    end
+end)
+
+-- Auto Hop V2 Loop (1 MIN)
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if AutoHopV2Enabled then
+            HopTimerV2 = HopTimerV2 + 1
+            if HopTimerV2 >= 60 then
+                ServerHopV2Smart()
+                HopTimerV2 = 0
+            end
+        else
+            HopTimerV2 = 0
+        end
+    end
+end)
+
+-- Base Utility Loop: Spawn & Auto Stat
+task.spawn(function()
+    while true do
+        if (FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled) and InitialSpawnDone and (tick() - LastHopTime) > 2 then
             pcall(function()
-                local targetKaiju = AutoSpaceGodzilla and CurrentKaiTanName or KaijuName
-                FireServerRemote:FireServer("Spawn", targetKaiju, "Hong Kong")
-                FireServerRemote:FireServer("UpdateStat", targetKaiju, "Regen", "Increase")
-                FireServerRemote:FireServer("UpdateStat", targetKaiju, "Strength", "Increase")
+                local activeKaijuTarget = AutoSpaceGodzilla and CurrentKaiTanName or KaijuName
+                
+                local spawnArgs = {"Spawn", activeKaijuTarget, "Hong Kong"}
+                FireServerRemote:FireServer(unpack(spawnArgs))
+                
+                local regenArgs = {"UpdateStat", activeKaijuTarget, "Regen", "Increase"}
+                FireServerRemote:FireServer(unpack(regenArgs))
+                
+                local strengthArgs = {"UpdateStat", activeKaijuTarget, "Strength", "Increase"}
+                FireServerRemote:FireServer(unpack(strengthArgs))
             end)
         end
+        task.wait(1)
     end
 end)
 
--- V1 Warp -40 Studs Loop (Tween Bypassed)
+-- V1 Warp -40 Studs Loop
 task.spawn(function()
-    while task.wait(0.1) do
-        if FarmingV1Enabled and InitialSpawnDone then
-            if not IsTargetValid(CurrentTarget) then CurrentTarget = GetNearestPlayer() end
-            if CurrentTarget and CurrentTarget.Character and CurrentTarget.Character:FindFirstChild("HumanoidRootPart") then
-                local targetHRP = CurrentTarget.Character.HumanoidRootPart
-                local warpPos = targetHRP.CFrame * CFrame.new(0, 0, 40) -- วาร์ปไปข้างหลังเป้าหมาย 40 สตัด
-                SafeWarp(warpPos)
-                FireActiveSkills()
-            end
-        end
-    end
-end)
-
--- V2 Rapid Warp Loop (Tween Bypassed)
-task.spawn(function()
-    while task.wait(0.1) do
-        if FarmingV2Enabled and InitialSpawnDone then
-            local targets = GetAllValidPlayers()
-            if #targets > 0 then
-                V2TargetIndex = (V2TargetIndex % #targets) + 1
-                local targetHRP = targets[V2TargetIndex].Character and targets[V2TargetIndex].Character:FindFirstChild("HumanoidRootPart")
-                if targetHRP then
-                    SafeWarp(targetHRP.CFrame)
-                    FireActiveSkills()
+    while true do
+        if FarmingV1Enabled and InitialSpawnDone and (tick() - LastHopTime) > 2 then
+            local myChar = L.Character
+            local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            if myHRP and myHRP.Parent then
+                if not IsTargetValid(CurrentTarget) then CurrentTarget = nil end
+                if not CurrentTarget then CurrentTarget = GetNearestPlayer() end
+                if CurrentTarget then
+                    local targetChar = CurrentTarget.Character
+                    if targetChar and targetChar.Parent then
+                        local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+                        if targetHRP and targetHRP.Parent then
+                            local targetDirection = (targetHRP.CFrame.LookVector)
+                            local warpPosition = targetHRP.Position - (targetDirection * 40)
+                            myHRP.CFrame = CFrame.new(warpPosition, targetHRP.Position)
+                            myHRP.AssemblyLinearVelocity = Vector3.zero
+                            myHRP.AssemblyAngularVelocity = Vector3.zero
+                            
+                            FireActiveSkills()
+                            
+                            if not AutoLockBeamEnabled then
+                                pcall(function() BeamRemote:FireServer(targetHRP.Position) end)
+                            end
+                        else
+                            CurrentTarget = nil
+                        end
+                    else
+                        CurrentTarget = nil
+                    end
                 end
             end
         end
+        task.wait(0.1)
     end
 end)
 
--- V3 0-Stud Lock Loop (Tween Bypassed)
+-- V2 Rapid Warp & Attack Loop
 task.spawn(function()
-    while task.wait(0.1) do
-        if FarmingV3Enabled and InitialSpawnDone then
-            if not IsTargetValid(CurrentTarget) then CurrentTarget = GetNearestPlayer() end
-            if CurrentTarget and CurrentTarget.Character and CurrentTarget.Character:FindFirstChild("HumanoidRootPart") then
-                SafeWarp(CurrentTarget.Character.HumanoidRootPart.CFrame)
+    while true do
+        if FarmingV2Enabled and InitialSpawnDone and (tick() - LastHopTime) > 2 then
+            local myChar = L.Character
+            local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            if myHRP and myHRP.Parent then
                 FireActiveSkills()
-            end
-        end
-    end
-end)
-
--- V4 Skip Killed Target Loop (Tween Bypassed)
-task.spawn(function()
-    while task.wait(0.1) do
-        if FarmingV4Enabled and InitialSpawnDone then
-            if CurrentTarget then
-                local targetHum = CurrentTarget.Character and CurrentTarget.Character:FindFirstChild("Humanoid")
-                if targetHum and targetHum.Health <= 0 then
-                    KilledTargets[CurrentTarget.Name] = true
-                    CurrentTarget = nil
-                elseif not IsTargetValid(CurrentTarget) then
-                    CurrentTarget = nil
+                
+                local targets = GetAllValidPlayers()
+                if #targets > 0 then
+                    V2TargetIndex = V2TargetIndex + 1
+                    if V2TargetIndex > #targets then V2TargetIndex = 1 end
+                    local targetChar = targets[V2TargetIndex].Character
+                    if targetChar and targetChar.Parent then
+                        local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+                        if targetHRP and targetHRP.Parent then
+                            myHRP.CFrame = targetHRP.CFrame
+                            myHRP.AssemblyLinearVelocity = Vector3.zero
+                            myHRP.AssemblyAngularVelocity = Vector3.zero
+                        end
+                    end
                 end
             end
-            
-            if not CurrentTarget then CurrentTarget = GetNearestPlayerV4() end
-            
-            if CurrentTarget and CurrentTarget.Character and CurrentTarget.Character:FindFirstChild("HumanoidRootPart") then
-                SafeWarp(CurrentTarget.Character.HumanoidRootPart.CFrame)
+        end
+        task.wait(0.1)
+    end
+end)
+
+-- V3 0-Stud Lock Target & Attack Loop
+task.spawn(function()
+    while true do
+        if FarmingV3Enabled and InitialSpawnDone and (tick() - LastHopTime) > 2 then
+            local myChar = L.Character
+            local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            if myHRP and myHRP.Parent then
                 FireActiveSkills()
+                
+                if not IsTargetValid(CurrentTarget) then CurrentTarget = nil end
+                if not CurrentTarget then CurrentTarget = GetNearestPlayer() end
+                if CurrentTarget then
+                    local targetChar = CurrentTarget.Character
+                    if targetChar and targetChar.Parent then
+                        local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+                        if targetHRP and targetHRP.Parent then
+                            myHRP.CFrame = targetHRP.CFrame
+                            myHRP.AssemblyLinearVelocity = Vector3.zero
+                            myHRP.AssemblyAngularVelocity = Vector3.zero
+                        else
+                            CurrentTarget = nil
+                        end
+                    else
+                        CurrentTarget = nil
+                    end
+                end
             end
         end
+        task.wait(0.1)
+    end
+end)
+
+-- V4 0-Stud Lock Target & Attack Loop (Skip Killed Targets & Auto Hop when cleared)
+task.spawn(function()
+    while true do
+        if FarmingV4Enabled and InitialSpawnDone and (tick() - LastHopTime) > 2 then
+            local myChar = L.Character
+            local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            if myHRP and myHRP.Parent then
+                FireActiveSkills()
+                
+                if CurrentTarget then
+                    local targetChar = CurrentTarget.Character
+                    local targetHum = targetChar and targetChar:FindFirstChild("Humanoid")
+                    
+                    if targetHum and targetHum.Health <= 0 then
+                        KilledTargets[CurrentTarget.Name] = true
+                        CurrentTarget = nil
+                    elseif not IsTargetValid(CurrentTarget) then
+                        CurrentTarget = nil
+                    end
+                end
+                
+                local otherPlayersCount = 0
+                local killedCount = 0
+                for _, p in pairs(Players:GetPlayers()) do
+                    if p ~= L then
+                        otherPlayersCount = otherPlayersCount + 1
+                        if KilledTargets[p.Name] then
+                            killedCount = killedCount + 1
+                        end
+                    end
+                end
+                
+                if otherPlayersCount > 0 and killedCount >= otherPlayersCount then
+                    warn("Cleared all players! Initiating Server Hop...")
+                    ServerHop()
+                    task.wait(2)
+                end
+                
+                if not CurrentTarget then 
+                    CurrentTarget = GetNearestPlayerV4() 
+                end
+                
+                if CurrentTarget then
+                    local targetChar = CurrentTarget.Character
+                    if targetChar and targetChar.Parent then
+                        local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+                        if targetHRP and targetHRP.Parent then
+                            myHRP.CFrame = targetHRP.CFrame
+                            myHRP.AssemblyLinearVelocity = Vector3.zero
+                            myHRP.AssemblyAngularVelocity = Vector3.zero
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.1)
     end
 end)
