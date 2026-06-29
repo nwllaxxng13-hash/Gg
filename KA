@@ -6,6 +6,7 @@
     ADDED: KaiTan Tab (Auto Space Godzilla Questline Sequence).
     FIXED: V4 Logic (Strict Target Skipping & Instant Hop on Server Cleared).
     UPDATED: Auto Space Godzilla Completion - Auto Select, Switch Off & Kick Feature.
+    FIXED: Anti-Teleport Failure (Error 772 / Server Full) Auto-Retry Mechanism.
 ]]
 
 local Players = game:GetService("Players")
@@ -314,7 +315,7 @@ local function GetNearestPlayerV4()
 end
 
 -- ==========================================
--- AUTO HOP LOGIC
+-- AUTO HOP LOGIC & ANTI-FAILURE RETRY
 -- ==========================================
 local function ServerHop()
     local req = (type(syn) == "table" and syn.request) or request or http_request
@@ -326,8 +327,17 @@ local function ServerHop()
         if success and result and result.data then
             local servers = {}
             for _, v in ipairs(result.data) do
-                if v.playing < v.maxPlayers and v.id ~= game.JobId then
+                -- ปรับกรองให้เซิร์ฟเวอร์เหลือที่ว่างอย่างน้อย 2 ช่อง เพื่อลดโอกาสเกิด Error 772 (เซิร์ฟเต็ม)
+                if v.playing < (v.maxPlayers - 2) and v.id ~= game.JobId then
                     table.insert(servers, v.id)
+                end
+            end
+            -- ลูปสำรองหากเงื่อนไขแรกไม่เจอเซิร์ฟเวอร์เลย
+            if #servers == 0 then
+                for _, v in ipairs(result.data) do
+                    if v.playing < v.maxPlayers and v.id ~= game.JobId then
+                        table.insert(servers, v.id)
+                    end
                 end
             end
             if #servers > 0 then
@@ -351,7 +361,7 @@ local function ServerHopV2Smart()
         if success and result and result.data then
             local qualifyingServers = {}
             for _, v in ipairs(result.data) do
-                if v.id ~= game.JobId and v.playing < v.maxPlayers then
+                if v.id ~= game.JobId and v.playing < (v.maxPlayers - 2) then
                     if v.playing <= 4 then
                         table.insert(qualifyingServers, v)
                     end
@@ -365,7 +375,19 @@ local function ServerHopV2Smart()
             end
         end
     end
+    ServerHop() -- ถ้าระบบ Smart หาห้องคนน้อยไม่เจอ ให้สลับไปเซิร์ฟเวอร์ปกติทดแทน
 end
+
+-- ระบบดักจับการวาร์ปล้มเหลว (เช่น Error 772 / เซิร์ฟเวอร์เต็ม) เพื่อลูปหาเซิร์ฟใหม่ทันที
+TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, errorMessage)
+    warn("🛑 Teleport Failed: " .. tostring(errorMessage) .. " - Retrying server discovery in 3 seconds...")
+    task.wait(3)
+    if AutoHopV2Enabled then
+        ServerHopV2Smart()
+    else
+        ServerHop()
+    end
+end)
 
 -- ==========================================
 -- ADMIN DETECTION (INSTANT EVASION)
