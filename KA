@@ -7,6 +7,7 @@
     FIXED: V4 Logic (Strict Target Skipping & Instant Hop on Server Cleared).
     UPDATED: Auto Space Godzilla Completion - Auto Select, Switch Off & Kick Feature.
     FIXED: Anti-Teleport Failure (Error 772 / Server Full) Auto-Retry Mechanism.
+    CRITICAL FIX: KaiTan Next-Stage Bug Fixed (Robust Level Detection & Rate Limited Remotes).
 ]]
 
 local Players = game:GetService("Players")
@@ -162,6 +163,23 @@ end
 
 local function GetPlayerLevel()
     local levelNum = 0
+    -- Layer 1: Check standard leaderstats (Most reliable if available)
+    pcall(function()
+        if L:FindFirstChild("leaderstats") then
+            local lvl = L.leaderstats:FindFirstChild("Level") or L.leaderstats:FindFirstChild("Lv")
+            if lvl then levelNum = tonumber(lvl.Value) end
+        end
+    end)
+    if levelNum and levelNum > 0 then return levelNum end
+    
+    -- Layer 2: Check direct Player object value
+    pcall(function()
+        local lvl = L:FindFirstChild("Level") or L:FindFirstChild("PlayerLevel")
+        if lvl then levelNum = tonumber(lvl.Value) end
+    end)
+    if levelNum and levelNum > 0 then return levelNum end
+
+    -- Layer 3: Fallback to Overhead GUI tracking
     pcall(function()
         local liveChar = workspace:FindFirstChild("Live") and workspace.Live:FindFirstChild(L.Name)
         if liveChar then
@@ -175,7 +193,7 @@ local function GetPlayerLevel()
             end
         end
     end)
-    return levelNum
+    return levelNum or 0
 end
 
 local function CheckAndFixAirStuck()
@@ -327,12 +345,10 @@ local function ServerHop()
         if success and result and result.data then
             local servers = {}
             for _, v in ipairs(result.data) do
-                -- ปรับกรองให้เซิร์ฟเวอร์เหลือที่ว่างอย่างน้อย 2 ช่อง เพื่อลดโอกาสเกิด Error 772 (เซิร์ฟเต็ม)
                 if v.playing < (v.maxPlayers - 2) and v.id ~= game.JobId then
                     table.insert(servers, v.id)
                 end
             end
-            -- ลูปสำรองหากเงื่อนไขแรกไม่เจอเซิร์ฟเวอร์เลย
             if #servers == 0 then
                 for _, v in ipairs(result.data) do
                     if v.playing < v.maxPlayers and v.id ~= game.JobId then
@@ -375,10 +391,9 @@ local function ServerHopV2Smart()
             end
         end
     end
-    ServerHop() -- ถ้าระบบ Smart หาห้องคนน้อยไม่เจอ ให้สลับไปเซิร์ฟเวอร์ปกติทดแทน
+    ServerHop()
 end
 
--- ระบบดักจับการวาร์ปล้มเหลว (เช่น Error 772 / เซิร์ฟเวอร์เต็ม) เพื่อลูปหาเซิร์ฟใหม่ทันที
 TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, errorMessage)
     warn("🛑 Teleport Failed: " .. tostring(errorMessage) .. " - Retrying server discovery in 3 seconds...")
     task.wait(3)
@@ -454,7 +469,7 @@ local Window = WindUI:CreateWindow({
 })
 
 Window:Tag({
-    Title = "v1.6.0-WindUI",
+    Title = "v1.6.1-WindUI",
     Color = "ElementBackground",
 })
 
@@ -693,8 +708,10 @@ task.spawn(function()
             local currentKaiju = L:FindFirstChild("leaderstats") and L.leaderstats:FindFirstChild("Kaiju") and L.leaderstats.Kaiju.Value or ""
             local level = GetPlayerLevel()
             
-            -- บล็อกตรวจสอบเงื่อนไขความสำเร็จ: ถ้าเปลี่ยนร่างเป็น Space Godzilla สำเร็จแล้ว ให้ปิดการทำงานและเตะออกจากเกมทันที
-            if currentKaiju == "Space Godzilla" then
+            local lowerKaiju = string.lower(tostring(currentKaiju))
+            
+            -- บล็อกตรวจสอบเงื่อนไขความสำเร็จขั้นสุดท้าย
+            if string.find(lowerKaiju, "space") then
                 AutoSpaceGodzilla = false
                 FarmingV3Enabled = false
                 SaveConfig()
@@ -706,7 +723,7 @@ task.spawn(function()
             pcall(function()
                 if KaiTanStage == 1 then
                     CurrentKaiTanName = "Gojira 1954"
-                    if currentKaiju ~= "Gojira 1954" then
+                    if not string.find(lowerKaiju, "1954") and not string.find(lowerKaiju, "gojira") then
                         FireServerRemote:FireServer("Select", "Gojira 1954")
                     end
                     if cells >= 50000 then 
@@ -715,36 +732,38 @@ task.spawn(function()
                     
                 elseif KaiTanStage == 2 then
                     CurrentKaiTanName = "Biollante"
-                    FireServerRemote:FireServer("Buy", "Biollante")
-                    if currentKaiju ~= "Biollante" then
+                    if not string.find(lowerKaiju, "biollante") then
+                        FireServerRemote:FireServer("Buy", "Biollante")
                         FireServerRemote:FireServer("Select", "Biollante")
                     end
-                    if currentKaiju == "Biollante" and level >= 75 and cells >= 125000 then
+                    -- ปรับเงื่อนไขให้โฟกัสที่ความคืบหน้าของตัวเลข เพื่อแก้ปัญหาสคริปต์ติดบั๊กค้างคาด่าน
+                    if level >= 75 and cells >= 125000 then
                         KaiTanStage = 3; SaveConfig()
                     end
                     
                 elseif KaiTanStage == 3 then
                     CurrentKaiTanName = "Heisei Godzilla"
-                    FireServerRemote:FireServer("Buy", "Heisei Godzilla")
-                    if currentKaiju ~= "Heisei Godzilla" then
+                    if not string.find(lowerKaiju, "heisei") then
+                        FireServerRemote:FireServer("Buy", "Heisei Godzilla")
                         FireServerRemote:FireServer("Select", "Heisei Godzilla")
                     end
-                    if currentKaiju == "Heisei Godzilla" and level >= 100 then
+                    if level >= 100 then
                         KaiTanStage = 4; SaveConfig()
                     end
                     
                 elseif KaiTanStage == 4 then
                     CurrentKaiTanName = "Junior Godzilla"
-                    if currentKaiju ~= "Junior Godzilla" then
+                    if not string.find(lowerKaiju, "junior") then
+                        FireServerRemote:FireServer("Buy", "Junior Godzilla")
                         FireServerRemote:FireServer("Select", "Junior Godzilla")
                     end
-                    if currentKaiju == "Junior Godzilla" and level >= 25 then
+                    if level >= 25 then
                         KaiTanStage = 5; SaveConfig()
                     end
                     
                 elseif KaiTanStage == 5 then
                     CurrentKaiTanName = "Biollante"
-                    if currentKaiju ~= "Biollante" then
+                    if not string.find(lowerKaiju, "biollante") then
                         FireServerRemote:FireServer("Select", "Biollante")
                     end
                     if cells >= 500000 then
@@ -753,13 +772,12 @@ task.spawn(function()
                     
                 elseif KaiTanStage == 6 then
                     CurrentKaiTanName = "Biollante"
-                    -- ยิงคำสั่งซื้อพร้อมวนคำสั่งสวมใส่สลับกันจนกว่าข้อมูลจะอัปเดตบนเซิร์ฟเวอร์
                     FireServerRemote:FireServer("Buy", "Space Godzilla")
                     FireServerRemote:FireServer("Select", "Space Godzilla")
                 end
             end)
         end
-        task.wait(2) -- Prevent remote spam limits during sequence check
+        task.wait(1.5)
     end
 end)
 
