@@ -3,6 +3,7 @@
     Converted to WindUI with Persistent Admin Hop Counter, Auto Lock Beam, Skill Selectors.
     SECURITY UPGRADE: Instant Evasion (No HTTP Yield) & Self-Detection Bug Fix.
     ADDED: Misc Tab with Noclip Toggle.
+    ADDED: KaiTan Tab (Auto Space Godzilla Questline Sequence).
     FIXED: V4 Logic (Strict Target Skipping & Instant Hop on Server Cleared).
 ]]
 
@@ -46,13 +47,14 @@ local AdminList = {
 }
 
 -- ==========================================
--- FETCHING REMOTES (YIELD UNTIL FOUND)
+-- FETCHING REMOTES
 -- ==========================================
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local FireServerRemote = Remotes:WaitForChild("FireServer")
 local CombatRemote = Remotes:WaitForChild("CombatRemote")
 local BeamRemote = Remotes:WaitForChild("BeamRemote")
 
+-- GLOBAL VARIABLES
 local FarmingV1Enabled = false
 local FarmingV2Enabled = false
 local FarmingV3Enabled = false
@@ -61,6 +63,11 @@ local AutoHopEnabled = false
 local AutoHopV2Enabled = false
 local AutoLockBeamEnabled = false
 local NoclipEnabled = false
+
+-- KAITAN VARIABLES
+local AutoSpaceGodzilla = false
+local KaiTanStage = 1
+local CurrentKaiTanName = "Gojira 1954"
 
 local CurrentTarget = nil
 local V2TargetIndex = 1
@@ -74,7 +81,6 @@ local KaijuName = "Biollante"
 local KilledTargets = {} 
 local AdminHopCount = 0
 
--- Dynamic loop targets for skill farming
 local SelectedSkills = {
     ["Attack1"] = true,
     ["Attack2"] = true,
@@ -101,7 +107,9 @@ local function SaveConfig()
                 AdminHopCount = AdminHopCount,
                 AutoLockBeam = AutoLockBeamEnabled,
                 SelectedSkills = SelectedSkills,
-                Noclip = NoclipEnabled
+                Noclip = NoclipEnabled,
+                AutoSpaceG = AutoSpaceGodzilla,
+                KStage = KaiTanStage
             }
             writefile(ConfigFile, HttpService:JSONEncode(data))
         end
@@ -123,6 +131,8 @@ local function LoadConfig()
                 AdminHopCount = decoded.AdminHopCount or 0
                 AutoLockBeamEnabled = decoded.AutoLockBeam or false
                 NoclipEnabled = decoded.Noclip or false
+                AutoSpaceGodzilla = decoded.AutoSpaceG or false
+                KaiTanStage = decoded.KStage or 1
                 if decoded.SelectedSkills then
                     for skill, val in pairs(decoded.SelectedSkills) do
                         SelectedSkills[skill] = val
@@ -136,7 +146,7 @@ end
 LoadConfig()
 
 -- ==========================================
--- FULL STATE RESET (Critical for hop)
+-- UTILITY FUNCTIONS
 -- ==========================================
 local function ResetAllState()
     CurrentTarget = nil
@@ -148,9 +158,24 @@ local function ResetAllState()
     KilledTargets = {}
 end
 
--- ==========================================
--- AIR STUCK DETECTION & FIX
--- ==========================================
+local function GetPlayerLevel()
+    local levelNum = 0
+    pcall(function()
+        local liveChar = workspace:FindFirstChild("Live") and workspace.Live:FindFirstChild(L.Name)
+        if liveChar then
+            local overhead = liveChar:FindFirstChild("Overhead")
+            if overhead and overhead:FindFirstChild("Frame") and overhead.Frame:FindFirstChild("Level") and overhead.Frame.Level:FindFirstChild("TextLabel") then
+                local text = overhead.Frame.Level.TextLabel.Text
+                local num = string.match(text, "%d+")
+                if num then
+                    levelNum = tonumber(num)
+                end
+            end
+        end
+    end)
+    return levelNum
+end
+
 local function CheckAndFixAirStuck()
     local myChar = L.Character
     local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -182,9 +207,6 @@ local function CheckAndFixAirStuck()
     end
 end
 
--- ==========================================
--- CHARACTER INIT FIX (CRITICAL)
--- ==========================================
 local function InitializeCharacter()
     local myChar = L.Character
     if not myChar then return end
@@ -217,9 +239,6 @@ if L.Character then
     InitializeCharacter()
 end
 
--- ==========================================
--- TARGETING LOGIC (STRICT PLAYER ONLY)
--- ==========================================
 local function IsTargetValid(target)
     if not target or not target.Parent then return false end
     if target == L then return false end
@@ -294,7 +313,7 @@ local function GetNearestPlayerV4()
 end
 
 -- ==========================================
--- AUTO HOP LOGIC (STANDARD)
+-- AUTO HOP LOGIC
 -- ==========================================
 local function ServerHop()
     local req = (type(syn) == "table" and syn.request) or request or http_request
@@ -369,6 +388,7 @@ local function EmergencyHop(adminName)
     FarmingV3Enabled = false
     FarmingV4Enabled = false
     AutoLockBeamEnabled = false
+    AutoSpaceGodzilla = false
     
     pcall(function()
         if L.Character then L.Character:Destroy() end
@@ -411,13 +431,18 @@ local Window = WindUI:CreateWindow({
 })
 
 Window:Tag({
-    Title = "v1.5.0-WindUI",
+    Title = "v1.6.0-WindUI",
     Color = "ElementBackground",
 })
 
 local FarmTab = Window:Tab({
     Title = "Auto Farm",
     Icon = "crosshair",
+})
+
+local KaiTanTab = Window:Tab({
+    Title = "KaiTan",
+    Icon = "rocket",
 })
 
 local HopTab = Window:Tab({
@@ -454,7 +479,7 @@ FarmSettingsSection:Input({
 
 FarmSettingsSection:Toggle({
     Title = "Auto Lock Beam",
-    Desc = "Locks Beam to the current target or nearest player continuously across all modes.",
+    Desc = "Locks Beam to the current target or nearest player continuously.",
     Value = AutoLockBeamEnabled,
     Callback = function(val)
         AutoLockBeamEnabled = val
@@ -462,7 +487,6 @@ FarmSettingsSection:Toggle({
     end,
 })
 
--- Multi Dropdown / Skill Selection Group
 local SkillSection = FarmTab:Section({ Title = "Combat Loops Configuration" })
 
 local function CreateSkillToggle(skillLabel, internalName)
@@ -488,7 +512,7 @@ local ToggleV1 = AttackSection:Toggle({
     Value = FarmingV1Enabled,
     Callback = function(val)
         FarmingV1Enabled = val
-        if val then FarmingV2Enabled = false; FarmingV3Enabled = false; FarmingV4Enabled = false end
+        if val then FarmingV2Enabled = false; FarmingV3Enabled = false; FarmingV4Enabled = false; AutoSpaceGodzilla = false end
         SaveConfig()
     end,
 })
@@ -498,7 +522,7 @@ local ToggleV2 = AttackSection:Toggle({
     Value = FarmingV2Enabled,
     Callback = function(val)
         FarmingV2Enabled = val
-        if val then FarmingV1Enabled = false; FarmingV3Enabled = false; FarmingV4Enabled = false end
+        if val then FarmingV1Enabled = false; FarmingV3Enabled = false; FarmingV4Enabled = false; AutoSpaceGodzilla = false end
         SaveConfig()
     end,
 })
@@ -508,7 +532,7 @@ local ToggleV3 = AttackSection:Toggle({
     Value = FarmingV3Enabled,
     Callback = function(val)
         FarmingV3Enabled = val
-        if val then FarmingV1Enabled = false; FarmingV2Enabled = false; FarmingV4Enabled = false end
+        if val then FarmingV1Enabled = false; FarmingV2Enabled = false; FarmingV4Enabled = false; AutoSpaceGodzilla = false end
         SaveConfig()
     end,
 })
@@ -518,15 +542,58 @@ local ToggleV4 = AttackSection:Toggle({
     Value = FarmingV4Enabled,
     Callback = function(val)
         FarmingV4Enabled = val
-        if val then FarmingV1Enabled = false; FarmingV2Enabled = false; FarmingV3Enabled = false end
+        if val then FarmingV1Enabled = false; FarmingV2Enabled = false; FarmingV3Enabled = false; AutoSpaceGodzilla = false end
         SaveConfig()
     end,
 })
 
+-- --- KaiTan Tab Configurations ---
+local KaiTanSection = KaiTanTab:Section({ Title = "Ultimate Space Godzilla Sequence" })
+
+local StageParagraph = KaiTanSection:Paragraph({
+    Title = "Current Sequence Stage",
+    Desc = "Stage: " .. tostring(KaiTanStage) .. "/6\nLoading data...",
+})
+
+KaiTanSection:Toggle({
+    Title = "Auto Space Godzilla",
+    Desc = "Automates the entire Space Godzilla unlock path. Forces V3 Farm.",
+    Value = AutoSpaceGodzilla,
+    Callback = function(val)
+        AutoSpaceGodzilla = val
+        if val then
+            FarmingV3Enabled = true
+            FarmingV1Enabled = false
+            FarmingV2Enabled = false
+            FarmingV4Enabled = false
+        end
+        SaveConfig()
+    end,
+})
+
+KaiTanSection:Button({
+    Title = "Reset Quest Stage",
+    Desc = "Resets the tracker back to Gojira 1954 (Stage 1). Use if stuck.",
+    Callback = function()
+        KaiTanStage = 1
+        SaveConfig()
+    end
+})
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if StageParagraph then
+            local activeName = AutoSpaceGodzilla and CurrentKaiTanName or "OFF"
+            StageParagraph:SetDesc("Stage: " .. tostring(KaiTanStage) .. "/6\nCurrent Override: " .. activeName)
+        end
+    end
+end)
+
 -- --- Hop Tab Configurations ---
 local HopSection = HopTab:Section({ Title = "Automated Server Cycling" })
 
-local ToggleHop1 = HopSection:Toggle({
+HopSection:Toggle({
     Title = "AUTO HOP V1 (3 MIN DELAY)",
     Value = AutoHopEnabled,
     Callback = function(val)
@@ -536,7 +603,7 @@ local ToggleHop1 = HopSection:Toggle({
     end,
 })
 
-local ToggleHop2 = HopSection:Toggle({
+HopSection:Toggle({
     Title = "AUTO HOP V2 (1 MIN / MAX 4 PLR)",
     Value = AutoHopV2Enabled,
     Callback = function(val)
@@ -580,7 +647,6 @@ end)
 -- UNIVERSAL EXPLOIT LOOPS
 -- ==========================================
 
--- Helper execution thread for loop-firing active dropdown skills
 local function FireActiveSkills()
     for skillName, isEnabled in pairs(SelectedSkills) do
         if isEnabled then
@@ -590,6 +656,77 @@ local function FireActiveSkills()
         end
     end
 end
+
+-- --- KAITAN AUTO SPACE GODZILLA LOOP ---
+task.spawn(function()
+    while true do
+        if AutoSpaceGodzilla then
+            FarmingV3Enabled = true
+            FarmingV1Enabled = false
+            FarmingV2Enabled = false
+            FarmingV4Enabled = false
+            
+            local cells = L:FindFirstChild("leaderstats") and L.leaderstats:FindFirstChild("Cells") and L.leaderstats.Cells.Value or 0
+            local currentKaiju = L:FindFirstChild("leaderstats") and L.leaderstats:FindFirstChild("Kaiju") and L.leaderstats.Kaiju.Value or ""
+            local level = GetPlayerLevel()
+            
+            pcall(function()
+                if KaiTanStage == 1 then
+                    CurrentKaiTanName = "Gojira 1954"
+                    if currentKaiju ~= "Gojira 1954" then
+                        FireServerRemote:FireServer("Select", "Gojira 1954")
+                    end
+                    if cells >= 50000 then 
+                        KaiTanStage = 2; SaveConfig() 
+                    end
+                    
+                elseif KaiTanStage == 2 then
+                    CurrentKaiTanName = "Biollante"
+                    FireServerRemote:FireServer("Buy", "Biollante")
+                    if currentKaiju ~= "Biollante" then
+                        FireServerRemote:FireServer("Select", "Biollante")
+                    end
+                    if currentKaiju == "Biollante" and level >= 75 and cells >= 125000 then
+                        KaiTanStage = 3; SaveConfig()
+                    end
+                    
+                elseif KaiTanStage == 3 then
+                    CurrentKaiTanName = "Heisei Godzilla"
+                    FireServerRemote:FireServer("Buy", "Heisei Godzilla")
+                    if currentKaiju ~= "Heisei Godzilla" then
+                        FireServerRemote:FireServer("Select", "Heisei Godzilla")
+                    end
+                    if currentKaiju == "Heisei Godzilla" and level >= 100 then
+                        KaiTanStage = 4; SaveConfig()
+                    end
+                    
+                elseif KaiTanStage == 4 then
+                    CurrentKaiTanName = "Junior Godzilla"
+                    if currentKaiju ~= "Junior Godzilla" then
+                        FireServerRemote:FireServer("Select", "Junior Godzilla")
+                    end
+                    if currentKaiju == "Junior Godzilla" and level >= 25 then
+                        KaiTanStage = 5; SaveConfig()
+                    end
+                    
+                elseif KaiTanStage == 5 then
+                    CurrentKaiTanName = "Biollante"
+                    if currentKaiju ~= "Biollante" then
+                        FireServerRemote:FireServer("Select", "Biollante")
+                    end
+                    if cells >= 500000 then
+                        KaiTanStage = 6; SaveConfig()
+                    end
+                    
+                elseif KaiTanStage == 6 then
+                    CurrentKaiTanName = "Biollante"
+                    FireServerRemote:FireServer("Buy", "Space Godzilla")
+                end
+            end)
+        end
+        task.wait(2) -- Prevent remote spam limits during sequence check
+    end
+end)
 
 -- Dedicated Noclip Loop (Runs right before physics simulation)
 task.spawn(function()
@@ -689,13 +826,15 @@ task.spawn(function()
     while true do
         if (FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled) and InitialSpawnDone and (tick() - LastHopTime) > 2 then
             pcall(function()
-                local spawnArgs = {"Spawn", KaijuName, "Hong Kong"}
+                local activeKaijuTarget = AutoSpaceGodzilla and CurrentKaiTanName or KaijuName
+                
+                local spawnArgs = {"Spawn", activeKaijuTarget, "Hong Kong"}
                 FireServerRemote:FireServer(unpack(spawnArgs))
                 
-                local regenArgs = {"UpdateStat", KaijuName, "Regen", "Increase"}
+                local regenArgs = {"UpdateStat", activeKaijuTarget, "Regen", "Increase"}
                 FireServerRemote:FireServer(unpack(regenArgs))
                 
-                local strengthArgs = {"UpdateStat", KaijuName, "Strength", "Increase"}
+                local strengthArgs = {"UpdateStat", activeKaijuTarget, "Strength", "Increase"}
                 FireServerRemote:FireServer(unpack(strengthArgs))
             end)
         end
@@ -811,7 +950,6 @@ task.spawn(function()
             if myHRP and myHRP.Parent then
                 FireActiveSkills()
                 
-                -- ตรวจสอบว่า CurrentTarget ตายหรือยัง เพื่อบันทึกลง KilledTargets ทันทีก่อนมันจะ Invalid
                 if CurrentTarget then
                     local targetChar = CurrentTarget.Character
                     local targetHum = targetChar and targetChar:FindFirstChild("Humanoid")
@@ -824,7 +962,6 @@ task.spawn(function()
                     end
                 end
                 
-                -- ตรวจสอบประชากรในเซิฟเวอร์ (นับว่าฆ่าครบทุกคนหรือยัง)
                 local otherPlayersCount = 0
                 local killedCount = 0
                 for _, p in pairs(Players:GetPlayers()) do
@@ -836,19 +973,16 @@ task.spawn(function()
                     end
                 end
                 
-                -- ถ้าฆ่าครบทุกคนในเซิฟเวอร์ (หรือผู้เล่นทุกคนในเซิฟอยู่ใน KilledTargets หมดแล้ว) -> HOP ทันที
                 if otherPlayersCount > 0 and killedCount >= otherPlayersCount then
-                    warn("ฟาร์มผู้เล่นครบทั้งเซิฟเวอร์แล้ว! กำลังทำการ Server Hop...")
+                    warn("Cleared all players! Initiating Server Hop...")
                     ServerHop()
                     task.wait(2)
                 end
                 
-                -- หาเป้าหมายใหม่ (ดึงเฉพาะคนที่ยังไม่ได้อยู่ใน KilledTargets)
                 if not CurrentTarget then 
                     CurrentTarget = GetNearestPlayerV4() 
                 end
                 
-                -- วาร์ปไปฟาร์มเป้าหมาย
                 if CurrentTarget then
                     local targetChar = CurrentTarget.Character
                     if targetChar and targetChar.Parent then
