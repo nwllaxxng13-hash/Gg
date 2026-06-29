@@ -5,6 +5,7 @@
     ADDED: Misc Tab with Noclip Toggle.
     ADDED: KaiTan Tab (Auto Space Godzilla Questline Sequence).
     FIXED: V4 Logic (Strict Target Skipping & Instant Hop on Server Cleared).
+    UPDATED: Auto Space Godzilla Completion - Auto Select, Switch Off & Kick Feature.
 ]]
 
 local Players = game:GetService("Players")
@@ -670,6 +671,16 @@ task.spawn(function()
             local currentKaiju = L:FindFirstChild("leaderstats") and L.leaderstats:FindFirstChild("Kaiju") and L.leaderstats.Kaiju.Value or ""
             local level = GetPlayerLevel()
             
+            -- บล็อกตรวจสอบเงื่อนไขความสำเร็จ: ถ้าเปลี่ยนร่างเป็น Space Godzilla สำเร็จแล้ว ให้ปิดการทำงานและเตะออกจากเกมทันที
+            if currentKaiju == "Space Godzilla" then
+                AutoSpaceGodzilla = false
+                FarmingV3Enabled = false
+                SaveConfig()
+                task.wait(0.5)
+                L:Kick("Finished Space Godzilla")
+                return
+            end
+            
             pcall(function()
                 if KaiTanStage == 1 then
                     CurrentKaiTanName = "Gojira 1954"
@@ -720,7 +731,9 @@ task.spawn(function()
                     
                 elseif KaiTanStage == 6 then
                     CurrentKaiTanName = "Biollante"
+                    -- ยิงคำสั่งซื้อพร้อมวนคำสั่งสวมใส่สลับกันจนกว่าข้อมูลจะอัปเดตบนเซิร์ฟเวอร์
                     FireServerRemote:FireServer("Buy", "Space Godzilla")
+                    FireServerRemote:FireServer("Select", "Space Godzilla")
                 end
             end)
         end
