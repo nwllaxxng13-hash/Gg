@@ -1,6 +1,7 @@
 --[[
     Auto Farm Beam (Multi-Kaiju) - V1, V2, V3, V4, Auto Hop & Auto Save Config
-    Converted to WindUI with persistent Admin Detection Hop Counter
+    Converted to WindUI with Persistent Admin Hop Counter, Auto Lock Beam, Skill Selectors.
+    FIXED: Instant Evasion (No HTTP Yield) & Self-Detection Bug
 ]]
 
 local Players = game:GetService("Players")
@@ -56,6 +57,7 @@ local FarmingV3Enabled = false
 local FarmingV4Enabled = false
 local AutoHopEnabled = false
 local AutoHopV2Enabled = false
+local AutoLockBeamEnabled = false
 
 local CurrentTarget = nil
 local V2TargetIndex = 1
@@ -67,8 +69,15 @@ local LastValidPosition = nil
 local AirStuckCounter = 0
 local KaijuName = "Biollante"
 local KilledTargets = {} 
-local AdminDetectedPlayers = {} 
-local AdminHopCount = 0 -- Persistent Counter
+local AdminHopCount = 0
+
+-- Dynamic loop targets for skill farming
+local SelectedSkills = {
+    ["Attack1"] = true,
+    ["Attack2"] = true,
+    ["Attack3"] = true,
+    ["Attack4"] = false
+}
 
 -- ==========================================
 -- CONFIG SYSTEM (AUTO SAVE/LOAD)
@@ -86,7 +95,9 @@ local function SaveConfig()
                 Hop = AutoHopEnabled,
                 HopV2 = AutoHopV2Enabled,
                 KaijuName = KaijuName,
-                AdminHopCount = AdminHopCount
+                AdminHopCount = AdminHopCount,
+                AutoLockBeam = AutoLockBeamEnabled,
+                SelectedSkills = SelectedSkills
             }
             writefile(ConfigFile, HttpService:JSONEncode(data))
         end
@@ -106,6 +117,12 @@ local function LoadConfig()
                 AutoHopV2Enabled = decoded.HopV2 or false
                 KaijuName = decoded.KaijuName or "Biollante"
                 AdminHopCount = decoded.AdminHopCount or 0
+                AutoLockBeamEnabled = decoded.AutoLockBeam or false
+                if decoded.SelectedSkills then
+                    for skill, val in pairs(decoded.SelectedSkills) do
+                        SelectedSkills[skill] = val
+                    end
+                end
             end
         end
     end)
@@ -282,7 +299,7 @@ local function GetNearestPlayerV4()
 end
 
 -- ==========================================
--- AUTO HOP LOGIC
+-- AUTO HOP LOGIC (STANDARD)
 -- ==========================================
 local function ServerHop()
     local req = (type(syn) == "table" and syn.request) or request or http_request
@@ -336,11 +353,12 @@ local function ServerHopV2Smart()
 end
 
 -- ==========================================
--- ADMIN DETECTION (WITH COUNTER LOGIC)
+-- ADMIN DETECTION (INSTANT EVASION)
 -- ==========================================
 local function IsAdminInServer()
     for _, player in pairs(Players:GetPlayers()) do
-        if AdminList[player.Name] then
+        -- BUG FIX: Ensure we do NOT flag ourselves
+        if player.UserId ~= L.UserId and AdminList[player.Name] then
             return true, player.Name
         end
     end
@@ -352,41 +370,31 @@ local function EmergencyHop(adminName)
     if isEmergencyHopping then return end
     isEmergencyHopping = true
     
+    -- 1. INSTANTLY STOP ALL FARMING ACTIONS (Prevents sending data to server)
     FarmingV1Enabled = false
     FarmingV2Enabled = false
     FarmingV3Enabled = false
     FarmingV4Enabled = false
+    AutoLockBeamEnabled = false
     
-    -- Increment and Save Counter
+    -- 2. INSTANTLY VANISH FROM THE MAP (So the admin can't click you)
+    pcall(function()
+        if L.Character then L.Character:Destroy() end
+    end)
+    
     AdminHopCount = AdminHopCount + 1
     SaveConfig()
     
-    warn("🛡️ ADMIN DETECTED: " .. tostring(adminName) .. " - HOP COUNTER: " .. tostring(AdminHopCount))
+    warn("🛡️ ADMIN DETECTED: " .. tostring(adminName) .. " - INITIATING INSTANT EVASION")
     
+    -- 3. INSTANT HOP (Bypass HTTP Request delay to evade instantly)
     pcall(function()
-        local req = (type(syn) == "table" and syn.request) or request or http_request
-        if req then
-            local url = "https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Desc&limit=100"
-            local success, result = pcall(function()
-                return HttpService:JSONDecode(req({Url = url, Method = "GET"}).Body)
-            end)
-            if success and result and result.data then
-                local servers = {}
-                for _, v in ipairs(result.data) do
-                    if v.playing < v.maxPlayers and v.id ~= game.JobId then
-                        table.insert(servers, v.id)
-                    end
-                end
-                if #servers > 0 then
-                    ResetAllState()
-                    TeleportService:TeleportToPlaceInstance(game.PlaceId, servers[math.random(1, #servers)], L)
-                    task.wait(3)
-                end
-            end
-        end
+        TeleportService:Teleport(game.PlaceId, L)
     end)
     
-    L:Kick("\n🛡️ ADMIN DETECTED 🛡️\nAdmin Name: " .. tostring(adminName) .. "\nAuto-Hop triggered (" .. tostring(AdminHopCount) .. " total evasions). Account protected.")
+    -- 4. KICK FALLBACK (If Teleport takes more than 0.5 seconds, kick to save the account)
+    task.wait(0.5)
+    L:Kick("\n🛡️ ADMIN DETECTED 🛡️\nAdmin: " .. tostring(adminName) .. "\nDisconnected instantly to protect your account.")
 end
 
 -- ==========================================
@@ -413,7 +421,7 @@ local Window = WindUI:CreateWindow({
 })
 
 Window:Tag({
-    Title = "v1.0.0-WindUI",
+    Title = "v1.3.0-WindUI",
     Color = "ElementBackground",
 })
 
@@ -448,6 +456,35 @@ FarmSettingsSection:Input({
         end
     end,
 })
+
+FarmSettingsSection:Toggle({
+    Title = "Auto Lock Beam",
+    Desc = "Locks Beam to the current target or nearest player continuously across all modes.",
+    Value = AutoLockBeamEnabled,
+    Callback = function(val)
+        AutoLockBeamEnabled = val
+        SaveConfig()
+    end,
+})
+
+-- Multi Dropdown / Skill Selection Group
+local SkillSection = FarmTab:Section({ Title = "Combat Loops Configuration" })
+
+local function CreateSkillToggle(skillLabel, internalName)
+    SkillSection:Toggle({
+        Title = "Loop " .. skillLabel,
+        Value = SelectedSkills[internalName],
+        Callback = function(val)
+            SelectedSkills[internalName] = val
+            SaveConfig()
+        end,
+    })
+end
+
+CreateSkillToggle("Skill 1 (Attack1)", "Attack1")
+CreateSkillToggle("Skill 2 (Attack2)", "Attack2")
+CreateSkillToggle("Skill 3 (Attack3)", "Attack3")
+CreateSkillToggle("Skill 4 (Attack4)", "Attack4")
 
 local AttackSection = FarmTab:Section({ Title = "Farming Implementation Vectors" })
 
@@ -514,7 +551,7 @@ local ToggleHop2 = HopSection:Toggle({
     end,
 })
 
--- --- Stats Tab Configuration (Counter Added Here) ---
+-- --- Stats Tab Configuration ---
 local SecuritySection = StatsTab:Section({ Title = "Anti-Moderation Diagnostics" })
 
 local TrackerParagraph = SecuritySection:Paragraph({
@@ -522,7 +559,6 @@ local TrackerParagraph = SecuritySection:Paragraph({
     Desc = "Admin Detections Logged: " .. tostring(AdminHopCount) .. "\nEmergency parameters are fully initialized.",
 })
 
--- Dynamic update for UI profile data tracking
 task.spawn(function()
     while true do
         task.wait(1)
@@ -533,18 +569,51 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- ORIGINAL EXPLOIT LOOPS (UNTOUCHED)
+-- UNIVERSAL EXPLOIT LOOPS
 -- ==========================================
 
--- Admin Detection Loop
+-- Helper execution thread for loop-firing active dropdown skills
+local function FireActiveSkills()
+    for skillName, isEnabled in pairs(SelectedSkills) do
+        if isEnabled then
+            pcall(function()
+                CombatRemote:FireServer("UseSkill", skillName)
+            end)
+        end
+    end
+end
+
+-- Dedicated Auto Lock Beam Thread (Independent, works with all farming modes)
+task.spawn(function()
+    while true do
+        if AutoLockBeamEnabled and (FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled) and InitialSpawnDone and (tick() - LastHopTime) > 2 then
+            local target = CurrentTarget
+            if not IsTargetValid(target) then
+                target = FarmingV4Enabled and GetNearestPlayerV4() or GetNearestPlayer()
+            end
+            
+            if target and target.Character then
+                local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
+                if targetHRP then
+                    pcall(function()
+                        BeamRemote:FireServer(targetHRP.Position)
+                    end)
+                end
+            end
+        end
+        task.wait(0.1) -- Rapid fire calculation lock rate
+    end
+end)
+
+-- Admin Detection Loop (SUPER FAST)
 task.spawn(function()
     Players.PlayerAdded:Connect(function(player)
-        if AdminList[player.Name] then
+        if player.UserId ~= L.UserId and AdminList[player.Name] then
             EmergencyHop(player.Name)
         end
     end)
     while true do
-        task.wait(0.5)
+        task.wait(0.2) -- Check extremely fast
         local isAdmin, adminName = IsAdminInServer()
         if isAdmin then
             EmergencyHop(adminName)
@@ -613,19 +682,7 @@ task.spawn(function()
     end
 end)
 
--- V1 Attack Loop
-task.spawn(function()
-    while true do
-        if FarmingV1Enabled and InitialSpawnDone and (tick() - LastHopTime) > 2 then
-            pcall(function()
-                CombatRemote:FireServer("UseSkill", "Attack4")
-            end)
-        end
-        task.wait(0.5)
-    end
-end)
-
--- V1 Warp -40 Studs & Hook Beam Loop
+-- V1 Warp -40 Studs Loop
 task.spawn(function()
     while true do
         if FarmingV1Enabled and InitialSpawnDone and (tick() - LastHopTime) > 2 then
@@ -644,7 +701,12 @@ task.spawn(function()
                             myHRP.CFrame = CFrame.new(warpPosition, targetHRP.Position)
                             myHRP.AssemblyLinearVelocity = Vector3.zero
                             myHRP.AssemblyAngularVelocity = Vector3.zero
-                            pcall(function() BeamRemote:FireServer(targetHRP.Position) end)
+                            
+                            FireActiveSkills()
+                            
+                            if not AutoLockBeamEnabled then
+                                pcall(function() BeamRemote:FireServer(targetHRP.Position) end)
+                            end
                         else
                             CurrentTarget = nil
                         end
@@ -654,7 +716,7 @@ task.spawn(function()
                 end
             end
         end
-        task.wait()
+        task.wait(0.1)
     end
 end)
 
@@ -665,11 +727,8 @@ task.spawn(function()
             local myChar = L.Character
             local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
             if myHRP and myHRP.Parent then
-                pcall(function()
-                    CombatRemote:FireServer("UseSkill", "Attack1")
-                    CombatRemote:FireServer("UseSkill", "Attack2")
-                    CombatRemote:FireServer("UseSkill", "Attack3")
-                end)
+                FireActiveSkills()
+                
                 local targets = GetAllValidPlayers()
                 if #targets > 0 then
                     V2TargetIndex = V2TargetIndex + 1
@@ -697,11 +756,8 @@ task.spawn(function()
             local myChar = L.Character
             local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
             if myHRP and myHRP.Parent then
-                pcall(function()
-                    CombatRemote:FireServer("UseSkill", "Attack1")
-                    CombatRemote:FireServer("UseSkill", "Attack2")
-                    CombatRemote:FireServer("UseSkill", "Attack3")
-                end)
+                FireActiveSkills()
+                
                 if not IsTargetValid(CurrentTarget) then CurrentTarget = nil end
                 if not CurrentTarget then CurrentTarget = GetNearestPlayer() end
                 if CurrentTarget then
@@ -732,11 +788,8 @@ task.spawn(function()
             local myChar = L.Character
             local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
             if myHRP and myHRP.Parent then
-                pcall(function()
-                    CombatRemote:FireServer("UseSkill", "Attack1")
-                    CombatRemote:FireServer("UseSkill", "Attack2")
-                    CombatRemote:FireServer("UseSkill", "Attack3")
-                end)
+                FireActiveSkills()
+                
                 if CurrentTarget and (not IsTargetValid(CurrentTarget) or KilledTargets[CurrentTarget.Name]) then
                     CurrentTarget = nil
                 end
