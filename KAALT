@@ -1,13 +1,14 @@
 --[[
-    ALT FARM ONLY v1.5 - Fox for Jack
-    v1: damage -> void | v2: HP <= 1000 -> void | v3: spawn + warp only (no void)
-    Target = dropdown ONLY (never auto-switch player)
+    ALT FARM ONLY v1.6 - Fox for Jack
+    v1: damage -> void | v2: HP <= 1000 -> void | v3: spawn + warp only
+    Target = Textbox name | Anti AFK every 5s
 ]]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
+local VirtualUser = game:GetService("VirtualUser")
 
 local L = Players.LocalPlayer
 
@@ -17,13 +18,18 @@ local FireServerRemote = Remotes:WaitForChild("FireServer")
 local AltFarmEnabled = false
 local AltFarmV2Enabled = false
 local AltFarmV3Enabled = false
-local SelectedPlayerName = nil
+local TargetPlayerName = ""
 local TargetKaiju = "Gojira 1954"
+local AntiAfkEnabled = false
+
 local LastHealth = nil
 local VoidDepthY = -5000
 local VoidStep = 25000
 local WarpOffset = CFrame.new(0, 4, -6)
 local HPVoidMax = 1000
+
+local LastFarmPulse = 0
+local VoidBusy = false
 
 local ConfigFile = "FoxAltFarmOnly.json"
 
@@ -32,9 +38,10 @@ local function SaveConfig()
         if writefile then
             writefile(ConfigFile, HttpService:JSONEncode({
                 Kaiju = TargetKaiju,
-                Player = SelectedPlayerName,
+                Player = TargetPlayerName,
                 V2 = AltFarmV2Enabled,
                 V3 = AltFarmV3Enabled,
+                AntiAfk = AntiAfkEnabled,
             }))
         end
     end)
@@ -46,34 +53,32 @@ local function LoadConfig()
             local d = HttpService:JSONDecode(readfile(ConfigFile))
             if d then
                 TargetKaiju = d.Kaiju or TargetKaiju
-                SelectedPlayerName = d.Player
+                TargetPlayerName = d.Player or TargetPlayerName or ""
                 AltFarmV2Enabled = d.V2 == true
                 AltFarmV3Enabled = d.V3 == true
+                AntiAfkEnabled = d.AntiAfk == true
             end
         end
     end)
 end
 LoadConfig()
 
-local function GetPlayerList()
-    local list = {}
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= L then table.insert(list, p.Name) end
-    end
-    table.sort(list)
-    return list
+local function TrimName(s)
+    if type(s) ~= "string" then return "" end
+    return (s:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
 local function GetPlayerByName(name)
-    if not name or name == "" or name == "(No players)" then return nil end
+    name = TrimName(name)
+    if name == "" then return nil end
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Name == name then return p end
     end
     return nil
 end
 
-local function GetDropdownTarget()
-    return GetPlayerByName(SelectedPlayerName)
+local function GetTextboxTarget()
+    return GetPlayerByName(TargetPlayerName)
 end
 
 local function IsTargetAlive(target)
@@ -126,12 +131,16 @@ local function ForceKillCharacter()
 end
 
 local function WarpToVoidAndDie()
+    if VoidBusy then return false end
+    VoidBusy = true
     local hrp = GetMyHRP()
     local hum = GetMyHumanoid()
-    if not hrp or not hum then return false end
+    if not hrp or not hum then
+        VoidBusy = false
+        return false
+    end
 
     VoidDepthY = VoidDepthY - VoidStep
-
     local attempts = 0
     while hum and hum.Parent and hum.Health > 0 and attempts < 12 do
         attempts = attempts + 1
@@ -139,17 +148,18 @@ local function WarpToVoidAndDie()
         hrp.CFrame = CFrame.new(0, depth, 0)
         hrp.AssemblyLinearVelocity = Vector3.new(0, -500, 0)
         hrp.AssemblyAngularVelocity = Vector3.zero
-
         task.wait(0.08)
         ForceKillCharacter()
         task.wait(0.12)
-
         hum = GetMyHumanoid()
         hrp = GetMyHRP()
-        if not hum then return true end
+        if not hum then
+            VoidBusy = false
+            return true
+        end
     end
-
     hum = GetMyHumanoid()
+    VoidBusy = false
     return hum == nil or (hum and hum.Health <= 0)
 end
 
@@ -170,9 +180,7 @@ local function TrackHealth()
 end
 
 local function ShouldWarpVoid(tookDamage, currentHP)
-    if AltFarmV3Enabled then
-        return false
-    end
+    if AltFarmV3Enabled then return false end
     if AltFarmV2Enabled then
         return currentHP > 0 and currentHP <= HPVoidMax
     end
@@ -184,6 +192,51 @@ local function IsVoidingLowHP(hum)
     if not hum or hum.Health <= 0 then return false end
     if not AltFarmV2Enabled then return false end
     return hum.Health <= HPVoidMax
+end
+
+local function DoAntiAfkPulse()
+    pcall(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new(2, 2))
+    end)
+    pcall(function()
+        local hum = GetMyHumanoid()
+        if hum and hum.Health > 0 then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end)
+end
+
+local function FarmPulse()
+    if not AltFarmEnabled or VoidBusy then return end
+
+    local target = GetTextboxTarget()
+    local hum = GetMyHumanoid()
+    local hrp = GetMyHRP()
+
+    if not hum or not hrp then
+        FireSpawn()
+        return
+    end
+
+    local tookDamage, isDead, currentHP = TrackHealth()
+
+    if isDead then
+        FireSpawn()
+        return
+    end
+
+    if ShouldWarpVoid(tookDamage, currentHP) then
+        task.spawn(function()
+            WarpToVoidAndDie()
+        end)
+        return
+    end
+
+    FireSpawn()
+    if target and IsTargetAlive(target) then
+        WarpToTarget(target)
+    end
 end
 
 -- ==========================================
@@ -206,52 +259,19 @@ local Window = WindUI:CreateWindow({
     ToggleKey = Enum.KeyCode.RightControl,
 })
 
-Window:Tag({ Title = "Alt Farm v1.5 - V3 no void", Color = "ElementBackground" })
+Window:Tag({ Title = "Alt Farm v1.6 | Textbox target", Color = "ElementBackground" })
 
 local MainTab = Window:Tab({ Title = "MAIN", Icon = "crosshair" })
 local MainSection = MainTab:Section({ Title = "Alt Farm Control", Box = true })
 
-local playerOptions = GetPlayerList()
-if #playerOptions == 0 then table.insert(playerOptions, "(No players)") end
-if SelectedPlayerName and not table.find(playerOptions, SelectedPlayerName) then
-    table.insert(playerOptions, 1, SelectedPlayerName)
-end
-
-local defaultSelect = SelectedPlayerName or playerOptions[1]
-
-local DropdownRef = MainSection:Dropdown({
-    Title = "Select target Player",
-    Desc = "ONLY this player (never auto-switch)",
-    Values = playerOptions,
-    Value = defaultSelect,
-    Multi = false,
-    Callback = function(val)
-        if val and val ~= "(No players)" then
-            SelectedPlayerName = val
-            SaveConfig()
-        end
-    end,
-})
-
-MainSection:Button({
-    Title = "Refresh Dropdown",
-    Icon = "refresh-ccw",
-    Callback = function()
-        local fresh = GetPlayerList()
-        if #fresh == 0 then fresh = { "(No players)" } end
-        if SelectedPlayerName and not table.find(fresh, SelectedPlayerName) then
-            table.insert(fresh, 1, SelectedPlayerName)
-        end
-        if DropdownRef and DropdownRef.Refresh then
-            DropdownRef:Refresh(fresh, SelectedPlayerName or fresh[1])
-        elseif DropdownRef and DropdownRef.SetValues then
-            DropdownRef:SetValues(fresh)
-        end
-        if SelectedPlayerName and table.find(fresh, SelectedPlayerName) then
-            if DropdownRef and DropdownRef.SetValue then
-                DropdownRef:SetValue(SelectedPlayerName)
-            end
-        end
+MainSection:Input({
+    Title = "Target Player Name",
+    Desc = "Exact Roblox username (case-sensitive)",
+    Placeholder = "PlayerName",
+    Value = TargetPlayerName,
+    Callback = function(text)
+        TargetPlayerName = TrimName(text or "")
+        SaveConfig()
     end,
 })
 
@@ -281,7 +301,7 @@ MainSection:Toggle({
 
 MainSection:Toggle({
     Title = "Auto Farm Alt V3",
-    Desc = "Spawn + warp to dropdown target ONLY | NO void ever",
+    Desc = "Spawn + warp only | NO void",
     Value = AltFarmV3Enabled,
     Callback = function(v)
         AltFarmV3Enabled = v == true
@@ -292,13 +312,25 @@ MainSection:Toggle({
 
 MainSection:Toggle({
     Title = "Start Farm",
-    Desc = "Spawn + warp | void only if V3 OFF",
+    Desc = "Always spawn + warp to name in textbox",
     Value = AltFarmEnabled,
     Callback = function(v)
         AltFarmEnabled = v
         LastHealth = nil
         VoidDepthY = -5000
+        VoidBusy = false
         if v then FireSpawn() end
+    end,
+})
+
+local MiscSection = MainTab:Section({ Title = "Misc", Box = true })
+MiscSection:Toggle({
+    Title = "Anti AFK Bypass",
+    Desc = "Activity pulse every 5s (20min idle kick)",
+    Value = AntiAfkEnabled,
+    Callback = function(v)
+        AntiAfkEnabled = v == true
+        SaveConfig()
     end,
 })
 
@@ -306,54 +338,48 @@ MainSection:Toggle({
 -- LOOPS
 -- ==========================================
 L.CharacterAdded:Connect(function()
-    task.wait(1.2)
+    task.wait(0.8)
     LastHealth = nil
     VoidDepthY = -5000
+    VoidBusy = false
     if AltFarmEnabled then
         FireSpawn()
     end
 end)
 
+-- Main farm loop (fast, no long sleeps)
 task.spawn(function()
     while true do
         if AltFarmEnabled then
-            local target = GetDropdownTarget()
-            local hum = GetMyHumanoid()
-            local hrp = GetMyHRP()
-
-            if hum and hrp then
-                local tookDamage, isDead, currentHP = TrackHealth()
-
-                if isDead then
-                    if not AltFarmV3Enabled then
-                        task.wait(0.6)
-                    else
-                        task.wait(0.35)
-                    end
-                    FireSpawn()
-                    task.wait(0.8)
-                elseif ShouldWarpVoid(tookDamage, currentHP) then
-                    WarpToVoidAndDie()
-                    task.wait(0.5)
-                else
-                    FireSpawn()
-                    if target and IsTargetAlive(target) then
-                        WarpToTarget(target)
-                    end
-                end
-            else
-                FireSpawn()
-            end
+            FarmPulse()
         else
             LastHealth = nil
         end
-        task.wait(0.08)
+        task.wait(0.06)
     end
 end)
 
+-- Backup warp every frame-ish (fixes "stops farming")
 RunService.Heartbeat:Connect(function()
-    if not AltFarmEnabled then return end
-    if AltFarmV3Enabled then return end
+    if not AltFarmEnabled or VoidBusy then return end
+
+    local hum = GetMyHumanoid()
+    local hrp = GetMyHRP()
+    if not hum or not hrp or hum.Health <= 0 then return end
+
+    if AltFarmV3Enabled or not ShouldWarpVoid(false, hum.Health) then
+        local target = GetTextboxTarget()
+        if target and IsTargetAlive(target) then
+            WarpToTarget(target)
+        end
+    end
+
+    LastFarmPulse = tick()
+end)
+
+-- Void heartbeat (v1/v2 only)
+RunService.Heartbeat:Connect(function()
+    if not AltFarmEnabled or AltFarmV3Enabled or VoidBusy then return end
 
     local hrp = GetMyHRP()
     local hum = GetMyHumanoid()
@@ -375,4 +401,31 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
-print("[FOX] ALT FARM ONLY v1.5 | dropdown lock | V3 = no void")
+-- Watchdog: if farm on but stuck > 3s without pulse, force respawn farm
+task.spawn(function()
+    while true do
+        task.wait(2)
+        if AltFarmEnabled and not VoidBusy then
+            if tick() - LastFarmPulse > 3 then
+                FireSpawn()
+                local t = GetTextboxTarget()
+                if t and IsTargetAlive(t) then
+                    WarpToTarget(t)
+                end
+                LastFarmPulse = tick()
+            end
+        end
+    end
+end)
+
+-- Anti AFK every 5 seconds
+task.spawn(function()
+    while true do
+        task.wait(5)
+        if AntiAfkEnabled then
+            DoAntiAfkPulse()
+        end
+    end
+end)
+
+print("[FOX] ALT FARM ONLY v1.6 | Textbox target | Anti AFK 5s")
