@@ -1,0 +1,306 @@
+--[[
+    ALT FARM ONLY - Fox for Jack
+    WindUI | Target dropdown | Spawn loop | Warp farm | Damage -> Void | Death -> Respawn farm
+]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+
+local L = Players.LocalPlayer
+
+-- ==========================================
+-- REMOTES
+-- ==========================================
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local FireServerRemote = Remotes:WaitForChild("FireServer")
+
+-- ==========================================
+-- STATE
+-- ==========================================
+local AltFarmEnabled = false
+local SelectedPlayerName = nil
+local TargetKaiju = "Gojira 1954"
+local LastHealth = nil
+local VoidCFrame = CFrame.new(0, -5000, 0)
+local WarpOffset = CFrame.new(0, 4, -6)
+
+local ConfigFile = "FoxAltFarmOnly.json"
+
+local function SaveConfig()
+    pcall(function()
+        if writefile then
+            writefile(ConfigFile, HttpService:JSONEncode({
+                Kaiju = TargetKaiju,
+                Player = SelectedPlayerName,
+            }))
+        end
+    end)
+end
+
+local function LoadConfig()
+    pcall(function()
+        if readfile and isfile and isfile(ConfigFile) then
+            local d = HttpService:JSONDecode(readfile(ConfigFile))
+            if d then
+                TargetKaiju = d.Kaiju or TargetKaiju
+                SelectedPlayerName = d.Player
+            end
+        end
+    end)
+end
+LoadConfig()
+
+-- ==========================================
+-- HELPERS
+-- ==========================================
+local function GetPlayerList()
+    local list = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= L then
+            table.insert(list, p.Name)
+        end
+    end
+    table.sort(list)
+    return list
+end
+
+local function GetPlayerByName(name)
+    if not name or name == "" then return nil end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Name == name then return p end
+    end
+    return nil
+end
+
+local function IsTargetAlive(target)
+    if not target or not target.Parent then return false end
+    local char = target.Character
+    if not char then return false end
+    local hum = char:FindFirstChild("Humanoid")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    return hum and hrp and hum.Health > 0
+end
+
+local function GetMyHRP()
+    local char = L.Character
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function GetMyHumanoid()
+    local char = L.Character
+    return char and char:FindFirstChild("Humanoid")
+end
+
+local function WarpToTarget(target)
+    local myHRP = GetMyHRP()
+    if not myHRP or not IsTargetAlive(target) then return end
+    local tHRP = target.Character.HumanoidRootPart
+    myHRP.CFrame = tHRP.CFrame * WarpOffset
+    myHRP.AssemblyLinearVelocity = Vector3.zero
+    myHRP.AssemblyAngularVelocity = Vector3.zero
+end
+
+local function WarpToVoid()
+    local myHRP = GetMyHRP()
+    if myHRP then
+        myHRP.CFrame = VoidCFrame
+        myHRP.AssemblyLinearVelocity = Vector3.zero
+        myHRP.AssemblyAngularVelocity = Vector3.zero
+    end
+end
+
+local function FireSpawn()
+    pcall(function()
+        FireServerRemote:FireServer("Spawn", TargetKaiju, "Hong Kong")
+    end)
+end
+
+local function TrackHealth()
+    local hum = GetMyHumanoid()
+    if not hum then
+        LastHealth = nil
+        return false, false
+    end
+    local cur = hum.Health
+    local tookDamage = false
+    local isDead = cur <= 0
+    if LastHealth and cur < LastHealth - 0.5 then
+        tookDamage = true
+    end
+    LastHealth = cur
+    return tookDamage, isDead
+end
+
+-- ==========================================
+-- WINDUI
+-- ==========================================
+local WindUI
+do
+    local ok, res = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+    end)
+    if ok and res then
+        WindUI = res
+    else
+        WindUI = require(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init"))
+    end
+end
+
+local Window = WindUI:CreateWindow({
+    Title = "ALT FARM ONLY",
+    Author = "Fox for Jack",
+    Icon = "solar:wind-bold",
+    Theme = "Dark",
+    ToggleKey = Enum.KeyCode.RightControl,
+})
+
+Window:Tag({ Title = "Alt Farm v1.0", Color = "ElementBackground" })
+
+local MainTab = Window:Tab({ Title = "MAIN", Icon = "crosshair" })
+local MainSection = MainTab:Section({ Title = "Alt Farm Control", Box = true })
+
+local playerOptions = GetPlayerList()
+if #playerOptions == 0 then
+    table.insert(playerOptions, "(No players)")
+end
+if SelectedPlayerName and not table.find(playerOptions, SelectedPlayerName) then
+    table.insert(playerOptions, 1, SelectedPlayerName)
+end
+
+local defaultSelect = SelectedPlayerName or playerOptions[1]
+
+local DropdownRef = MainSection:Dropdown({
+    Title = "Select target Player",
+    Desc = "Pick player to warp farm",
+    Values = playerOptions,
+    Value = defaultSelect,
+    Multi = false,
+    Callback = function(val)
+        if val and val ~= "(No players)" then
+            SelectedPlayerName = val
+            SaveConfig()
+        end
+    end,
+})
+
+MainSection:Button({
+    Title = "Refresh Dropdown",
+    Icon = "refresh-ccw",
+    Callback = function()
+        local fresh = GetPlayerList()
+        if #fresh == 0 then
+            fresh = { "(No players)" }
+        end
+        if DropdownRef and DropdownRef.Refresh then
+            DropdownRef:Refresh(fresh, fresh[1])
+        elseif DropdownRef and DropdownRef.SetValues then
+            DropdownRef:SetValues(fresh)
+        end
+        if SelectedPlayerName and table.find(fresh, SelectedPlayerName) then
+            if DropdownRef and DropdownRef.SetValue then
+                DropdownRef:SetValue(SelectedPlayerName)
+            end
+        end
+    end,
+})
+
+MainSection:Input({
+    Title = "Target Kaiju",
+    Desc = "Ex. Gojira 1954",
+    Placeholder = "Gojira 1954",
+    Value = TargetKaiju,
+    Callback = function(text)
+        if text and text ~= "" then
+            TargetKaiju = text
+            SaveConfig()
+        end
+    end,
+})
+
+MainSection:Toggle({
+    Title = "Start Farm",
+    Desc = "Loop Spawn + warp target | damage -> void | death -> respawn",
+    Value = AltFarmEnabled,
+    Callback = function(v)
+        AltFarmEnabled = v
+        LastHealth = nil
+        if v then
+            FireSpawn()
+        end
+    end,
+})
+
+-- ==========================================
+-- MAIN FARM LOOP
+-- ==========================================
+L.CharacterAdded:Connect(function()
+    task.wait(1.2)
+    LastHealth = nil
+    if AltFarmEnabled then
+        FireSpawn()
+    end
+end)
+
+task.spawn(function()
+    while true do
+        if AltFarmEnabled then
+            local target = GetPlayerByName(SelectedPlayerName)
+            local hum = GetMyHumanoid()
+            local hrp = GetMyHRP()
+
+            if hum and hrp then
+                local tookDamage, isDead = TrackHealth()
+
+                if isDead then
+                    task.wait(0.8)
+                    FireSpawn()
+                    task.wait(1.5)
+                else
+                    FireSpawn()
+
+                    if tookDamage then
+                        WarpToVoid()
+                        task.wait(0.35)
+                    elseif IsTargetAlive(target) then
+                        WarpToTarget(target)
+                    else
+                        local nearest = nil
+                        for _, p in ipairs(Players:GetPlayers()) do
+                            if p ~= L and IsTargetAlive(p) then
+                                nearest = p
+                                break
+                            end
+                        end
+                        if nearest then
+                            SelectedPlayerName = nearest.Name
+                            SaveConfig()
+                            WarpToTarget(nearest)
+                        end
+                    end
+                end
+            else
+                FireSpawn()
+            end
+        else
+            LastHealth = nil
+        end
+        task.wait(0.15)
+    end
+end)
+
+-- Anti fling while farming
+RunService.Heartbeat:Connect(function()
+    if not AltFarmEnabled then return end
+    local hrp = GetMyHRP()
+    if hrp then
+        if hrp.Position.Y > 800 then
+            hrp.CFrame = VoidCFrame
+        end
+        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+    end
+end)
+
+print("[FOX] ALT FARM ONLY loaded | RightControl = UI")
