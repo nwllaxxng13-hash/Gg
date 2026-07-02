@@ -1,6 +1,7 @@
 --[[
-    ALT FARM ONLY v1.2 - Fox for Jack
-    v1: damage -> void | v2: void only when HP <= 30
+    ALT FARM ONLY v1.4 - Fox for Jack
+    v1: any damage -> void die
+    v2: HP <= 1000 -> void die immediately (no damage trigger)
 ]]
 
 local Players = game:GetService("Players")
@@ -21,7 +22,7 @@ local LastHealth = nil
 local VoidDepthY = -5000
 local VoidStep = 25000
 local WarpOffset = CFrame.new(0, 4, -6)
-local HPVoidThreshold = 30
+local HPVoidMax = 1000
 
 local ConfigFile = "FoxAltFarmOnly.json"
 
@@ -44,7 +45,7 @@ local function LoadConfig()
             if d then
                 TargetKaiju = d.Kaiju or TargetKaiju
                 SelectedPlayerName = d.Player
-                AltFarmV2Enabled = d.V2 or false
+                AltFarmV2Enabled = d.V2 == true
             end
         end
     end)
@@ -123,7 +124,7 @@ local function WarpToVoidAndDie()
     VoidDepthY = VoidDepthY - VoidStep
 
     local attempts = 0
-    while hum.Parent and hum.Health > 0 and attempts < 12 do
+    while hum and hum.Parent and hum.Health > 0 and attempts < 12 do
         attempts = attempts + 1
         local depth = VoidDepthY - (attempts * VoidStep)
         hrp.CFrame = CFrame.new(0, depth, 0)
@@ -135,10 +136,12 @@ local function WarpToVoidAndDie()
         task.wait(0.12)
 
         hum = GetMyHumanoid()
+        hrp = GetMyHRP()
         if not hum then return true end
     end
 
-    return hum == nil or hum.Health <= 0
+    hum = GetMyHumanoid()
+    return hum == nil or (hum and hum.Health <= 0)
 end
 
 local function TrackHealth()
@@ -159,10 +162,15 @@ end
 
 local function ShouldWarpVoid(tookDamage, currentHP)
     if AltFarmV2Enabled then
-        return currentHP > 0 and currentHP <= HPVoidThreshold
-    else
-        return tookDamage
+        return currentHP > 0 and currentHP <= HPVoidMax
     end
+    return tookDamage
+end
+
+local function IsVoidingLowHP(hum)
+    if not hum or hum.Health <= 0 then return false end
+    if not AltFarmV2Enabled then return false end
+    return hum.Health <= HPVoidMax
 end
 
 -- ==========================================
@@ -185,7 +193,7 @@ local Window = WindUI:CreateWindow({
     ToggleKey = Enum.KeyCode.RightControl,
 })
 
-Window:Tag({ Title = "Alt Farm v1.2 - V2 HP<=30", Color = "ElementBackground" })
+Window:Tag({ Title = "Alt Farm v1.4 - V2 HP<=1000", Color = "ElementBackground" })
 
 local MainTab = Window:Tab({ Title = "MAIN", Icon = "crosshair" })
 local MainSection = MainTab:Section({ Title = "Alt Farm Control", Box = true })
@@ -246,17 +254,17 @@ MainSection:Input({
 
 MainSection:Toggle({
     Title = "Auto Alt Farm v2",
-    Desc = "ON: void only when HP <= 30 | OFF: v1 damage -> void",
+    Desc = "ON: void when HP <= 1000 | OFF: v1 damage -> void",
     Value = AltFarmV2Enabled,
     Callback = function(v)
-        AltFarmV2Enabled = v
+        AltFarmV2Enabled = v == true
         SaveConfig()
     end,
 })
 
 MainSection:Toggle({
     Title = "Start Farm",
-    Desc = "Spawn + warp | void rule by v1/v2 | respawn loop",
+    Desc = "Spawn + warp | void by v1/v2 | respawn loop",
     Value = AltFarmEnabled,
     Callback = function(v)
         AltFarmEnabled = v
@@ -292,13 +300,12 @@ task.spawn(function()
                     task.wait(0.6)
                     FireSpawn()
                     task.wait(1.4)
+                elseif ShouldWarpVoid(tookDamage, currentHP) then
+                    WarpToVoidAndDie()
+                    task.wait(0.5)
                 else
                     FireSpawn()
-
-                    if ShouldWarpVoid(tookDamage, currentHP) then
-                        WarpToVoidAndDie()
-                        task.wait(0.5)
-                    elseif IsTargetAlive(target) then
+                    if IsTargetAlive(target) then
                         WarpToTarget(target)
                     else
                         local nearest = nil
@@ -321,7 +328,7 @@ task.spawn(function()
         else
             LastHealth = nil
         end
-        task.wait(0.15)
+        task.wait(0.12)
     end
 end)
 
@@ -329,20 +336,22 @@ RunService.Heartbeat:Connect(function()
     if not AltFarmEnabled then return end
     local hrp = GetMyHRP()
     local hum = GetMyHumanoid()
-    if hrp and hum then
-        if AltFarmV2Enabled and hum.Health > 0 and hum.Health <= HPVoidThreshold then
-            VoidDepthY = VoidDepthY - VoidStep
-            hrp.CFrame = CFrame.new(0, VoidDepthY, 0)
-            ForceKillCharacter()
-        elseif hrp.Position.Y > 800 then
-            VoidDepthY = VoidDepthY - VoidStep
-            hrp.CFrame = CFrame.new(0, VoidDepthY, 0)
-            ForceKillCharacter()
-        end
-        if hrp.Position.Y < -4000 then
-            hrp.AssemblyLinearVelocity = Vector3.new(0, -300, 0)
-        end
+    if not hrp or not hum then return end
+
+    if IsVoidingLowHP(hum) then
+        VoidDepthY = VoidDepthY - VoidStep
+        hrp.CFrame = CFrame.new(0, VoidDepthY, 0)
+        hrp.AssemblyLinearVelocity = Vector3.new(0, -500, 0)
+        ForceKillCharacter()
+    elseif hrp.Position.Y > 800 then
+        VoidDepthY = VoidDepthY - VoidStep
+        hrp.CFrame = CFrame.new(0, VoidDepthY, 0)
+        ForceKillCharacter()
+    end
+
+    if hrp.Position.Y < -4000 then
+        hrp.AssemblyLinearVelocity = Vector3.new(0, -300, 0)
     end
 end)
 
-print("[FOX] ALT FARM ONLY v1.2 | v2 = void when HP <= 30")
+print("[FOX] ALT FARM ONLY v1.4 | v2 ON = void when HP <= 1000")
