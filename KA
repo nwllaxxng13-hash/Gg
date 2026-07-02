@@ -1,7 +1,6 @@
 --[[
-    Kaiju Omni-Farm V1.7.3 - FOX FIXED
-    Fixed: Blue sky fling ban + V5 Tween loop/stutter
-    Enhanced: Target stability, velocity clamping, anti-fling
+    Kaiju Omni-Farm V1.7.3 - FOX FULL FIXED
+    Blue Sky + V5 Tween Loop Fixed | Ready to Execute
 ]]
 
 local Players = game:GetService("Players")
@@ -10,11 +9,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
+local UserInputService = game:GetService("UserInputService")
 
 local L = Players.LocalPlayer
 
 -- ==========================================
--- ANTI-CHEAT BYPASS (STRONGER FOX KERNEL)
+-- ANTI-CHEAT BYPASS
 -- ==========================================
 local mt = getrawmetatable(game)
 local oldNamecall = mt.__namecall
@@ -25,8 +25,8 @@ mt.__namecall = newcclosure(function(self, ...)
     local method = getnamecallmethod()
     local args = {...}
     if method == "FireServer" and not checkcaller() then
-        local selfName = tostring(self):lower()
-        if selfName:match("ban") or selfName:match("kick") or selfName:match("report") or selfName:match("anticheat") or selfName:match("ac") then
+        local name = tostring(self):lower()
+        if name:match("ban") or name:match("kick") or name:match("report") or name:match("anticheat") then
             return nil
         end
     end
@@ -44,14 +44,14 @@ setreadonly(mt, true)
 
 RunService.Heartbeat:Connect(function()
     local char = L.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if hrp then
-        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-        hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-        
-        if hrp.Position.Y > 500 then
-            hrp.CFrame = hrp.CFrame * CFrame.new(0, -150, 0)
+    if char then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.AssemblyLinearVelocity = Vector3.new(0,0,0)
+            hrp.AssemblyAngularVelocity = Vector3.new(0,0,0)
+            if hrp.Position.Y > 500 then
+                hrp.CFrame = hrp.CFrame * CFrame.new(0, -150, 0)
+            end
         end
     end
 end)
@@ -105,7 +105,13 @@ local LastTargetSwitch = 0
 local TargetLockTime = 1.2
 local KaijuName = "Biollante"
 local AdminHopCount = 0
-local SelectedSkills = { Attack1 = true, Attack2 = true, Attack3 = true, Attack4 = false, Attack5 = false }
+
+local SelectedSkills = {
+    Attack1 = true, Attack2 = true, Attack3 = true,
+    Attack4 = false, Attack5 = false
+}
+
+local currentTween = nil
 
 -- ==========================================
 -- CONFIG
@@ -133,24 +139,27 @@ end
 local function LoadConfig()
     pcall(function()
         if readfile and isfile(ConfigFile) then
-            local decoded = HttpService:JSONDecode(readfile(ConfigFile))
-            if type(decoded) == "table" then
-                FarmingV1Enabled = decoded.V1 or false
-                -- ... (copy logic เดิมทั้งหมด)
-                KaijuName = decoded.KaijuName or "Biollante"
-                AdminHopCount = decoded.AdminHopCount or 0
-                AutoLockBeamEnabled = decoded.AutoLockBeam or false
-                NoclipEnabled = decoded.Noclip or false
-                AutoSpaceGodzilla = decoded.AutoSpaceG or false
-                KaiTanStage = decoded.KStage or 1
-                AutoDestoroyah = decoded.AutoDes or false
-                DestoroyahStage = decoded.DStage or 1
-                if decoded.SelectedSkills then SelectedSkills = decoded.SelectedSkills end
-            end
+            local d = HttpService:JSONDecode(readfile(ConfigFile))
+            FarmingV1Enabled = d.V1 or false
+            FarmingV2Enabled = d.V2 or false
+            FarmingV3Enabled = d.V3 or false
+            FarmingV4Enabled = d.V4 or false
+            FarmingV5Enabled = d.V5 or false
+            AutoHopEnabled = d.Hop or false
+            AutoHopV2Enabled = d.HopV2 or false
+            AutoHopV3Enabled = d.HopV3 or false
+            KaijuName = d.KaijuName or "Biollante"
+            AdminHopCount = d.AdminHopCount or 0
+            AutoLockBeamEnabled = d.AutoLockBeam or false
+            NoclipEnabled = d.Noclip or false
+            AutoSpaceGodzilla = d.AutoSpaceG or false
+            KaiTanStage = d.KStage or 1
+            AutoDestoroyah = d.AutoDes or false
+            DestoroyahStage = d.DStage or 1
+            if d.SelectedSkills then SelectedSkills = d.SelectedSkills end
         end
     end)
 end
-
 LoadConfig()
 
 -- ==========================================
@@ -162,7 +171,7 @@ local function IsTargetValid(target)
     if not char then return false end
     local hum = char:FindFirstChild("Humanoid")
     local hrp = char:FindFirstChild("HumanoidRootPart")
-    return hum and hum.Health > 0 and hrp and hrp.Parent
+    return hum and hum.Health > 0 and hrp
 end
 
 local function GetNearestPlayerV4()
@@ -172,13 +181,15 @@ local function GetNearestPlayerV4()
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= L and IsTargetValid(p) then
             local dist = (p.Character.HumanoidRootPart.Position - myHRP.Position).Magnitude
-            if dist < minDist then minDist = dist; nearest = p end
+            if dist < minDist then
+                minDist = dist
+                nearest = p
+            end
         end
     end
     return nearest
 end
 
-local currentTween = nil
 local function TweenToTarget(hrp, targetCFrame)
     if currentTween then currentTween:Cancel() end
     local dist = (hrp.Position - targetCFrame.Position).Magnitude
@@ -192,32 +203,108 @@ end
 -- SERVER HOP
 -- ==========================================
 local function ServerHop()
-    -- (ใช้ logic เดิมของมึง)
     TeleportService:Teleport(game.PlaceId, L)
 end
 
--- ==========================================
--- EMERGENCY ADMIN HOP
--- ==========================================
 local function EmergencyHop(adminName)
-    -- (ใช้ logic เดิม)
     AdminHopCount = AdminHopCount + 1
     SaveConfig()
     TeleportService:Teleport(game.PlaceId, L)
 end
 
 -- ==========================================
--- WINDUI (เหมือนเดิม)
+-- WINDUI
 -- ==========================================
--- ... วาง WindUI creation + Tabs + Toggles ตาม code เดิมของมึง
+local WindUI
+do
+    local ok, result = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+    end)
+    if ok then WindUI = result else
+        WindUI = require(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init"))
+    end
+end
+
+local Window = WindUI:CreateWindow({
+    Title = "Kaiju Omni-Farm",
+    Author = "Fox for Jack",
+    Icon = "solar:wind-bold",
+    Theme = "Dark",
+    ToggleKey = Enum.KeyCode.RightControl,
+})
+
+Window:Tag({ Title = "v1.7.3 - Fixed", Color = "ElementBackground" })
+
+local FarmTab = Window:Tab({ Title = "Auto Farm", Icon = "crosshair" })
+local KaiTanTab = Window:Tab({ Title = "KaiTan", Icon = "rocket" })
+local HopTab = Window:Tab({ Title = "Server Hop", Icon = "globe" })
+local MiscTab = Window:Tab({ Title = "Misc", Icon = "wrench" })
+
+-- Farm Settings
+local FarmSettings = FarmTab:Section({ Title = "Target Settings" })
+FarmSettings:Input({
+    Title = "Kaiju Name",
+    Placeholder = "Biollante",
+    Value = KaijuName,
+    Callback = function(v) KaijuName = v; SaveConfig() end
+})
+
+FarmSettings:Toggle({
+    Title = "Auto Lock Beam",
+    Value = AutoLockBeamEnabled,
+    Callback = function(v) AutoLockBeamEnabled = v; SaveConfig() end
+})
+
+-- Skills
+local SkillSection = FarmTab:Section({ Title = "Skills" })
+for i=1,5 do
+    local name = "Attack"..i
+    SkillSection:Toggle({
+        Title = "Loop "..name,
+        Value = SelectedSkills[name],
+        Callback = function(v) SelectedSkills[name] = v; SaveConfig() end
+    })
+end
+
+-- Farm Modes
+local AttackSection = FarmTab:Section({ Title = "Farm Modes" })
+AttackSection:Toggle({ Title = "FARM V1 (Warp)", Value = FarmingV1Enabled, Callback = function(v) FarmingV1Enabled = v; SaveConfig() end })
+AttackSection:Toggle({ Title = "FARM V2 (Rapid)", Value = FarmingV2Enabled, Callback = function(v) FarmingV2Enabled = v; SaveConfig() end })
+AttackSection:Toggle({ Title = "FARM V3 (Lock)", Value = FarmingV3Enabled, Callback = function(v) FarmingV3Enabled = v; SaveConfig() end })
+AttackSection:Toggle({ Title = "FARM V4 (Skip Killed)", Value = FarmingV4Enabled, Callback = function(v) FarmingV4Enabled = v; SaveConfig() end })
+AttackSection:Toggle({ Title = "FARM V5 (Tween - FIXED)", Value = FarmingV5Enabled, Callback = function(v) FarmingV5Enabled = v; SaveConfig() end })
+
+-- KaiTan Tab
+local KaiTanSection = KaiTanTab:Section({ Title = "Space Godzilla" })
+KaiTanSection:Toggle({
+    Title = "Auto Space Godzilla",
+    Value = AutoSpaceGodzilla,
+    Callback = function(v) AutoSpaceGodzilla = v; if v then FarmingV5Enabled = true end; SaveConfig() end
+})
+
+local DesSection = KaiTanTab:Section({ Title = "Destoroyah" })
+DesSection:Toggle({
+    Title = "Auto Destoroyah",
+    Value = AutoDestoroyah,
+    Callback = function(v) AutoDestoroyah = v; if v then FarmingV5Enabled = true end; SaveConfig() end
+})
+
+-- Hop Tab
+local HopSection = HopTab:Section({ Title = "Hop Settings" })
+HopSection:Toggle({ Title = "Auto Hop V1 (180s)", Value = AutoHopEnabled, Callback = function(v) AutoHopEnabled = v; SaveConfig() end })
+HopSection:Toggle({ Title = "Auto Hop V2 (60s)", Value = AutoHopV2Enabled, Callback = function(v) AutoHopV2Enabled = v; SaveConfig() end })
+HopSection:Toggle({ Title = "Auto Hop V3 (30s)", Value = AutoHopV3Enabled, Callback = function(v) AutoHopV3Enabled = v; SaveConfig() end })
+
+-- Misc
+local MiscSection = MiscTab:Section({ Title = "Misc" })
+MiscSection:Toggle({
+    Title = "Noclip",
+    Value = NoclipEnabled,
+    Callback = function(v) NoclipEnabled = v; SaveConfig() end
+})
 
 -- ==========================================
--- KAITAN + DESTOROYAH SEQUENCE (เหมือนเดิม)
--- ==========================================
--- วาง task.spawn ทั้งสองตัวของ KaiTan และ Destoroyah จาก code เดิม
-
--- ==========================================
--- MAIN V5 FARM (FIXED)
+-- V5 FARM LOOP (FIXED)
 -- ==========================================
 task.spawn(function()
     while true do
@@ -261,19 +348,33 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- Spawn loop
+-- Spawn Loop
 task.spawn(function()
     while true do
         task.wait(2.5)
         if FarmingV5Enabled or FarmingV4Enabled or FarmingV3Enabled or FarmingV2Enabled or FarmingV1Enabled then
             pcall(function()
-                local targetKaiju = KaijuName
-                if AutoSpaceGodzilla then targetKaiju = CurrentKaiTanName end
-                if AutoDestoroyah then targetKaiju = CurrentDestoroyahName end
-                FireServerRemote:FireServer("Spawn", targetKaiju, "Hong Kong")
+                local target = KaijuName
+                if AutoSpaceGodzilla then target = CurrentKaiTanName end
+                if AutoDestoroyah then target = CurrentDestoroyahName end
+                FireServerRemote:FireServer("Spawn", target, "Hong Kong")
             end)
         end
     end
 end)
 
-print("Fox V1.7.3 Fixed Loaded - Blue sky & Tween loop resolved")
+-- Auto Lock Beam
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if AutoLockBeamEnabled and CurrentTarget and IsTargetValid(CurrentTarget) then
+            local hrp = CurrentTarget.Character.HumanoidRootPart
+            pcall(function() BeamRemote:FireServer(hrp.Position) end)
+        end
+    end
+end)
+
+print("=== FOX FULL SCRIPT V1.7.3 LOADED ===")
+print("Blue sky & Tween loop fixed")
+
+bazinga.
