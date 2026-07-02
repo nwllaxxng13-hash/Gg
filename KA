@@ -1,6 +1,7 @@
 --[[
-    Auto Farm Beam (Multi-Kaiju) - V1.7.4 FOX FULL
-    + Alt Farm Tab: Target dropdown | Mode V1-V5 | Start Farm (uses Kaiju Name from Auto Farm tab)
+    Auto Farm Beam (Multi-Kaiju) - V1.7.5 FOX FULL
+    + FARM V6: No move | spam skills + autospawn Kaiju Name
+    Alt Farm mode V6 included
 ]]
 
 local Players = game:GetService("Players")
@@ -50,11 +51,13 @@ setreadonly(mt, true)
 RunService.Heartbeat:Connect(function()
     if L.Character and L.Character:FindFirstChild("HumanoidRootPart") then
         local hrp = L.Character.HumanoidRootPart
-        local farming = FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled or FarmingV5Enabled or AltFarmEnabled
+        local farming = FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled or FarmingV5Enabled or FarmingV6Enabled or AltFarmEnabled
         if farming or AutoSpaceGodzilla or AutoDestoroyah then
             hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
             hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-            if hrp.Position.Y > 450 then
+            if FarmingV6Enabled or (AltFarmEnabled and AltFarmMode == "V6") then
+                -- V6: freeze position, no drift
+            elseif hrp.Position.Y > 450 then
                 local hum = L.Character:FindFirstChild("Humanoid")
                 if hum and hum.Health > 0 then
                     hrp.CFrame = CFrame.new(hrp.Position.X, math.clamp(hrp.Position.Y - 120, -50, 200), hrp.Position.Z)
@@ -92,6 +95,7 @@ local FarmingV2Enabled = false
 local FarmingV3Enabled = false
 local FarmingV4Enabled = false
 local FarmingV5Enabled = false
+local FarmingV6Enabled = false
 local AutoHopEnabled = false
 local AutoHopV2Enabled = false
 local AutoHopV3Enabled = false
@@ -104,7 +108,6 @@ local AutoDestoroyah = false
 local DestoroyahStage = 1
 local CurrentDestoroyahName = "Destoroyah Aggregate"
 
--- ALT FARM
 local AltFarmEnabled = false
 local AltTargetPlayerName = nil
 local AltFarmMode = "V1"
@@ -128,6 +131,7 @@ local TargetLockTime = 1.35
 local V5LastTweenTarget = nil
 local currentTween = nil
 local AltV5LastTweenTarget = nil
+local V6AnchorCFrame = nil
 
 local SelectedSkills = {
     ["Attack1"] = true,
@@ -144,7 +148,7 @@ local function SaveConfig()
         if writefile then
             local data = {
                 V1 = FarmingV1Enabled, V2 = FarmingV2Enabled, V3 = FarmingV3Enabled,
-                V4 = FarmingV4Enabled, V5 = FarmingV5Enabled,
+                V4 = FarmingV4Enabled, V5 = FarmingV5Enabled, V6 = FarmingV6Enabled,
                 Hop = AutoHopEnabled, HopV2 = AutoHopV2Enabled, HopV3 = AutoHopV3Enabled,
                 KaijuName = KaijuName, AdminHopCount = AdminHopCount,
                 AutoLockBeam = AutoLockBeamEnabled, SelectedSkills = SelectedSkills,
@@ -167,6 +171,7 @@ local function LoadConfig()
                 FarmingV3Enabled = decoded.V3 or false
                 FarmingV4Enabled = decoded.V4 or false
                 FarmingV5Enabled = decoded.V5 or false
+                FarmingV6Enabled = decoded.V6 or false
                 AutoHopEnabled = decoded.Hop or false
                 AutoHopV2Enabled = decoded.HopV2 or false
                 AutoHopV3Enabled = decoded.HopV3 or false
@@ -207,6 +212,7 @@ local function ResetAllState()
     V5LastTweenTarget = nil
     AltV5LastTweenTarget = nil
     AltKilledFlag = false
+    V6AnchorCFrame = nil
     if currentTween then pcall(function() currentTween:Cancel() end) end
     currentTween = nil
 end
@@ -253,6 +259,7 @@ local function CheckAndFixAirStuck()
     local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
     local hum = myChar and myChar:FindFirstChild("Humanoid")
     if not myHRP or not myHRP.Parent or not hum then return end
+    if FarmingV6Enabled or (AltFarmEnabled and AltFarmMode == "V6") then return end
     local currentPos = myHRP.Position
     if LastValidPosition then
         local distance = (currentPos - LastValidPosition).Magnitude
@@ -287,6 +294,7 @@ local function InitializeCharacter()
         hrp.AssemblyAngularVelocity = Vector3.zero
         task.wait(0.5)
         hum.PlatformStand = false
+        V6AnchorCFrame = hrp.CFrame
     end
     InitialSpawnDone = true
     LastValidPosition = nil
@@ -376,6 +384,7 @@ local function DisableOtherFarms(except)
     if except ~= "V3" then FarmingV3Enabled = false end
     if except ~= "V4" then FarmingV4Enabled = false end
     if except ~= "V5" then FarmingV5Enabled = false end
+    if except ~= "V6" then FarmingV6Enabled = false end
 end
 
 local function DisableAltAndMainFarms()
@@ -384,7 +393,15 @@ local function DisableAltAndMainFarms()
     FarmingV3Enabled = false
     FarmingV4Enabled = false
     FarmingV5Enabled = false
+    FarmingV6Enabled = false
     AltFarmEnabled = false
+end
+
+local function HoldV6Position(hrp)
+    if not V6AnchorCFrame then V6AnchorCFrame = hrp.CFrame end
+    hrp.CFrame = V6AnchorCFrame
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    hrp.AssemblyAngularVelocity = Vector3.zero
 end
 
 -- ==========================================
@@ -519,7 +536,7 @@ local okUI, errUI = pcall(function()
         ToggleKey = Enum.KeyCode.RightControl,
     })
 
-    Window:Tag({ Title = "v1.7.4-WindUI (Alt Farm)", Color = "ElementBackground" })
+    Window:Tag({ Title = "v1.7.5-WindUI (V6)", Color = "ElementBackground" })
 
     FarmTab = Window:Tab({ Title = "Auto Farm", Icon = "crosshair" })
     AltFarmTab = Window:Tab({ Title = "Alt Farm", Icon = "user" })
@@ -531,7 +548,7 @@ local okUI, errUI = pcall(function()
     local FarmSettingsSection = FarmTab:Section({ Title = "Target Settings" })
     FarmSettingsSection:Input({
         Title = "Kaiju Name",
-        Desc = "Exact Kaiju deployment name (Alt Farm uses this too)",
+        Desc = "Exact Kaiju deployment name (Alt Farm + V6 spawn)",
         Icon = "pencil",
         Placeholder = "e.g. Biollante",
         Value = KaijuName,
@@ -606,8 +623,24 @@ local okUI, errUI = pcall(function()
             SaveConfig()
         end,
     })
+    AttackSection:Toggle({
+        Title = "FARM V6 (STAY + SPAM SKILLS)",
+        Desc = "No warp/tween | autospawn Kaiju Name | spam attack remotes",
+        Value = FarmingV6Enabled,
+        Callback = function(val)
+            FarmingV6Enabled = val
+            if val then
+                DisableOtherFarms("V6")
+                AltFarmEnabled = false
+                AutoSpaceGodzilla = false
+                AutoDestoroyah = false
+                local hrp = L.Character and L.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then V6AnchorCFrame = hrp.CFrame end
+            end
+            SaveConfig()
+        end,
+    })
 
-    -- ========== ALT FARM TAB ==========
     local AltSection = AltFarmTab:Section({ Title = "Alt Farm Control", Box = true })
     local playerOpts = GetPlayerList()
     if #playerOpts == 0 then table.insert(playerOpts, "(No players)") end
@@ -648,14 +681,18 @@ local okUI, errUI = pcall(function()
 
     AltSection:Dropdown({
         Title = "Auto Farm Mode",
-        Desc = "V1-V5 same logic as Auto Farm tab",
-        Values = { "V1", "V2", "V3", "V4", "V5" },
+        Desc = "V1-V6 (V6 = stay + spam skills)",
+        Values = { "V1", "V2", "V3", "V4", "V5", "V6" },
         Value = AltFarmMode,
         Multi = false,
         Callback = function(val)
             AltFarmMode = val
             AltKilledFlag = false
             AltV5LastTweenTarget = nil
+            if val == "V6" then
+                local hrp = L.Character and L.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then V6AnchorCFrame = hrp.CFrame end
+            end
             SaveConfig()
         end,
     })
@@ -671,6 +708,8 @@ local okUI, errUI = pcall(function()
                 DisableOtherFarms(nil)
                 AutoSpaceGodzilla = false
                 AutoDestoroyah = false
+                local hrp = L.Character and L.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then V6AnchorCFrame = hrp.CFrame end
                 pcall(function()
                     FireServerRemote:FireServer("Spawn", KaijuName, "Hong Kong")
                 end)
@@ -891,11 +930,13 @@ end)
 -- AUTO LOCK BEAM
 task.spawn(function()
     while true do
-        local anyFarm = FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled or FarmingV5Enabled or AltFarmEnabled
+        local anyFarm = FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled or FarmingV5Enabled or FarmingV6Enabled or AltFarmEnabled
         if AutoLockBeamEnabled and anyFarm and InitialSpawnDone and (tick() - LastHopTime) > 2 then
             local target = CurrentTarget
-            if AltFarmEnabled then
+            if AltFarmEnabled and AltFarmMode ~= "V6" then
                 target = GetAltTarget()
+            elseif FarmingV6Enabled then
+                target = GetNearestPlayer()
             elseif not IsTargetValid(target) then
                 target = (FarmingV4Enabled or FarmingV5Enabled) and GetNearestPlayerV4() or GetNearestPlayer()
             end
@@ -959,19 +1000,27 @@ task.spawn(function()
     end
 end)
 
--- SPAWN LOOP (includes Alt Farm -> KaijuName from Auto Farm tab)
+-- SPAWN LOOP
 task.spawn(function()
     while true do
-        local mainFarm = FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled or FarmingV5Enabled
+        local mainFarm = FarmingV1Enabled or FarmingV2Enabled or FarmingV3Enabled or FarmingV4Enabled or FarmingV5Enabled or FarmingV6Enabled
         local altFarm = AltFarmEnabled
         if (mainFarm or altFarm) and InitialSpawnDone and (tick() - LastHopTime) > 2 then
             pcall(function()
                 local activeKaijuTarget = KaijuName
                 if AutoSpaceGodzilla then activeKaijuTarget = CurrentKaiTanName
                 elseif AutoDestoroyah then activeKaijuTarget = CurrentDestoroyahName
-                elseif altFarm then activeKaijuTarget = KaijuName end
+                elseif altFarm or FarmingV6Enabled then activeKaijuTarget = KaijuName end
                 FireServerRemote:FireServer("Spawn", activeKaijuTarget, "Hong Kong")
-                if mainFarm or AutoSpaceGodzilla or AutoDestoroyah then
+                if (mainFarm and not FarmingV6Enabled) or AutoSpaceGodzilla or AutoDestoroyah then
+                    if not (FarmingV6Enabled) then
+                        FireServerRemote:FireServer("UpdateStat", activeKaijuTarget, "Regen", "Increase")
+                        FireServerRemote:FireServer("UpdateStat", activeKaijuTarget, "Strength", "Increase")
+                    end
+                end
+                if FarmingV6Enabled or (altFarm and AltFarmMode == "V6") then
+                    -- V6: spawn only (no stat pump unless you want - user said spawn + skills)
+                elseif mainFarm or AutoSpaceGodzilla or AutoDestoroyah then
                     FireServerRemote:FireServer("UpdateStat", activeKaijuTarget, "Regen", "Increase")
                     FireServerRemote:FireServer("UpdateStat", activeKaijuTarget, "Strength", "Increase")
                 end
@@ -1158,9 +1207,28 @@ task.spawn(function()
     end
 end)
 
--- ==========================================
--- ALT FARM LOOP (single target + V1-V5 modes)
--- ==========================================
+-- FARM V6 (STAY + SPAM SKILLS)
+task.spawn(function()
+    while true do
+        if FarmingV6Enabled and InitialSpawnDone and (tick() - LastHopTime) > 2 then
+            local myHRP = L.Character and L.Character:FindFirstChild("HumanoidRootPart")
+            if myHRP and myHRP.Parent then
+                HoldV6Position(myHRP)
+                FireActiveSkills()
+                if not AutoLockBeamEnabled then
+                    local t = GetNearestPlayer()
+                    if t and t.Character then
+                        local th = t.Character:FindFirstChild("HumanoidRootPart")
+                        if th then pcall(function() BeamRemote:FireServer(th.Position) end) end
+                    end
+                end
+            end
+        end
+        task.wait(0.08)
+    end
+end)
+
+-- ALT FARM LOOP
 task.spawn(function()
     while true do
         if AltFarmEnabled and InitialSpawnDone and (tick() - LastHopTime) > 2 then
@@ -1168,43 +1236,52 @@ task.spawn(function()
             local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
             local altTarget = GetAltTarget()
 
-            if myHRP and myHRP.Parent and altTarget then
-                if AltFarmMode == "V4" or AltFarmMode == "V5" then
-                    if IsTargetValid(altTarget) == false and altTarget.Character then
-                        local hum = altTarget.Character:FindFirstChild("Humanoid")
-                        if hum and hum.Health <= 0 then AltKilledFlag = true end
-                    end
-                    if AltKilledFlag and not IsTargetValid(altTarget) then
-                        AltKilledFlag = false
-                        task.wait(1.5)
-                    end
-                end
-
-                if IsTargetValid(altTarget) then
-                    local targetHRP = altTarget.Character.HumanoidRootPart
+            if myHRP and myHRP.Parent then
+                if AltFarmMode == "V6" then
+                    HoldV6Position(myHRP)
                     FireActiveSkills()
+                    if not AutoLockBeamEnabled and IsTargetValid(altTarget) then
+                        local targetHRP = altTarget.Character.HumanoidRootPart
+                        pcall(function() BeamRemote:FireServer(targetHRP.Position) end)
+                    end
+                elseif altTarget then
+                    if AltFarmMode == "V4" or AltFarmMode == "V5" then
+                        if IsTargetValid(altTarget) == false and altTarget.Character then
+                            local hum = altTarget.Character:FindFirstChild("Humanoid")
+                            if hum and hum.Health <= 0 then AltKilledFlag = true end
+                        end
+                        if AltKilledFlag and not IsTargetValid(altTarget) then
+                            AltKilledFlag = false
+                            task.wait(1.5)
+                        end
+                    end
 
-                    if AltFarmMode == "V1" then
-                        local targetDirection = targetHRP.CFrame.LookVector
-                        local warpPosition = targetHRP.Position - (targetDirection * 40)
-                        myChar:PivotTo(CFrame.new(warpPosition, targetHRP.Position))
-                        if not AutoLockBeamEnabled then pcall(function() BeamRemote:FireServer(targetHRP.Position) end) end
+                    if IsTargetValid(altTarget) then
+                        local targetHRP = altTarget.Character.HumanoidRootPart
+                        FireActiveSkills()
 
-                    elseif AltFarmMode == "V2" then
-                        myChar:PivotTo(targetHRP.CFrame)
+                        if AltFarmMode == "V1" then
+                            local targetDirection = targetHRP.CFrame.LookVector
+                            local warpPosition = targetHRP.Position - (targetDirection * 40)
+                            myChar:PivotTo(CFrame.new(warpPosition, targetHRP.Position))
+                            if not AutoLockBeamEnabled then pcall(function() BeamRemote:FireServer(targetHRP.Position) end) end
 
-                    elseif AltFarmMode == "V3" then
-                        myChar:PivotTo(targetHRP.CFrame)
+                        elseif AltFarmMode == "V2" then
+                            myChar:PivotTo(targetHRP.CFrame)
 
-                    elseif AltFarmMode == "V4" then
-                        myChar:PivotTo(targetHRP.CFrame)
+                        elseif AltFarmMode == "V3" then
+                            myChar:PivotTo(targetHRP.CFrame)
 
-                    elseif AltFarmMode == "V5" then
-                        local dist = (targetHRP.Position - myHRP.Position).Magnitude
-                        if dist > 10 then
-                            TweenToTarget(myHRP, targetHRP.CFrame * CFrame.new(0, 3, -5), altTarget, true)
-                        else
-                            myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 3, -5)
+                        elseif AltFarmMode == "V4" then
+                            myChar:PivotTo(targetHRP.CFrame)
+
+                        elseif AltFarmMode == "V5" then
+                            local dist = (targetHRP.Position - myHRP.Position).Magnitude
+                            if dist > 10 then
+                                TweenToTarget(myHRP, targetHRP.CFrame * CFrame.new(0, 3, -5), altTarget, true)
+                            else
+                                myHRP.CFrame = targetHRP.CFrame * CFrame.new(0, 3, -5)
+                            end
                         end
                     end
                 end
@@ -1212,9 +1289,12 @@ task.spawn(function()
         elseif not AltFarmEnabled then
             AltV5LastTweenTarget = nil
         end
-        task.wait(AltFarmMode == "V5" and 0.12 or 0.1)
+        local waitT = 0.1
+        if AltFarmEnabled and AltFarmMode == "V5" then waitT = 0.12
+        elseif AltFarmEnabled and AltFarmMode == "V6" then waitT = 0.08 end
+        task.wait(waitT)
     end
 end)
 
-print("=== FOX V1.7.4 FULL LOADED ===")
-print("Alt Farm Tab | UI: RightControl")
+print("=== FOX V1.7.5 FULL LOADED ===")
+print("FARM V6 Stay+Spam | Alt V6 | UI: RightControl")
