@@ -1,7 +1,7 @@
 --[[
-    ALT FARM ONLY v1.4 - Fox for Jack
-    v1: any damage -> void die
-    v2: HP <= 1000 -> void die immediately (no damage trigger)
+    ALT FARM ONLY v1.5 - Fox for Jack
+    v1: damage -> void | v2: HP <= 1000 -> void | v3: spawn + warp only (no void)
+    Target = dropdown ONLY (never auto-switch player)
 ]]
 
 local Players = game:GetService("Players")
@@ -16,6 +16,7 @@ local FireServerRemote = Remotes:WaitForChild("FireServer")
 
 local AltFarmEnabled = false
 local AltFarmV2Enabled = false
+local AltFarmV3Enabled = false
 local SelectedPlayerName = nil
 local TargetKaiju = "Gojira 1954"
 local LastHealth = nil
@@ -33,6 +34,7 @@ local function SaveConfig()
                 Kaiju = TargetKaiju,
                 Player = SelectedPlayerName,
                 V2 = AltFarmV2Enabled,
+                V3 = AltFarmV3Enabled,
             }))
         end
     end)
@@ -46,6 +48,7 @@ local function LoadConfig()
                 TargetKaiju = d.Kaiju or TargetKaiju
                 SelectedPlayerName = d.Player
                 AltFarmV2Enabled = d.V2 == true
+                AltFarmV3Enabled = d.V3 == true
             end
         end
     end)
@@ -62,11 +65,15 @@ local function GetPlayerList()
 end
 
 local function GetPlayerByName(name)
-    if not name or name == "" then return nil end
+    if not name or name == "" or name == "(No players)" then return nil end
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Name == name then return p end
     end
     return nil
+end
+
+local function GetDropdownTarget()
+    return GetPlayerByName(SelectedPlayerName)
 end
 
 local function IsTargetAlive(target)
@@ -100,11 +107,13 @@ end
 
 local function WarpToTarget(target)
     local myHRP = GetMyHRP()
-    if not myHRP or not IsTargetAlive(target) then return end
-    local tHRP = target.Character.HumanoidRootPart
+    if not myHRP or not IsTargetAlive(target) then return false end
+    local tHRP = target.Character:FindFirstChild("HumanoidRootPart")
+    if not tHRP then return false end
     myHRP.CFrame = tHRP.CFrame * WarpOffset
     myHRP.AssemblyLinearVelocity = Vector3.zero
     myHRP.AssemblyAngularVelocity = Vector3.zero
+    return true
 end
 
 local function ForceKillCharacter()
@@ -161,6 +170,9 @@ local function TrackHealth()
 end
 
 local function ShouldWarpVoid(tookDamage, currentHP)
+    if AltFarmV3Enabled then
+        return false
+    end
     if AltFarmV2Enabled then
         return currentHP > 0 and currentHP <= HPVoidMax
     end
@@ -168,6 +180,7 @@ local function ShouldWarpVoid(tookDamage, currentHP)
 end
 
 local function IsVoidingLowHP(hum)
+    if AltFarmV3Enabled then return false end
     if not hum or hum.Health <= 0 then return false end
     if not AltFarmV2Enabled then return false end
     return hum.Health <= HPVoidMax
@@ -193,7 +206,7 @@ local Window = WindUI:CreateWindow({
     ToggleKey = Enum.KeyCode.RightControl,
 })
 
-Window:Tag({ Title = "Alt Farm v1.4 - V2 HP<=1000", Color = "ElementBackground" })
+Window:Tag({ Title = "Alt Farm v1.5 - V3 no void", Color = "ElementBackground" })
 
 local MainTab = Window:Tab({ Title = "MAIN", Icon = "crosshair" })
 local MainSection = MainTab:Section({ Title = "Alt Farm Control", Box = true })
@@ -208,7 +221,7 @@ local defaultSelect = SelectedPlayerName or playerOptions[1]
 
 local DropdownRef = MainSection:Dropdown({
     Title = "Select target Player",
-    Desc = "Pick player to warp farm",
+    Desc = "ONLY this player (never auto-switch)",
     Values = playerOptions,
     Value = defaultSelect,
     Multi = false,
@@ -226,8 +239,11 @@ MainSection:Button({
     Callback = function()
         local fresh = GetPlayerList()
         if #fresh == 0 then fresh = { "(No players)" } end
+        if SelectedPlayerName and not table.find(fresh, SelectedPlayerName) then
+            table.insert(fresh, 1, SelectedPlayerName)
+        end
         if DropdownRef and DropdownRef.Refresh then
-            DropdownRef:Refresh(fresh, fresh[1])
+            DropdownRef:Refresh(fresh, SelectedPlayerName or fresh[1])
         elseif DropdownRef and DropdownRef.SetValues then
             DropdownRef:SetValues(fresh)
         end
@@ -254,17 +270,29 @@ MainSection:Input({
 
 MainSection:Toggle({
     Title = "Auto Alt Farm v2",
-    Desc = "ON: void when HP <= 1000 | OFF: v1 damage -> void",
+    Desc = "ON: void when HP <= 1000 | OFF + V3 off: v1 damage -> void",
     Value = AltFarmV2Enabled,
     Callback = function(v)
         AltFarmV2Enabled = v == true
+        if v then AltFarmV3Enabled = false end
+        SaveConfig()
+    end,
+})
+
+MainSection:Toggle({
+    Title = "Auto Farm Alt V3",
+    Desc = "Spawn + warp to dropdown target ONLY | NO void ever",
+    Value = AltFarmV3Enabled,
+    Callback = function(v)
+        AltFarmV3Enabled = v == true
+        if v then AltFarmV2Enabled = false end
         SaveConfig()
     end,
 })
 
 MainSection:Toggle({
     Title = "Start Farm",
-    Desc = "Spawn + warp | void by v1/v2 | respawn loop",
+    Desc = "Spawn + warp | void only if V3 OFF",
     Value = AltFarmEnabled,
     Callback = function(v)
         AltFarmEnabled = v
@@ -289,7 +317,7 @@ end)
 task.spawn(function()
     while true do
         if AltFarmEnabled then
-            local target = GetPlayerByName(SelectedPlayerName)
+            local target = GetDropdownTarget()
             local hum = GetMyHumanoid()
             local hrp = GetMyHRP()
 
@@ -297,29 +325,20 @@ task.spawn(function()
                 local tookDamage, isDead, currentHP = TrackHealth()
 
                 if isDead then
-                    task.wait(0.6)
+                    if not AltFarmV3Enabled then
+                        task.wait(0.6)
+                    else
+                        task.wait(0.35)
+                    end
                     FireSpawn()
-                    task.wait(1.4)
+                    task.wait(0.8)
                 elseif ShouldWarpVoid(tookDamage, currentHP) then
                     WarpToVoidAndDie()
                     task.wait(0.5)
                 else
                     FireSpawn()
-                    if IsTargetAlive(target) then
+                    if target and IsTargetAlive(target) then
                         WarpToTarget(target)
-                    else
-                        local nearest = nil
-                        for _, p in ipairs(Players:GetPlayers()) do
-                            if p ~= L and IsTargetAlive(p) then
-                                nearest = p
-                                break
-                            end
-                        end
-                        if nearest then
-                            SelectedPlayerName = nearest.Name
-                            SaveConfig()
-                            WarpToTarget(nearest)
-                        end
                     end
                 end
             else
@@ -328,12 +347,14 @@ task.spawn(function()
         else
             LastHealth = nil
         end
-        task.wait(0.12)
+        task.wait(0.08)
     end
 end)
 
 RunService.Heartbeat:Connect(function()
     if not AltFarmEnabled then return end
+    if AltFarmV3Enabled then return end
+
     local hrp = GetMyHRP()
     local hum = GetMyHumanoid()
     if not hrp or not hum then return end
@@ -354,4 +375,4 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
-print("[FOX] ALT FARM ONLY v1.4 | v2 ON = void when HP <= 1000")
+print("[FOX] ALT FARM ONLY v1.5 | dropdown lock | V3 = no void")
