@@ -114,17 +114,18 @@ local function tryBurstDamageTo(targetChar, dmg)
     if not DealDamageRemote then notifyMsg("Burst","Remote not found",3); return false end
     local args = { targetChar or LocalPlayer.Character, tonumber(dmg) or DamageValue }
     -- attempt two immediate fires safely
-    pcall(function()
+    local ok, err = pcall(function()
         if DealDamageRemote:IsA("RemoteEvent") then
             DealDamageRemote:FireServer(table.unpack(args))
             -- second immediate fire
             DealDamageRemote:FireServer(table.unpack(args))
         else
-            pcall(function() DealDamageRemote:InvokeServer(table.unpack(args)) end)
-            pcall(function() DealDamageRemote:InvokeServer(table.unpack(args)) end)
+            DealDamageRemote:InvokeServer(table.unpack(args))
+            DealDamageRemote:InvokeServer(table.unpack(args))
         end
     end)
-    return true
+    if not ok then notifyMsg("Burst","Fire failed: "..tostring(err),2) end
+    return ok
 end
 
 local function getHRP(char)
@@ -374,8 +375,8 @@ local function teleportTo(pos)
     if not char then return false end
     local hrp = getHRP(char)
     if not hrp then return false end
-    pcall(function() hrp.CFrame = CFrame.new(pos + Vector3.new(0,3,0)) end)
-    return true
+    local ok = pcall(function() hrp.CFrame = CFrame.new(pos + Vector3.new(0,3,0)) end)
+    return ok
 end
 
 local function waitForLocalCharacter(timeout)
