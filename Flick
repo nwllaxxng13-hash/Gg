@@ -82,7 +82,13 @@ local FovColor = Color3.fromRGB(255, 255, 255)
 local FovLockedColor = Color3.fromRGB(255, 0, 0)
 
 -- 2. Setup UI Library
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/x2zu/OPEN-SOURCE-UI-ROBLOX/refs/heads/main/X2ZU%20UI%20ROBLOX%20OPEN%20SOURCE/DummyUi-leak-by-x2zu/fetching-main/Tools/Framework.luau"))()
+local okLib, Library = pcall(function()
+    return loadstring(game:HttpGet("https://raw.githubusercontent.com/x2zu/OPEN-SOURCE-UI-ROBLOX/refs/heads/main/X2ZU%20UI%20ROBLOX%20OPEN%20SOURCE/DummyUi-leak-by-x2zu/fetching-main/Tools/Framework.luau"))()
+end)
+if not okLib or not Library then
+    warn("[Flick] Failed to load x2zu UI library: " .. tostring(Library))
+    return
+end
 
 local Window = Library:Window({
     Title = "x2zu [ Stellar Modified ]",

@@ -144,7 +144,7 @@ local SelectedSkills = {
 local ConfigFile = "FoxKaijuConfig.json"
 
 local function SaveConfig()
-    pcall(function()
+    local ok, err = pcall(function()
         if writefile then
             local data = {
                 V1 = FarmingV1Enabled, V2 = FarmingV2Enabled, V3 = FarmingV3Enabled,
@@ -159,10 +159,11 @@ local function SaveConfig()
             writefile(ConfigFile, HttpService:JSONEncode(data))
         end
     end)
+    if not ok then warn("[FOX] Failed to save config: " .. tostring(err)) end
 end
 
 local function LoadConfig()
-    pcall(function()
+    local ok, err = pcall(function()
         if readfile and isfile and isfile(ConfigFile) then
             local decoded = HttpService:JSONDecode(readfile(ConfigFile))
             if type(decoded) == "table" then
@@ -194,6 +195,7 @@ local function LoadConfig()
             end
         end
     end)
+    if not ok then warn("[FOX] Failed to load config: " .. tostring(err)) end
 end
 
 LoadConfig()

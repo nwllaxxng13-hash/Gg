@@ -34,7 +34,7 @@ local VoidBusy = false
 local ConfigFile = "FoxAltFarmOnly.json"
 
 local function SaveConfig()
-    pcall(function()
+    local ok, err = pcall(function()
         if writefile then
             writefile(ConfigFile, HttpService:JSONEncode({
                 Kaiju = TargetKaiju,
@@ -45,10 +45,11 @@ local function SaveConfig()
             }))
         end
     end)
+    if not ok then warn("[ALT FARM] Failed to save config: " .. tostring(err)) end
 end
 
 local function LoadConfig()
-    pcall(function()
+    local ok, err = pcall(function()
         if readfile and isfile and isfile(ConfigFile) then
             local d = HttpService:JSONDecode(readfile(ConfigFile))
             if d then
@@ -60,6 +61,7 @@ local function LoadConfig()
             end
         end
     end)
+    if not ok then warn("[ALT FARM] Failed to load config: " .. tostring(err)) end
 end
 LoadConfig()
 
@@ -247,8 +249,23 @@ do
     local ok, res = pcall(function()
         return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
     end)
-    if ok and res then WindUI = res
-    else WindUI = require(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init")) end
+    if ok and res then
+        WindUI = res
+    else
+        local fetchOk, fetchRes = pcall(function()
+            return require(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init"))
+        end)
+        if fetchOk then
+            WindUI = fetchRes
+        else
+            warn("[ALT FARM] Failed to load WindUI: " .. tostring(fetchRes))
+        end
+    end
+end
+
+if not WindUI then
+    warn("[ALT FARM] WindUI could not be loaded; aborting.")
+    return
 end
 
 local Window = WindUI:CreateWindow({
