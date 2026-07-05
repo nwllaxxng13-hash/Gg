@@ -139,12 +139,15 @@ HomeTab:Section({
     TextSize = 20,
 })
 
+-- REMOVED: Loading scripts from untrusted third-party repos is an arbitrary code execution risk
+-- Use the official Infinite Yield source instead if needed
 HomeTab:Button({
     Title = "Infinite Yield",
     Icon = "terminal",
     Justify = "Center",
     Callback = function()
-        loadstring(game:HttpGet('https://raw.githubusercontent.com/ionlyusegithubformcmods/1-Line-Scripts/main/Infinite%20Yield%20but%20with%20secure%20dex'))()
+        -- Pinned to official InfiniteYield repo (auditable source)
+        loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source'))()
     end
 })
 
