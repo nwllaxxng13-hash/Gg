@@ -2,6 +2,7 @@
     Ark Hub - Fisch
     ภาษาไทยเต็มรูปแบบ (Full Thai Language)
     By Ark
+    Refactored to use shared utilities
 ]]
 
 local cloneref = (cloneref or clonereference or function(instance)
@@ -18,24 +19,15 @@ local VirtualUser = cloneref(game:GetService("VirtualUser"))
 
 local LocalPlayer = Players.LocalPlayer
 
--- Initialize WindUI
-local WindUI
+-- Shared Utilities
+local PlayerUtils = require(script.Parent.shared.PlayerUtils)
+local WindUILoader = require(script.Parent.shared.WindUILoader)
+local AntiAFK = require(script.Parent.shared.AntiAFK)
+local SharedLighting = require(script.Parent.shared.Lighting)
+local Movement = require(script.Parent.shared.Movement)
 
-do
-	local ok, result = pcall(function()
-		return require("./src/Init")
-	end)
-
-	if ok then
-		WindUI = result
-	else
-		if RunService:IsStudio() or not writefile then
-			WindUI = require(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init"))
-		else
-			WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
-		end
-	end
-end
+-- Initialize WindUI via shared loader
+local WindUI = WindUILoader.load()
 
 -- Window Configuration
 local ThemeName = "Dark"
@@ -122,11 +114,9 @@ local Options = {
 
 local infiniteJumpConnection = nil
 
--- Utility Functions
+-- Utility Functions (using shared PlayerUtils)
 local function TP(CF)
-	if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-		LocalPlayer.Character.HumanoidRootPart.CFrame = CF
-	end
+	PlayerUtils.teleport(CF)
 end
 
 local function GetToggleValue(Name)
@@ -768,22 +758,23 @@ local UnloadButton = TabSettings:Button({
 -- CONNECTIONS & LOOPS
 -- ==================== --
 
--- Anti-AFK Connection
+-- Anti-AFK Connection (using shared AntiAFK)
 LocalPlayer.Idled:Connect(function()
 	if GetToggleValue("AntiAFK") then
-		VirtualUser:CaptureController()
-		VirtualUser:ClickButton2(Vector2.new())
+		AntiAFK.connectIdled()
 	end
 end)
 
--- NoClip Loop
+-- NoClip Loop (using shared Movement)
+local noClipActive = false
 RunService.Stepped:Connect(function()
-	if GetToggleValue("NoClip") then
-		for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
-			if part:IsA("BasePart") then
-				part.CanCollide = false
-			end
-		end
+	local shouldNoClip = GetToggleValue("NoClip")
+	if shouldNoClip and not noClipActive then
+		Movement.startNoClip()
+		noClipActive = true
+	elseif not shouldNoClip and noClipActive then
+		Movement.stopNoClip()
+		noClipActive = false
 	end
 end)
 
