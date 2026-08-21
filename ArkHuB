@@ -1,0 +1,1923 @@
+-- ═══════════════════════════════════════════════════════════
+-- 📜 ARK HUB - MAIN LAUNCHER & HUB SUITE (ENHANCED)
+-- ═══════════════════════════════════════════════════════════
+
+local function getService(name)
+    local service = game:GetService(name)
+    return (cloneref and cloneref(service)) or service
+end
+
+local TweenService = getService("TweenService")
+local UserInputService = getService("UserInputService")
+local Players = getService("Players")
+local Workspace = getService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+
+-- Global Configuration & Styling
+local VINTAGE_FONT = Enum.Font.SpecialElite
+local TWEEN_FAST = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local TWEEN_SMOOTH = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+
+local HUB_THEME = {
+    ACCENT = Color3.fromRGB(180, 140, 75), -- Vintage Gold
+    BG = Color3.fromRGB(32, 28, 26),
+    PANEL = Color3.fromRGB(25, 22, 20),
+    BTN = Color3.fromRGB(50, 42, 38),
+    BTN_HOVER = Color3.fromRGB(70, 60, 52),
+    TEXT = Color3.fromRGB(230, 220, 200),
+    TOGGLE_OFF = Color3.fromRGB(60, 50, 45),
+    TOGGLE_ON = Color3.fromRGB(180, 140, 75)
+}
+
+-- ═══════════════════════════════════════════════════════════
+-- MODULE 1: MARVELLOUS PLAYGROUND
+-- ═══════════════════════════════════════════════════════════
+local function loadMarvellousPlayground()
+    local ReplicatedStorage = getService("ReplicatedStorage")
+    local THEME = HUB_THEME
+
+    local erenBurstCount = 1
+    local erenLoopDelay = 0.5
+    local erenLooping = false
+
+    local customCodeStr = '-- RemoteSpy Output\ngame:GetService("ReplicatedStorage"):WaitForChild("Characters"):WaitForChild("Eren"):WaitForChild("Remotes"):WaitForChild("RumblingStart"):FireServer()'
+    local customBurstCount = 1
+    local customLoopDelay = 0.5
+    local customLooping = false
+
+    local stunHelperEnabled = false
+    local stunHelperKeybind = Enum.KeyCode.E
+    local healMyselfEnabled = false
+
+    local function getCharacterPath(char)
+        if not char then return nil end
+        return Workspace:FindFirstChild(char.Name)
+    end
+
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "ArkHub_MarvellousSmackDown"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Size = UDim2.new(0, 500, 0, 320)
+    MainFrame.Position = UDim2.new(0.5, -250, 0.4, -160)
+    MainFrame.BackgroundColor3 = THEME.BG
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Active = true
+    MainFrame.ClipsDescendants = true
+    MainFrame.Parent = ScreenGui
+
+    local MainCorner = Instance.new("UICorner")
+    MainCorner.CornerRadius = UDim.new(0, 6)
+    MainCorner.Parent = MainFrame
+
+    local MainStroke = Instance.new("UIStroke")
+    MainStroke.Thickness = 2
+    MainStroke.Color = THEME.ACCENT
+    MainStroke.Parent = MainFrame
+
+    local TitleBar = Instance.new("Frame")
+    TitleBar.Size = UDim2.new(1, 0, 0, 28)
+    TitleBar.BackgroundColor3 = Color3.fromRGB(18, 15, 14)
+    TitleBar.BorderSizePixel = 0
+    TitleBar.Parent = MainFrame
+
+    local TitleLabel = Instance.new("TextLabel")
+    TitleLabel.Size = UDim2.new(0.6, 0, 1, 0)
+    TitleLabel.Position = UDim2.new(0, 10, 0, 0)
+    TitleLabel.BackgroundTransparency = 1
+    TitleLabel.Text = "📜 Ark Hub - Marvellous SmackDown"
+    TitleLabel.TextColor3 = THEME.ACCENT
+    TitleLabel.TextSize = 11
+    TitleLabel.Font = VINTAGE_FONT
+    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLabel.Parent = TitleBar
+
+    local MinimizeBtn = Instance.new("TextButton")
+    MinimizeBtn.Size = UDim2.new(0, 20, 0, 20)
+    MinimizeBtn.Position = UDim2.new(1, -25, 0, 4)
+    MinimizeBtn.BackgroundTransparency = 1
+    MinimizeBtn.Text = "-"
+    MinimizeBtn.TextColor3 = THEME.ACCENT
+    MinimizeBtn.Font = Enum.Font.SourceSansBold
+    MinimizeBtn.TextSize = 18
+    MinimizeBtn.Parent = TitleBar
+
+    local dragging, dragStart, startPos
+    TitleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = MainFrame.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            TweenService:Create(MainFrame, TWEEN_FAST, {Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)}):Play()
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    local isMinimized = false
+    MinimizeBtn.MouseButton1Click:Connect(function()
+        isMinimized = not isMinimized
+        TweenService:Create(MainFrame, TWEEN_SMOOTH, {Size = isMinimized and UDim2.new(0, 500, 0, 28) or UDim2.new(0, 500, 0, 320)}):Play()
+    end)
+
+    local Sidebar = Instance.new("Frame")
+    Sidebar.Size = UDim2.new(0, 130, 1, -28)
+    Sidebar.Position = UDim2.new(0, 0, 0, 28)
+    Sidebar.BackgroundColor3 = THEME.PANEL
+    Sidebar.BorderSizePixel = 0
+    Sidebar.Parent = MainFrame
+
+    local SidebarLayout = Instance.new("UIListLayout")
+    SidebarLayout.Parent = Sidebar
+    SidebarLayout.Padding = UDim.new(0, 4)
+    SidebarLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+    local SidebarPadding = Instance.new("UIPadding")
+    SidebarPadding.PaddingTop = UDim.new(0, 8)
+    SidebarPadding.Parent = Sidebar
+
+    local ContentContainer = Instance.new("Frame")
+    ContentContainer.Size = UDim2.new(1, -130, 1, -28)
+    ContentContainer.Position = UDim2.new(0, 130, 0, 28)
+    ContentContainer.BackgroundTransparency = 1
+    ContentContainer.ClipsDescendants = true
+    ContentContainer.Parent = MainFrame
+
+    local function createTabButton(name)
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0.9, 0, 0, 28)
+        btn.BackgroundColor3 = THEME.BTN
+        btn.Text = name
+        btn.TextColor3 = THEME.TEXT
+        btn.Font = VINTAGE_FONT
+        btn.TextSize = 10
+        btn.Parent = Sidebar
+
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 4)
+        corner.Parent = btn
+
+        return btn
+    end
+
+    local function createPage()
+        local page = Instance.new("ScrollingFrame")
+        page.Size = UDim2.new(1, 0, 1, 0)
+        page.BackgroundTransparency = 1
+        page.ScrollBarThickness = 3
+        page.ScrollBarImageColor3 = THEME.ACCENT
+        page.Visible = false
+        page.Parent = ContentContainer
+
+        local layout = Instance.new("UIListLayout")
+        layout.Parent = page
+        layout.Padding = UDim.new(0, 8)
+        layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+        local padding = Instance.new("UIPadding")
+        padding.PaddingTop = UDim.new(0, 8)
+        padding.Parent = page
+
+        return page
+    end
+
+    local function createInputRow(parent, labelText, defaultVal, placeholder, onChanged)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(0.92, 0, 0, 28)
+        row.BackgroundColor3 = THEME.PANEL
+        row.Parent = parent
+
+        local rCorner = Instance.new("UICorner")
+        rCorner.CornerRadius = UDim.new(0, 4)
+        rCorner.Parent = row
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0.6, 0, 1, 0)
+        label.Position = UDim2.new(0, 8, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = labelText
+        label.TextColor3 = THEME.TEXT
+        label.Font = VINTAGE_FONT
+        label.TextSize = 9
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = row
+
+        local box = Instance.new("TextBox")
+        box.Size = UDim2.new(0.35, -5, 0.7, 0)
+        box.Position = UDim2.new(0.65, 0, 0.15, 0)
+        box.BackgroundColor3 = THEME.BTN
+        box.Text = tostring(defaultVal)
+        box.PlaceholderText = placeholder
+        box.TextColor3 = THEME.TEXT
+        box.Font = Enum.Font.Code
+        box.TextSize = 9
+        box.Parent = row
+
+        local bCorner = Instance.new("UICorner")
+        bCorner.CornerRadius = UDim.new(0, 3)
+        bCorner.Parent = box
+
+        box.FocusLost:Connect(function()
+            onChanged(box.Text)
+        end)
+        return row
+    end
+
+    local function createToggleRow(parent, labelText, onChanged)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(0.92, 0, 0, 28)
+        row.BackgroundColor3 = THEME.PANEL
+        row.Parent = parent
+
+        local rCorner = Instance.new("UICorner")
+        rCorner.CornerRadius = UDim.new(0, 4)
+        rCorner.Parent = row
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0.6, 0, 1, 0)
+        label.Position = UDim2.new(0, 8, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = labelText
+        label.TextColor3 = THEME.TEXT
+        label.Font = VINTAGE_FONT
+        label.TextSize = 9
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = row
+
+        local toggleBtn = Instance.new("TextButton")
+        toggleBtn.Size = UDim2.new(0.35, -5, 0.7, 0)
+        toggleBtn.Position = UDim2.new(0.65, 0, 0.15, 0)
+        toggleBtn.BackgroundColor3 = THEME.TOGGLE_OFF
+        toggleBtn.Text = "OFF"
+        toggleBtn.TextColor3 = THEME.TEXT
+        toggleBtn.Font = VINTAGE_FONT
+        toggleBtn.TextSize = 9
+        toggleBtn.Parent = row
+
+        local tCorner = Instance.new("UICorner")
+        tCorner.CornerRadius = UDim.new(0, 3)
+        tCorner.Parent = toggleBtn
+
+        local state = false
+        local function setToggleState(newState)
+            state = newState
+            toggleBtn.Text = state and "ON" or "OFF"
+            toggleBtn.BackgroundColor3 = state and THEME.TOGGLE_ON or THEME.TOGGLE_OFF
+            toggleBtn.TextColor3 = state and Color3.fromRGB(20, 20, 20) or THEME.TEXT
+            onChanged(state)
+        end
+
+        toggleBtn.MouseButton1Click:Connect(function()
+            setToggleState(not state)
+        end)
+
+        return row, setToggleState
+    end
+
+    local TabTrollBtn = createTabButton("Troll")
+    local TabCustomBtn = createTabButton("Custom Remote")
+    local TabCombatBtn = createTabButton("Combat")
+
+    local TrollPage = createPage()
+    local CustomPage = createPage()
+    local CombatPage = createPage()
+
+    TrollPage.Visible = true
+    TabTrollBtn.BackgroundColor3 = THEME.ACCENT
+    TabTrollBtn.TextColor3 = Color3.fromRGB(20, 20, 20)
+
+    local function switchTab(selectedBtn, selectedPage)
+        for _, btn in ipairs({TabTrollBtn, TabCustomBtn, TabCombatBtn}) do
+            btn.BackgroundColor3 = THEME.BTN
+            btn.TextColor3 = THEME.TEXT
+        end
+        for _, page in ipairs({TrollPage, CustomPage, CombatPage}) do
+            page.Visible = false
+        end
+
+        selectedBtn.BackgroundColor3 = THEME.ACCENT
+        selectedBtn.TextColor3 = Color3.fromRGB(20, 20, 20)
+        selectedPage.Visible = true
+    end
+
+    TabTrollBtn.MouseButton1Click:Connect(function() switchTab(TabTrollBtn, TrollPage) end)
+    TabCustomBtn.MouseButton1Click:Connect(function() switchTab(TabCustomBtn, CustomPage) end)
+    TabCombatBtn.MouseButton1Click:Connect(function() switchTab(TabCombatBtn, CombatPage) end)
+
+    -- Tab 1: Troll
+    local SectionTitle = Instance.new("TextLabel")
+    SectionTitle.Size = UDim2.new(0.92, 0, 0, 18)
+    SectionTitle.BackgroundTransparency = 1
+    SectionTitle.Text = "--- RUMBLING NUKE ---"
+    SectionTitle.TextColor3 = THEME.ACCENT
+    SectionTitle.Font = VINTAGE_FONT
+    SectionTitle.TextSize = 10
+    SectionTitle.Parent = TrollPage
+
+    local function fireErenRumbling(burst)
+        for i = 1, burst do
+            pcall(function()
+                ReplicatedStorage:WaitForChild("Characters"):WaitForChild("Eren"):WaitForChild("Remotes"):WaitForChild("RumblingStart"):FireServer()
+            end)
+        end
+    end
+
+    local ErenFireBtn = Instance.new("TextButton")
+    ErenFireBtn.Size = UDim2.new(0.92, 0, 0, 28)
+    ErenFireBtn.BackgroundColor3 = THEME.BTN
+    ErenFireBtn.Text = "💥 Fire Eren Rumbling"
+    ErenFireBtn.TextColor3 = THEME.ACCENT
+    ErenFireBtn.Font = VINTAGE_FONT
+    ErenFireBtn.TextSize = 10
+    ErenFireBtn.Parent = TrollPage
+
+    local ErenCorner = Instance.new("UICorner")
+    ErenCorner.CornerRadius = UDim.new(0, 4)
+    ErenCorner.Parent = ErenFireBtn
+
+    ErenFireBtn.MouseButton1Click:Connect(function()
+        fireErenRumbling(erenBurstCount)
+    end)
+
+    createInputRow(TrollPage, "Burst Fire Count:", erenBurstCount, "Amount", function(val)
+        local num = tonumber(val)
+        if num and num > 0 then erenBurstCount = math.floor(num) end
+    end)
+
+    createInputRow(TrollPage, "Loop Delay (Sec):", erenLoopDelay, "Delay", function(val)
+        local num = tonumber(val)
+        if num and num >= 0 then erenLoopDelay = num end
+    end)
+
+    createToggleRow(TrollPage, "Loop Rumbling:", function(state)
+        erenLooping = state
+        if erenLooping then
+            task.spawn(function()
+                while erenLooping do
+                    fireErenRumbling(erenBurstCount)
+                    task.wait(erenLoopDelay)
+                end
+            end)
+        end
+    end)
+
+    -- Tab 2: Custom Remote
+    local CodeScroll = Instance.new("ScrollingFrame")
+    CodeScroll.Size = UDim2.new(0.92, 0, 0, 100)
+    CodeScroll.BackgroundColor3 = THEME.PANEL
+    CodeScroll.ScrollBarThickness = 4
+    CodeScroll.ScrollBarImageColor3 = THEME.ACCENT
+    CodeScroll.AutomaticCanvasSize = Enum.AutomaticSize.XY
+    CodeScroll.Parent = CustomPage
+
+    local CodeScrollCorner = Instance.new("UICorner")
+    CodeScrollCorner.CornerRadius = UDim.new(0, 4)
+    CodeScrollCorner.Parent = CodeScroll
+
+    local BigTextBox = Instance.new("TextBox")
+    BigTextBox.Size = UDim2.new(1, -10, 1, -10)
+    BigTextBox.Position = UDim2.new(0, 5, 0, 5)
+    BigTextBox.AutomaticSize = Enum.AutomaticSize.XY
+    BigTextBox.BackgroundTransparency = 1
+    BigTextBox.Text = customCodeStr
+    BigTextBox.TextColor3 = THEME.TEXT
+    BigTextBox.Font = Enum.Font.Code
+    BigTextBox.TextSize = 9
+    BigTextBox.TextXAlignment = Enum.TextXAlignment.Left
+    BigTextBox.TextYAlignment = Enum.TextYAlignment.Top
+    BigTextBox.ClearTextOnFocus = false
+    BigTextBox.MultiLine = true
+    BigTextBox.TextWrapped = false
+    BigTextBox.Parent = CodeScroll
+
+    BigTextBox.FocusLost:Connect(function()
+        customCodeStr = BigTextBox.Text
+    end)
+
+    local function fireCustomCode(burst)
+        local codeToRun = BigTextBox.Text
+        local func, err = loadstring(codeToRun)
+        if func then
+            for i = 1, burst do
+                pcall(func)
+            end
+        end
+    end
+
+    local CustomFireBtn = Instance.new("TextButton")
+    CustomFireBtn.Size = UDim2.new(0.92, 0, 0, 28)
+    CustomFireBtn.BackgroundColor3 = THEME.BTN
+    CustomFireBtn.Text = "🚀 Execute Custom Code"
+    CustomFireBtn.TextColor3 = THEME.ACCENT
+    CustomFireBtn.Font = VINTAGE_FONT
+    CustomFireBtn.TextSize = 10
+    CustomFireBtn.Parent = CustomPage
+
+    local CustomCorner = Instance.new("UICorner")
+    CustomCorner.CornerRadius = UDim.new(0, 4)
+    CustomCorner.Parent = CustomFireBtn
+
+    CustomFireBtn.MouseButton1Click:Connect(function()
+        fireCustomCode(customBurstCount)
+    end)
+
+    createInputRow(CustomPage, "Burst Fire Count:", customBurstCount, "Amount", function(val)
+        local num = tonumber(val)
+        if num and num > 0 then customBurstCount = math.floor(num) end
+    end)
+
+    createInputRow(CustomPage, "Loop Delay (Sec):", customLoopDelay, "Delay", function(val)
+        local num = tonumber(val)
+        if num and num >= 0 then customLoopDelay = num end
+    end)
+
+    createToggleRow(CustomPage, "Loop Custom Remote:", function(state)
+        customLooping = state
+        if customLooping then
+            task.spawn(function()
+                while customLooping do
+                    fireCustomCode(customBurstCount)
+                    task.wait(customLoopDelay)
+                end
+            end)
+        end
+    end)
+
+    -- Tab 3: Combat
+    local StunIconBtn = Instance.new("TextButton")
+    StunIconBtn.Name = "StunIconBtn"
+    StunIconBtn.Size = UDim2.new(0, 45, 0, 45)
+    StunIconBtn.Position = UDim2.new(0.1, 0, 0.5, 0)
+    StunIconBtn.BackgroundColor3 = THEME.PANEL
+    StunIconBtn.Text = "⚡\nOFF"
+    StunIconBtn.TextColor3 = THEME.TEXT
+    StunIconBtn.Font = VINTAGE_FONT
+    StunIconBtn.TextSize = 9
+    StunIconBtn.Visible = false
+    StunIconBtn.Active = true
+    StunIconBtn.Parent = ScreenGui
+
+    local StunIconCorner = Instance.new("UICorner")
+    StunIconCorner.CornerRadius = UDim.new(0, 8)
+    StunIconCorner.Parent = StunIconBtn
+
+    local StunIconStroke = Instance.new("UIStroke")
+    StunIconStroke.Thickness = 2
+    StunIconStroke.Color = THEME.ACCENT
+    StunIconStroke.Parent = StunIconBtn
+
+    local iconDragging, iconDragStart, iconStartPos
+    StunIconBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            iconDragging = true
+            iconDragStart = input.Position
+            iconStartPos = StunIconBtn.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if iconDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - iconDragStart
+            StunIconBtn.Position = UDim2.new(iconStartPos.X.Scale, iconStartPos.X.Offset + delta.X, iconStartPos.Y.Scale, iconStartPos.Y.Offset + delta.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            iconDragging = false
+        end
+    end)
+
+    local isStunActive = false
+    local setStunToggleUI
+
+    local function triggerStunBurst()
+        local char = LocalPlayer.Character
+        if not char then return end
+        local myHRP = char:FindFirstChild("HumanoidRootPart")
+        local myCharPath = getCharacterPath(char)
+        if not myHRP or not myCharPath then return end
+
+        for _, targetChar in ipairs(Workspace:GetChildren()) do
+            if targetChar:IsA("Model") and targetChar ~= char then
+                local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
+                local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+
+                if targetHum and targetHRP and targetHum.Health > 0 then
+                    local dist = (myHRP.Position - targetHRP.Position).Magnitude
+                    if dist <= 4 then
+                        for i = 1, 20 do
+                            pcall(function()
+                                local args = {
+                                    myCharPath:FindFirstChild("HumanoidRootPart"),
+                                    targetChar,
+                                    0,
+                                    0
+                                }
+                                ReplicatedStorage:WaitForChild("Characters"):WaitForChild("Combat"):WaitForChild("Remotes"):WaitForChild("KnockbackPush"):FireServer(unpack(args))
+                            end)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    local function toggleStunHelper(state)
+        isStunActive = state
+        StunIconBtn.Text = isStunActive and "⚡\nON" or "⚡\nOFF"
+        StunIconBtn.BackgroundColor3 = isStunActive and THEME.TOGGLE_ON or THEME.PANEL
+        StunIconBtn.TextColor3 = isStunActive and Color3.fromRGB(20, 20, 20) or THEME.TEXT
+
+        if isStunActive then
+            task.spawn(function()
+                while isStunActive do
+                    triggerStunBurst()
+                    task.wait(0.01)
+                end
+            end)
+        end
+    end
+
+    StunIconBtn.MouseButton1Click:Connect(function()
+        local newState = not isStunActive
+        toggleStunHelper(newState)
+        if setStunToggleUI then setStunToggleUI(newState) end
+    end)
+
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if not gameProcessed and input.KeyCode == stunHelperKeybind and stunHelperEnabled then
+            local newState = not isStunActive
+            toggleStunHelper(newState)
+            if setStunToggleUI then setStunToggleUI(newState) end
+        end
+    end)
+
+    local _, setMainStunToggle = createToggleRow(CombatPage, "Stun Helper (Toggle):", function(state)
+        stunHelperEnabled = state
+        StunIconBtn.Visible = state
+        if not state then
+            toggleStunHelper(false)
+        end
+    end)
+    setStunToggleUI = setMainStunToggle
+
+    local KeybindRow = Instance.new("Frame")
+    KeybindRow.Size = UDim2.new(0.92, 0, 0, 28)
+    KeybindRow.BackgroundColor3 = THEME.PANEL
+    KeybindRow.Parent = CombatPage
+
+    local KeyCorner = Instance.new("UICorner")
+    KeyCorner.CornerRadius = UDim.new(0, 4)
+    KeyCorner.Parent = KeybindRow
+
+    local KeyLabel = Instance.new("TextLabel")
+    KeyLabel.Size = UDim2.new(0.6, 0, 1, 0)
+    KeyLabel.Position = UDim2.new(0, 8, 0, 0)
+    KeyLabel.BackgroundTransparency = 1
+    KeyLabel.Text = "Stun Keybind:"
+    KeyLabel.TextColor3 = THEME.TEXT
+    KeyLabel.Font = VINTAGE_FONT
+    KeyLabel.TextSize = 9
+    KeyLabel.TextXAlignment = Enum.TextXAlignment.Left
+    KeyLabel.Parent = KeybindRow
+
+    local KeyBtn = Instance.new("TextButton")
+    KeyBtn.Size = UDim2.new(0.35, -5, 0.7, 0)
+    KeyBtn.Position = UDim2.new(0.65, 0, 0.15, 0)
+    KeyBtn.BackgroundColor3 = THEME.BTN
+    KeyBtn.Text = "E"
+    KeyBtn.TextColor3 = THEME.ACCENT
+    KeyBtn.Font = VINTAGE_FONT
+    KeyBtn.TextSize = 9
+    KeyBtn.Parent = KeybindRow
+
+    local KeyBtnCorner = Instance.new("UICorner")
+    KeyBtnCorner.CornerRadius = UDim.new(0, 3)
+    KeyBtnCorner.Parent = KeyBtn
+
+    local listeningForKey = false
+    KeyBtn.MouseButton1Click:Connect(function()
+        listeningForKey = true
+        KeyBtn.Text = "..."
+    end)
+
+    UserInputService.InputBegan:Connect(function(input)
+        if listeningForKey and input.UserInputType == Enum.UserInputType.Keyboard then
+            stunHelperKeybind = input.KeyCode
+            KeyBtn.Text = input.KeyCode.Name
+            listeningForKey = false
+        end
+    end)
+
+    createToggleRow(CombatPage, "Heal Myself Loop:", function(state)
+        healMyselfEnabled = state
+        if healMyselfEnabled then
+            task.spawn(function()
+                while healMyselfEnabled do
+                    local char = LocalPlayer.Character
+                    if char then
+                        local myHRP = char:FindFirstChild("HumanoidRootPart")
+                        local myCharPath = getCharacterPath(char)
+
+                        if myHRP and myCharPath then
+                            pcall(function()
+                                local args = {
+                                    myCharPath:FindFirstChild("HumanoidRootPart"),
+                                    myCharPath,
+                                    100,
+                                    0
+                                }
+                                ReplicatedStorage:WaitForChild("Characters"):WaitForChild("Combat"):WaitForChild("Remotes"):WaitForChild("KnockbackPush"):FireServer(unpack(args))
+                            end)
+                        end
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════
+-- MODULE 2: REMOTE SPY
+-- ═══════════════════════════════════════════════════════════
+local function loadRemoteSpy()
+    local Lighting = getService("Lighting")
+
+    local SelectedRemote = nil
+    local RemoteLogs = {}
+    local LoggedRemotes = {}
+    local BlacklistInstance = {}
+    local BlacklistName = {}
+
+    local PRESET_THEMES = {
+        ["Vintage Gold"]  = { ACCENT = Color3.fromRGB(180, 140, 75), BG = Color3.fromRGB(32, 28, 26), PANEL = Color3.fromRGB(25, 22, 20), BTN = Color3.fromRGB(50, 42, 38) },
+        ["Crimson Red"]   = { ACCENT = Color3.fromRGB(210, 65, 65),  BG = Color3.fromRGB(28, 20, 20), PANEL = Color3.fromRGB(22, 15, 15), BTN = Color3.fromRGB(55, 30, 30) },
+        ["Cyber Neon"]    = { ACCENT = Color3.fromRGB(0, 215, 255),  BG = Color3.fromRGB(15, 20, 28), PANEL = Color3.fromRGB(10, 15, 22), BTN = Color3.fromRGB(25, 38, 52) },
+        ["Emerald Green"] = { ACCENT = Color3.fromRGB(60, 200, 120), BG = Color3.fromRGB(20, 28, 22), PANEL = Color3.fromRGB(15, 22, 18), BTN = Color3.fromRGB(30, 52, 38) },
+        ["Purple Dusk"]   = { ACCENT = Color3.fromRGB(175, 95, 235), BG = Color3.fromRGB(26, 20, 32), PANEL = Color3.fromRGB(18, 14, 24), BTN = Color3.fromRGB(48, 30, 58) }
+    }
+
+    local CurrentTheme = PRESET_THEMES["Vintage Gold"]
+
+    local function getWaitForChildPath(instance)
+        if not instance then return "nil" end
+        local path = {}
+        local current = instance
+
+        while current and current ~= game do
+            table.insert(path, 1, current.Name)
+            current = current.Parent
+        end
+
+        if #path == 0 then return "nil" end
+
+        local serviceName = path[1]
+        local formattedPath = 'game:GetService("' .. serviceName .. '")'
+
+        for i = 2, #path do
+            formattedPath = formattedPath .. ':WaitForChild("' .. path[i] .. '")'
+        end
+
+        return formattedPath
+    end
+
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "ArkHub_RemoteSpy"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+    local BlurEffect = Instance.new("BlurEffect")
+    BlurEffect.Size = 0
+    BlurEffect.Enabled = false
+    BlurEffect.Parent = Lighting
+
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Size = UDim2.new(0, 520, 0, 320)
+    MainFrame.Position = UDim2.new(0.5, -260, 0.4, -160)
+    MainFrame.BackgroundColor3 = CurrentTheme.BG
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Active = true
+    MainFrame.ClipsDescendants = true
+    MainFrame.Visible = true
+    MainFrame.Parent = ScreenGui
+
+    local MainCorner = Instance.new("UICorner")
+    MainCorner.CornerRadius = UDim.new(0, 6)
+    MainCorner.Parent = MainFrame
+
+    local MainStroke = Instance.new("UIStroke")
+    MainStroke.Thickness = 2
+    MainStroke.Color = CurrentTheme.ACCENT
+    MainStroke.Parent = MainFrame
+
+    local TitleBar = Instance.new("Frame")
+    TitleBar.Size = UDim2.new(1, 0, 0, 26)
+    TitleBar.BackgroundColor3 = Color3.fromRGB(18, 15, 14)
+    TitleBar.BorderSizePixel = 0
+    TitleBar.Parent = MainFrame
+
+    local TitleLabel = Instance.new("TextLabel")
+    TitleLabel.Size = UDim2.new(0.5, 0, 1, 0)
+    TitleLabel.Position = UDim2.new(0, 10, 0, 0)
+    TitleLabel.BackgroundTransparency = 1
+    TitleLabel.Text = "📜 Ark Hub - Remote Spy"
+    TitleLabel.TextColor3 = CurrentTheme.ACCENT
+    TitleLabel.TextSize = 12
+    TitleLabel.Font = VINTAGE_FONT
+    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLabel.Parent = TitleBar
+
+    local ViewSpyBtn = Instance.new("TextButton")
+    ViewSpyBtn.Size = UDim2.new(0, 60, 0, 20)
+    ViewSpyBtn.Position = UDim2.new(1, -120, 0, 3)
+    ViewSpyBtn.BackgroundColor3 = CurrentTheme.ACCENT
+    ViewSpyBtn.Text = "Spy"
+    ViewSpyBtn.TextColor3 = Color3.fromRGB(20, 20, 20)
+    ViewSpyBtn.Font = VINTAGE_FONT
+    ViewSpyBtn.TextSize = 10
+    ViewSpyBtn.Parent = TitleBar
+
+    local ViewSettingsBtn = Instance.new("TextButton")
+    ViewSettingsBtn.Size = UDim2.new(0, 60, 0, 20)
+    ViewSettingsBtn.Position = UDim2.new(1, -55, 0, 3)
+    ViewSettingsBtn.BackgroundColor3 = CurrentTheme.BTN
+    ViewSettingsBtn.Text = "Settings"
+    ViewSettingsBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
+    ViewSettingsBtn.Font = VINTAGE_FONT
+    ViewSettingsBtn.TextSize = 10
+    ViewSettingsBtn.Parent = TitleBar
+
+    local MinimizeBtn = Instance.new("TextButton")
+    MinimizeBtn.Size = UDim2.new(0, 20, 0, 20)
+    MinimizeBtn.Position = UDim2.new(1, -145, 0, 3)
+    MinimizeBtn.BackgroundTransparency = 1
+    MinimizeBtn.Text = "-"
+    MinimizeBtn.TextColor3 = CurrentTheme.ACCENT
+    MinimizeBtn.Font = Enum.Font.SourceSansBold
+    MinimizeBtn.TextSize = 18
+    MinimizeBtn.Parent = TitleBar
+
+    local dragging, dragStart, startPos
+    TitleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = MainFrame.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            TweenService:Create(MainFrame, TWEEN_FAST, {Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)}):Play()
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    local SpyViewFrame = Instance.new("Frame")
+    SpyViewFrame.Size = UDim2.new(1, 0, 1, -26)
+    SpyViewFrame.Position = UDim2.new(0, 0, 0, 26)
+    SpyViewFrame.BackgroundTransparency = 1
+    SpyViewFrame.ClipsDescendants = true
+    SpyViewFrame.Parent = MainFrame
+
+    local SettingsFrame = Instance.new("Frame")
+    SettingsFrame.Size = UDim2.new(1, 0, 1, -26)
+    SettingsFrame.Position = UDim2.new(0, 0, 0, 26)
+    SettingsFrame.BackgroundColor3 = CurrentTheme.BG
+    SettingsFrame.ClipsDescendants = true
+    SettingsFrame.Visible = false
+    SettingsFrame.Parent = MainFrame
+
+    local activeTab = "Spy"
+    local isMinimized = false
+
+    MinimizeBtn.MouseButton1Click:Connect(function()
+        isMinimized = not isMinimized
+        if isMinimized then
+            SpyViewFrame.Visible = false
+            SettingsFrame.Visible = false
+            TweenService:Create(MainFrame, TWEEN_SMOOTH, {Size = UDim2.new(0, 520, 0, 26)}):Play()
+        else
+            local tween = TweenService:Create(MainFrame, TWEEN_SMOOTH, {Size = UDim2.new(0, 520, 0, 320)})
+            tween:Play()
+            tween.Completed:Connect(function()
+                if not isMinimized then
+                    if activeTab == "Spy" then
+                        SpyViewFrame.Visible = true
+                    else
+                        SettingsFrame.Visible = true
+                    end
+                end
+            end)
+        end
+    end)
+
+    local LogsScroll = Instance.new("ScrollingFrame")
+    LogsScroll.Size = UDim2.new(0, 160, 1, 0)
+    LogsScroll.BackgroundColor3 = CurrentTheme.PANEL
+    LogsScroll.BorderSizePixel = 0
+    LogsScroll.ScrollBarThickness = 3
+    LogsScroll.Parent = SpyViewFrame
+
+    local LogsLayout = Instance.new("UIListLayout")
+    LogsLayout.Parent = LogsScroll
+    LogsLayout.Padding = UDim.new(0, 2)
+
+    local CodeFrame = Instance.new("Frame")
+    CodeFrame.Size = UDim2.new(1, -160, 0.55, 0)
+    CodeFrame.Position = UDim2.new(0, 160, 0, 0)
+    CodeFrame.BackgroundColor3 = Color3.fromRGB(20, 18, 17)
+    CodeFrame.BorderSizePixel = 0
+    CodeFrame.Parent = SpyViewFrame
+
+    local CodeScroll = Instance.new("ScrollingFrame")
+    CodeScroll.Size = UDim2.new(1, -10, 1, -10)
+    CodeScroll.Position = UDim2.new(0, 5, 0, 5)
+    CodeScroll.BackgroundTransparency = 1
+    CodeScroll.ScrollBarThickness = 4
+    CodeScroll.ScrollBarImageColor3 = CurrentTheme.ACCENT
+    CodeScroll.AutomaticCanvasSize = Enum.AutomaticSize.XY
+    CodeScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    CodeScroll.Parent = CodeFrame
+
+    local CodeBox = Instance.new("TextBox")
+    CodeBox.Size = UDim2.new(1, 0, 1, 0)
+    CodeBox.AutomaticSize = Enum.AutomaticSize.XY
+    CodeBox.BackgroundTransparency = 1
+    CodeBox.Text = "-- Select a remote to view code --"
+    CodeBox.TextColor3 = Color3.fromRGB(200, 190, 170)
+    CodeBox.TextSize = 11
+    CodeBox.Font = Enum.Font.Code
+    CodeBox.TextXAlignment = Enum.TextXAlignment.Left
+    CodeBox.TextYAlignment = Enum.TextYAlignment.Top
+    CodeBox.ClearTextOnFocus = false
+    CodeBox.MultiLine = true
+    CodeBox.TextWrapped = false
+    CodeBox.TextEditable = false
+    CodeBox.Parent = CodeScroll
+
+    local ActionGridFrame = Instance.new("Frame")
+    ActionGridFrame.Size = UDim2.new(1, -160, 0.45, 0)
+    ActionGridFrame.Position = UDim2.new(0, 160, 0.55, 0)
+    ActionGridFrame.BackgroundColor3 = CurrentTheme.PANEL
+    ActionGridFrame.BorderSizePixel = 0
+    ActionGridFrame.Parent = SpyViewFrame
+
+    local GridLayout = Instance.new("UIGridLayout")
+    GridLayout.Parent = ActionGridFrame
+    GridLayout.CellSize = UDim2.new(0.31, 0, 0, 24)
+    GridLayout.CellPadding = UDim2.new(0.02, 0, 0.05, 0)
+    GridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    GridLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+
+    local CreatedActionBtns = {}
+
+    local function createActionButton(text, callback)
+        local btn = Instance.new("TextButton")
+        btn.BackgroundColor3 = CurrentTheme.BTN
+        btn.Text = text
+        btn.TextColor3 = Color3.fromRGB(230, 220, 200)
+        btn.Font = VINTAGE_FONT
+        btn.TextSize = 9
+        btn.Parent = ActionGridFrame
+
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 3)
+        corner.Parent = btn
+
+        table.insert(CreatedActionBtns, btn)
+        btn.MouseButton1Click:Connect(callback)
+        return btn
+    end
+
+    createActionButton("Copy Code", function()
+        if SelectedRemote then setclipboard(CodeBox.Text) end
+    end)
+    createActionButton("Copy Remote", function()
+        if SelectedRemote then setclipboard(getWaitForChildPath(SelectedRemote.Remote)) end
+    end)
+    createActionButton("Run Code", function()
+        if SelectedRemote then pcall(function() loadstring(CodeBox.Text)() end) end
+    end)
+    createActionButton("Get Script", function()
+        if SelectedRemote then CodeBox.Text = "-- Calling Script:\n" .. tostring(SelectedRemote.Script or "Unknown") end
+    end)
+    createActionButton("Function Info", function()
+        if SelectedRemote then CodeBox.Text = "-- Remote Class: " .. SelectedRemote.Remote.ClassName .. "\n-- Path: " .. getWaitForChildPath(SelectedRemote.Remote) end
+    end)
+    createActionButton("Clr Logs", function()
+        for _, v in ipairs(LogsScroll:GetChildren()) do
+            if v:IsA("TextButton") then v:Destroy() end
+        end
+        RemoteLogs = {}
+        LoggedRemotes = {}
+        SelectedRemote = nil
+        CodeBox.Text = "-- Logs Cleared --"
+    end)
+    createActionButton("Exclude (i)", function()
+        if SelectedRemote then BlacklistInstance[SelectedRemote.Remote] = true end
+    end)
+    createActionButton("Exclude (n)", function()
+        if SelectedRemote then BlacklistName[SelectedRemote.Remote.Name] = true end
+    end)
+    createActionButton("Clr Blacklist", function()
+        BlacklistInstance = {}
+        BlacklistName = {}
+        CodeBox.Text = "-- Blacklist Cleared --"
+    end)
+
+    local SettingsLayout = Instance.new("UIListLayout")
+    SettingsLayout.Parent = SettingsFrame
+    SettingsLayout.Padding = UDim.new(0, 6)
+    SettingsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+    local ModeLabel = Instance.new("TextLabel")
+    ModeLabel.Size = UDim2.new(0.9, 0, 0, 20)
+    ModeLabel.BackgroundTransparency = 1
+    ModeLabel.Text = "--- DISPLAY MODE ---"
+    ModeLabel.TextColor3 = CurrentTheme.ACCENT
+    ModeLabel.Font = VINTAGE_FONT
+    ModeLabel.TextSize = 10
+    ModeLabel.Parent = SettingsFrame
+
+    local DropdownBtn = Instance.new("TextButton")
+    DropdownBtn.Size = UDim2.new(0.8, 0, 0, 24)
+    DropdownBtn.BackgroundColor3 = CurrentTheme.BTN
+    DropdownBtn.Text = "Mode: Standard ▾"
+    DropdownBtn.TextColor3 = Color3.fromRGB(230, 220, 200)
+    DropdownBtn.Font = VINTAGE_FONT
+    DropdownBtn.TextSize = 10
+    DropdownBtn.Parent = SettingsFrame
+
+    local DropdownContainer = Instance.new("Frame")
+    DropdownContainer.Size = UDim2.new(0.8, 0, 0, 0)
+    DropdownContainer.BackgroundColor3 = CurrentTheme.PANEL
+    DropdownContainer.ClipsDescendants = true
+    DropdownContainer.Parent = SettingsFrame
+
+    local DropList = Instance.new("UIListLayout")
+    DropList.Parent = DropdownContainer
+
+    local isDropOpen = false
+    DropdownBtn.MouseButton1Click:Connect(function()
+        isDropOpen = not isDropOpen
+        TweenService:Create(DropdownContainer, TWEEN_FAST, {Size = isDropOpen and UDim2.new(0.8, 0, 0, 65) or UDim2.new(0.8, 0, 0, 0)}):Play()
+    end)
+
+    local function applyMode(mode)
+        if mode == "Standard" then
+            BlurEffect.Enabled = false
+            MainFrame.BackgroundTransparency = 0
+        elseif mode == "Blur Background" then
+            BlurEffect.Size = 16
+            BlurEffect.Enabled = true
+            MainFrame.BackgroundTransparency = 0.15
+        elseif mode == "Dark Mode" then
+            BlurEffect.Enabled = false
+            MainFrame.BackgroundTransparency = 0
+            MainFrame.BackgroundColor3 = Color3.fromRGB(12, 10, 10)
+        end
+    end
+
+    local modes = {"1. Standard", "2. Blur Background", "3. Dark Mode"}
+    for _, modeName in ipairs(modes) do
+        local mBtn = Instance.new("TextButton")
+        mBtn.Size = UDim2.new(1, 0, 0, 20)
+        mBtn.BackgroundTransparency = 1
+        mBtn.Text = modeName
+        mBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+        mBtn.Font = VINTAGE_FONT
+        mBtn.TextSize = 9
+        mBtn.Parent = DropdownContainer
+
+        mBtn.MouseButton1Click:Connect(function()
+            DropdownBtn.Text = "Mode: " .. modeName .. " ▾"
+            isDropOpen = false
+            TweenService:Create(DropdownContainer, TWEEN_FAST, {Size = UDim2.new(0.8, 0, 0, 0)}):Play()
+            if string.find(modeName, "Standard") then applyMode("Standard")
+            elseif string.find(modeName, "Blur") then applyMode("Blur Background")
+            elseif string.find(modeName, "Dark") then applyMode("Dark Mode") end
+        end)
+    end
+
+    local ThemeLabel = Instance.new("TextLabel")
+    ThemeLabel.Size = UDim2.new(0.9, 0, 0, 20)
+    ThemeLabel.BackgroundTransparency = 1
+    ThemeLabel.Text = "--- UI THEME COLOR ---"
+    ThemeLabel.TextColor3 = CurrentTheme.ACCENT
+    ThemeLabel.Font = VINTAGE_FONT
+    ThemeLabel.TextSize = 10
+    ThemeLabel.Parent = SettingsFrame
+
+    local ThemeGrid = Instance.new("Frame")
+    ThemeGrid.Size = UDim2.new(0.85, 0, 0, 80)
+    ThemeGrid.BackgroundTransparency = 1
+    ThemeGrid.Parent = SettingsFrame
+
+    local ThemeLayout = Instance.new("UIGridLayout")
+    ThemeLayout.Parent = ThemeGrid
+    ThemeLayout.CellSize = UDim2.new(0.48, 0, 0, 22)
+    ThemeLayout.CellPadding = UDim2.new(0.04, 0, 0.1, 0)
+
+    local function applyThemeColor(themeName)
+        local theme = PRESET_THEMES[themeName]
+        if not theme then return end
+        CurrentTheme = theme
+
+        MainFrame.BackgroundColor3 = theme.BG
+        MainStroke.Color = theme.ACCENT
+        TitleLabel.TextColor3 = theme.ACCENT
+        MinimizeBtn.TextColor3 = theme.ACCENT
+
+        if activeTab == "Spy" then
+            ViewSpyBtn.BackgroundColor3 = theme.ACCENT
+            ViewSpyBtn.TextColor3 = Color3.fromRGB(20, 20, 20)
+            ViewSettingsBtn.BackgroundColor3 = theme.BTN
+            ViewSettingsBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
+        else
+            ViewSettingsBtn.BackgroundColor3 = theme.ACCENT
+            ViewSettingsBtn.TextColor3 = Color3.fromRGB(20, 20, 20)
+            ViewSpyBtn.BackgroundColor3 = theme.BTN
+            ViewSpyBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
+        end
+
+        LogsScroll.BackgroundColor3 = theme.PANEL
+        ActionGridFrame.BackgroundColor3 = theme.PANEL
+        SettingsFrame.BackgroundColor3 = theme.BG
+        DropdownBtn.BackgroundColor3 = theme.BTN
+        DropdownContainer.BackgroundColor3 = theme.PANEL
+        CodeScroll.ScrollBarImageColor3 = theme.ACCENT
+
+        ModeLabel.TextColor3 = theme.ACCENT
+        ThemeLabel.TextColor3 = theme.ACCENT
+
+        for _, btn in ipairs(CreatedActionBtns) do
+            btn.BackgroundColor3 = theme.BTN
+        end
+        for _, btn in ipairs(LogsScroll:GetChildren()) do
+            if btn:IsA("TextButton") then btn.BackgroundColor3 = theme.BTN end
+        end
+    end
+
+    for tName, tData in pairs(PRESET_THEMES) do
+        local tBtn = Instance.new("TextButton")
+        tBtn.BackgroundColor3 = tData.BTN
+        tBtn.Text = tName
+        tBtn.TextColor3 = tData.ACCENT
+        tBtn.Font = VINTAGE_FONT
+        tBtn.TextSize = 9
+        tBtn.Parent = ThemeGrid
+
+        local tCorner = Instance.new("UICorner")
+        tCorner.CornerRadius = UDim.new(0, 4)
+        tCorner.Parent = tBtn
+
+        local tStroke = Instance.new("UIStroke")
+        tStroke.Thickness = 1
+        tStroke.Color = tData.ACCENT
+        tStroke.Parent = tBtn
+
+        tBtn.MouseButton1Click:Connect(function()
+            applyThemeColor(tName)
+        end)
+    end
+
+    ViewSpyBtn.MouseButton1Click:Connect(function()
+        activeTab = "Spy"
+        if not isMinimized then
+            SpyViewFrame.Visible = true
+            SettingsFrame.Visible = false
+        end
+        ViewSpyBtn.BackgroundColor3 = CurrentTheme.ACCENT
+        ViewSpyBtn.TextColor3 = Color3.fromRGB(20, 20, 20)
+        ViewSettingsBtn.BackgroundColor3 = CurrentTheme.BTN
+        ViewSettingsBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
+    end)
+
+    ViewSettingsBtn.MouseButton1Click:Connect(function()
+        activeTab = "Settings"
+        if not isMinimized then
+            SpyViewFrame.Visible = false
+            SettingsFrame.Visible = true
+        end
+        ViewSettingsBtn.BackgroundColor3 = CurrentTheme.ACCENT
+        ViewSettingsBtn.TextColor3 = Color3.fromRGB(20, 20, 20)
+        ViewSpyBtn.BackgroundColor3 = CurrentTheme.BTN
+        ViewSpyBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
+    end)
+
+    local function formatArgs(args)
+        local str = ""
+        for i, arg in ipairs(args) do
+            local typeName = typeof(arg)
+            if typeName == "string" then
+                str = str .. '"' .. tostring(arg) .. '"'
+            elseif typeName == "Instance" then
+                str = str .. getWaitForChildPath(arg)
+            else
+                str = str .. tostring(arg)
+            end
+            if i < #args then str = str .. ", " end
+        end
+        return str
+    end
+
+    local function logRemote(remote, args, isEvent)
+        if BlacklistInstance[remote] or BlacklistName[remote.Name] then return end
+        if LoggedRemotes[remote] then return end
+        LoggedRemotes[remote] = true
+
+        local logData = {
+            Remote = remote,
+            Args = args,
+            Script = getcallingscript and getcallingscript() or nil,
+            IsEvent = isEvent
+        }
+
+        table.insert(RemoteLogs, logData)
+
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, 0, 0, 22)
+        btn.BackgroundColor3 = CurrentTheme.BTN
+        btn.Text = " " .. remote.Name
+        btn.TextColor3 = Color3.fromRGB(220, 210, 190)
+        btn.Font = VINTAGE_FONT
+        btn.TextSize = 10
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.Parent = LogsScroll
+
+        btn.MouseButton1Click:Connect(function()
+            SelectedRemote = logData
+            local remotePath = getWaitForChildPath(logData.Remote)
+            local actionMethod = isEvent and ":FireServer(" or ":InvokeServer("
+            local code = "-- RemoteSpy Output\n"
+
+            if #args == 0 then
+                code = code .. remotePath .. actionMethod .. ")"
+            else
+                code = code .. "local args = {" .. formatArgs(args) .. "}\n\n"
+                code = code .. remotePath .. actionMethod .. "unpack(args))"
+            end
+
+            CodeBox.Text = code
+        end)
+    end
+
+    local rawMetatable = getrawmetatable(game)
+    local oldNamecall = rawMetatable.__namecall
+    setreadonly(rawMetatable, false)
+
+    rawMetatable.__namecall = newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
+
+        if method == "FireServer" or method == "fireServer" then
+            logRemote(self, args, true)
+        elseif method == "InvokeServer" or method == "invokeServer" then
+            logRemote(self, args, false)
+        end
+
+        return oldNamecall(self, ...)
+    end)
+
+    setreadonly(rawMetatable, true)
+end
+
+-- ═══════════════════════════════════════════════════════════
+-- MODULE 3: BLUE LOCK: SKIBIDI (BUFFED & POSITION LOCK ADDED)
+-- ═══════════════════════════════════════════════════════════
+local function loadBlueLockSkibidi()
+    local THEME = HUB_THEME
+
+    local autoGkEnabled = false
+    local autoGkRange = 30
+    local domePart = nil
+    local setMainAutoGkToggleUI = nil
+    local isIconLocked = false
+    local lockIconKeybind = Enum.KeyCode.L
+    local setLockToggleUI = nil
+
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "ArkHub_BlueLockSkibidi"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Size = UDim2.new(0, 500, 0, 320)
+    MainFrame.Position = UDim2.new(0.5, -250, 0.4, -160)
+    MainFrame.BackgroundColor3 = THEME.BG
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Active = true
+    MainFrame.ClipsDescendants = true
+    MainFrame.Parent = ScreenGui
+
+    local MainCorner = Instance.new("UICorner")
+    MainCorner.CornerRadius = UDim.new(0, 6)
+    MainCorner.Parent = MainFrame
+
+    local MainStroke = Instance.new("UIStroke")
+    MainStroke.Thickness = 2
+    MainStroke.Color = THEME.ACCENT
+    MainStroke.Parent = MainFrame
+
+    local TitleBar = Instance.new("Frame")
+    TitleBar.Size = UDim2.new(1, 0, 0, 28)
+    TitleBar.BackgroundColor3 = Color3.fromRGB(18, 15, 14)
+    TitleBar.BorderSizePixel = 0
+    TitleBar.Parent = MainFrame
+
+    local TitleLabel = Instance.new("TextLabel")
+    TitleLabel.Size = UDim2.new(0.6, 0, 1, 0)
+    TitleLabel.Position = UDim2.new(0, 10, 0, 0)
+    TitleLabel.BackgroundTransparency = 1
+    TitleLabel.Text = "⚽ Ark Hub - Blue Lock:Skibidi"
+    TitleLabel.TextColor3 = THEME.ACCENT
+    TitleLabel.TextSize = 11
+    TitleLabel.Font = VINTAGE_FONT
+    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLabel.Parent = TitleBar
+
+    local MinimizeBtn = Instance.new("TextButton")
+    MinimizeBtn.Size = UDim2.new(0, 20, 0, 20)
+    MinimizeBtn.Position = UDim2.new(1, -25, 0, 4)
+    MinimizeBtn.BackgroundTransparency = 1
+    MinimizeBtn.Text = "-"
+    MinimizeBtn.TextColor3 = THEME.ACCENT
+    MinimizeBtn.Font = Enum.Font.SourceSansBold
+    MinimizeBtn.TextSize = 18
+    MinimizeBtn.Parent = TitleBar
+
+    local dragging, dragStart, startPos
+    TitleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = MainFrame.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            TweenService:Create(MainFrame, TWEEN_FAST, {Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)}):Play()
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    local isMinimized = false
+    MinimizeBtn.MouseButton1Click:Connect(function()
+        isMinimized = not isMinimized
+        TweenService:Create(MainFrame, TWEEN_SMOOTH, {Size = isMinimized and UDim2.new(0, 500, 0, 28) or UDim2.new(0, 500, 0, 320)}):Play()
+    end)
+
+    local Sidebar = Instance.new("Frame")
+    Sidebar.Size = UDim2.new(0, 130, 1, -28)
+    Sidebar.Position = UDim2.new(0, 0, 0, 28)
+    Sidebar.BackgroundColor3 = THEME.PANEL
+    Sidebar.BorderSizePixel = 0
+    Sidebar.Parent = MainFrame
+
+    local SidebarLayout = Instance.new("UIListLayout")
+    SidebarLayout.Parent = Sidebar
+    SidebarLayout.Padding = UDim.new(0, 4)
+    SidebarLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+    local SidebarPadding = Instance.new("UIPadding")
+    SidebarPadding.PaddingTop = UDim.new(0, 8)
+    SidebarPadding.Parent = Sidebar
+
+    local ContentContainer = Instance.new("Frame")
+    ContentContainer.Size = UDim2.new(1, -130, 1, -28)
+    ContentContainer.Position = UDim2.new(0, 130, 0, 28)
+    ContentContainer.BackgroundTransparency = 1
+    ContentContainer.ClipsDescendants = true
+    ContentContainer.Parent = MainFrame
+
+    local function createTabButton(name)
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0.9, 0, 0, 28)
+        btn.BackgroundColor3 = THEME.BTN
+        btn.Text = name
+        btn.TextColor3 = THEME.TEXT
+        btn.Font = VINTAGE_FONT
+        btn.TextSize = 10
+        btn.Parent = Sidebar
+
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 4)
+        corner.Parent = btn
+
+        return btn
+    end
+
+    local function createPage()
+        local page = Instance.new("ScrollingFrame")
+        page.Size = UDim2.new(1, 0, 1, 0)
+        page.BackgroundTransparency = 1
+        page.ScrollBarThickness = 3
+        page.ScrollBarImageColor3 = THEME.ACCENT
+        page.Visible = false
+        page.Parent = ContentContainer
+
+        local layout = Instance.new("UIListLayout")
+        layout.Parent = page
+        layout.Padding = UDim.new(0, 8)
+        layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+        local padding = Instance.new("UIPadding")
+        padding.PaddingTop = UDim.new(0, 8)
+        padding.Parent = page
+
+        return page
+    end
+
+    local function createInputRow(parent, labelText, defaultVal, placeholder, onChanged)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(0.92, 0, 0, 28)
+        row.BackgroundColor3 = THEME.PANEL
+        row.Parent = parent
+
+        local rCorner = Instance.new("UICorner")
+        rCorner.CornerRadius = UDim.new(0, 4)
+        rCorner.Parent = row
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0.6, 0, 1, 0)
+        label.Position = UDim2.new(0, 8, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = labelText
+        label.TextColor3 = THEME.TEXT
+        label.Font = VINTAGE_FONT
+        label.TextSize = 9
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = row
+
+        local box = Instance.new("TextBox")
+        box.Size = UDim2.new(0.35, -5, 0.7, 0)
+        box.Position = UDim2.new(0.65, 0, 0.15, 0)
+        box.BackgroundColor3 = THEME.BTN
+        box.Text = tostring(defaultVal)
+        box.PlaceholderText = placeholder
+        box.TextColor3 = THEME.TEXT
+        box.Font = Enum.Font.Code
+        box.TextSize = 9
+        box.Parent = row
+
+        local bCorner = Instance.new("UICorner")
+        bCorner.CornerRadius = UDim.new(0, 3)
+        bCorner.Parent = box
+
+        box.FocusLost:Connect(function()
+            onChanged(box.Text)
+        end)
+        return row
+    end
+
+    local function createToggleRow(parent, labelText, onChanged)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(0.92, 0, 0, 28)
+        row.BackgroundColor3 = THEME.PANEL
+        row.Parent = parent
+
+        local rCorner = Instance.new("UICorner")
+        rCorner.CornerRadius = UDim.new(0, 4)
+        rCorner.Parent = row
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0.6, 0, 1, 0)
+        label.Position = UDim2.new(0, 8, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = labelText
+        label.TextColor3 = THEME.TEXT
+        label.Font = VINTAGE_FONT
+        label.TextSize = 9
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = row
+
+        local toggleBtn = Instance.new("TextButton")
+        toggleBtn.Size = UDim2.new(0.35, -5, 0.7, 0)
+        toggleBtn.Position = UDim2.new(0.65, 0, 0.15, 0)
+        toggleBtn.BackgroundColor3 = THEME.TOGGLE_OFF
+        toggleBtn.Text = "OFF"
+        toggleBtn.TextColor3 = THEME.TEXT
+        toggleBtn.Font = VINTAGE_FONT
+        toggleBtn.TextSize = 9
+        toggleBtn.Parent = row
+
+        local tCorner = Instance.new("UICorner")
+        tCorner.CornerRadius = UDim.new(0, 3)
+        tCorner.Parent = toggleBtn
+
+        local state = false
+        local function setToggleState(newState)
+            state = newState
+            toggleBtn.Text = state and "ON" or "OFF"
+            toggleBtn.BackgroundColor3 = state and THEME.TOGGLE_ON or THEME.TOGGLE_OFF
+            toggleBtn.TextColor3 = state and Color3.fromRGB(20, 20, 20) or THEME.TEXT
+            onChanged(state)
+        end
+
+        toggleBtn.MouseButton1Click:Connect(function()
+            setToggleState(not state)
+        end)
+
+        return row, setToggleState
+    end
+
+    local TabMainBtn = createTabButton("Main")
+    local MainPage = createPage()
+
+    MainPage.Visible = true
+    TabMainBtn.BackgroundColor3 = THEME.ACCENT
+    TabMainBtn.TextColor3 = Color3.fromRGB(20, 20, 20)
+
+    -- Mobile Keybind Icon
+    local AutoGkIconBtn = Instance.new("TextButton")
+    AutoGkIconBtn.Name = "AutoGkIconBtn"
+    AutoGkIconBtn.Size = UDim2.new(0, 45, 0, 45)
+    AutoGkIconBtn.Position = UDim2.new(0.1, 0, 0.35, 0)
+    AutoGkIconBtn.BackgroundColor3 = THEME.PANEL
+    AutoGkIconBtn.Text = "⚽\nOFF"
+    AutoGkIconBtn.TextColor3 = THEME.TEXT
+    AutoGkIconBtn.Font = VINTAGE_FONT
+    AutoGkIconBtn.TextSize = 9
+    AutoGkIconBtn.Visible = false
+    AutoGkIconBtn.Active = true
+    AutoGkIconBtn.Parent = ScreenGui
+
+    local AutoGkIconCorner = Instance.new("UICorner")
+    AutoGkIconCorner.CornerRadius = UDim.new(0, 8)
+    AutoGkIconCorner.Parent = AutoGkIconBtn
+
+    local AutoGkIconStroke = Instance.new("UIStroke")
+    AutoGkIconStroke.Thickness = 2
+    AutoGkIconStroke.Color = THEME.ACCENT
+    AutoGkIconStroke.Parent = AutoGkIconBtn
+
+    -- Position Locking Feature
+    local iconDragging, iconDragStart, iconStartPos
+    AutoGkIconBtn.InputBegan:Connect(function(input)
+        if isIconLocked then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            iconDragging = true
+            iconDragStart = input.Position
+            iconStartPos = AutoGkIconBtn.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if isIconLocked then return end
+        if iconDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - iconDragStart
+            AutoGkIconBtn.Position = UDim2.new(iconStartPos.X.Scale, iconStartPos.X.Offset + delta.X, iconStartPos.Y.Scale, iconStartPos.Y.Offset + delta.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            iconDragging = false
+        end
+    end)
+
+    local function toggleLockPosition(lockedState)
+        isIconLocked = lockedState
+        if isIconLocked then
+            AutoGkIconStroke.Color = Color3.fromRGB(220, 60, 60) -- Red outline when locked
+        else
+            AutoGkIconStroke.Color = THEME.ACCENT
+        end
+    end
+
+    -- ForceField Dome Visual Creation/Destruction
+    local function updateDomeVisual()
+        if autoGkEnabled then
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                if not domePart or not domePart.Parent then
+                    domePart = Instance.new("Part")
+                    domePart.Name = "AutoGK_DomeVisual"
+                    domePart.Shape = Enum.PartType.Ball
+                    domePart.Material = Enum.Material.ForceField
+                    domePart.Color = THEME.ACCENT
+                    domePart.Transparency = 0.5
+                    domePart.CanCollide = false
+                    domePart.Anchored = true
+                    domePart.Massless = true
+                    domePart.Parent = Workspace
+                end
+                domePart.Size = Vector3.new(autoGkRange * 2, autoGkRange * 2, autoGkRange * 2)
+                domePart.CFrame = hrp.CFrame
+            end
+        else
+            if domePart then
+                domePart:Destroy()
+                domePart = nil
+            end
+        end
+    end
+
+    -- Fast-Firing Buffed Auto GK Execution Logic
+    local function setAutoGkState(state)
+        autoGkEnabled = state
+        AutoGkIconBtn.Text = autoGkEnabled and "⚽\nON" or "⚽\nOFF"
+        AutoGkIconBtn.BackgroundColor3 = autoGkEnabled and THEME.TOGGLE_ON or THEME.PANEL
+        AutoGkIconBtn.TextColor3 = autoGkEnabled and Color3.fromRGB(20, 20, 20) or THEME.TEXT
+
+        updateDomeVisual()
+
+        if autoGkEnabled then
+            task.spawn(function()
+                while autoGkEnabled do
+                    local char = LocalPlayer.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        updateDomeVisual()
+
+                        for _, obj in ipairs(Workspace:GetChildren()) do
+                            if obj.Name == "Ball" and obj:IsA("BasePart") then
+                                local dist = (obj.Position - hrp.Position).Magnitude
+                                if dist <= autoGkRange then
+                                    -- BUFF: Loop fire 20 times per trigger cycle
+                                    for i = 1, 20 do
+                                        pcall(function()
+                                            local ball = Workspace:FindFirstChild("Ball")
+                                            if ball then
+                                                local weldBall = ball:FindFirstChild("WeldBall")
+                                                if weldBall then
+                                                    weldBall:FireServer()
+                                                end
+                                            end
+                                        end)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    -- BUFF: Reduced delay to 0.001
+                    task.wait(0.001)
+                end
+                updateDomeVisual()
+            end)
+        end
+    end
+
+    AutoGkIconBtn.MouseButton1Click:Connect(function()
+        local newState = not autoGkEnabled
+        setAutoGkState(newState)
+        if setMainAutoGkToggleUI then setMainAutoGkToggleUI(newState) end
+    end)
+
+    -- Keyboard Keybind for Locking Icon Position
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if not gameProcessed and input.KeyCode == lockIconKeybind then
+            local newState = not isIconLocked
+            toggleLockPosition(newState)
+            if setLockToggleUI then setLockToggleUI(newState) end
+        end
+    end)
+
+    -- UI Elements
+    local _, setGkToggle = createToggleRow(MainPage, "Auto GK Toggle:", function(state)
+        setAutoGkState(state)
+    end)
+    setMainAutoGkToggleUI = setGkToggle
+
+    createInputRow(MainPage, "Auto GK Range:", autoGkRange, "Range", function(val)
+        local num = tonumber(val)
+        if num and num > 0 then
+            autoGkRange = num
+            if domePart then
+                domePart.Size = Vector3.new(autoGkRange * 2, autoGkRange * 2, autoGkRange * 2)
+            end
+        end
+    end)
+
+    createToggleRow(MainPage, "Mobile Icon Keybind:", function(state)
+        AutoGkIconBtn.Visible = state
+    end)
+
+    local _, setLockToggle = createToggleRow(MainPage, "Lock Icon Position:", function(state)
+        toggleLockPosition(state)
+    end)
+    setLockToggleUI = setLockToggle
+
+    -- Lock Icon Keybind Selector
+    local LockKeybindRow = Instance.new("Frame")
+    LockKeybindRow.Size = UDim2.new(0.92, 0, 0, 28)
+    LockKeybindRow.BackgroundColor3 = THEME.PANEL
+    LockKeybindRow.Parent = MainPage
+
+    local LockKeyCorner = Instance.new("UICorner")
+    LockKeyCorner.CornerRadius = UDim.new(0, 4)
+    LockKeyCorner.Parent = LockKeybindRow
+
+    local LockKeyLabel = Instance.new("TextLabel")
+    LockKeyLabel.Size = UDim2.new(0.6, 0, 1, 0)
+    LockKeyLabel.Position = UDim2.new(0, 8, 0, 0)
+    LockKeyLabel.BackgroundTransparency = 1
+    LockKeyLabel.Text = "Lock Icon Keybind:"
+    LockKeyLabel.TextColor3 = THEME.TEXT
+    LockKeyLabel.Font = VINTAGE_FONT
+    LockKeyLabel.TextSize = 9
+    LockKeyLabel.TextXAlignment = Enum.TextXAlignment.Left
+    LockKeyLabel.Parent = LockKeybindRow
+
+    local LockKeyBtn = Instance.new("TextButton")
+    LockKeyBtn.Size = UDim2.new(0.35, -5, 0.7, 0)
+    LockKeyBtn.Position = UDim2.new(0.65, 0, 0.15, 0)
+    LockKeyBtn.BackgroundColor3 = THEME.BTN
+    LockKeyBtn.Text = "L"
+    LockKeyBtn.TextColor3 = THEME.ACCENT
+    LockKeyBtn.Font = VINTAGE_FONT
+    LockKeyBtn.TextSize = 9
+    LockKeyBtn.Parent = LockKeybindRow
+
+    local LockKeyBtnCorner = Instance.new("UICorner")
+    LockKeyBtnCorner.CornerRadius = UDim.new(0, 3)
+    LockKeyBtnCorner.Parent = LockKeyBtn
+
+    local listeningForLockKey = false
+    LockKeyBtn.MouseButton1Click:Connect(function()
+        listeningForLockKey = true
+        LockKeyBtn.Text = "..."
+    end)
+
+    UserInputService.InputBegan:Connect(function(input)
+        if listeningForLockKey and input.UserInputType == Enum.UserInputType.Keyboard then
+            lockIconKeybind = input.KeyCode
+            LockKeyBtn.Text = input.KeyCode.Name
+            listeningForLockKey = false
+        end
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════
+-- MAIN HUB LAUNCHER INTERFACE & LOADING ANIMATION
+-- ═══════════════════════════════════════════════════════════
+
+local HubGui = Instance.new("ScreenGui")
+HubGui.Name = "ArkHub_MasterLauncher"
+HubGui.ResetOnSpawn = false
+HubGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Intro Loading Window
+local LoadingFrame = Instance.new("Frame")
+LoadingFrame.Size = UDim2.new(0, 320, 0, 130)
+LoadingFrame.Position = UDim2.new(0.5, -160, 0.5, -65)
+LoadingFrame.BackgroundColor3 = Color3.fromRGB(20, 18, 17)
+LoadingFrame.BorderSizePixel = 0
+LoadingFrame.ClipsDescendants = true
+LoadingFrame.Parent = HubGui
+
+local LoadingCorner = Instance.new("UICorner")
+LoadingCorner.CornerRadius = UDim.new(0, 8)
+LoadingCorner.Parent = LoadingFrame
+
+local LoadingStroke = Instance.new("UIStroke")
+LoadingStroke.Thickness = 2
+LoadingStroke.Color = HUB_THEME.ACCENT
+LoadingStroke.Parent = LoadingFrame
+
+local LoadTitle = Instance.new("TextLabel")
+LoadTitle.Size = UDim2.new(1, 0, 0, 35)
+LoadTitle.Position = UDim2.new(0, 0, 0, 15)
+LoadTitle.BackgroundTransparency = 1
+LoadTitle.Text = "📜 ARK HUB"
+LoadTitle.TextColor3 = HUB_THEME.ACCENT
+LoadTitle.Font = VINTAGE_FONT
+LoadTitle.TextSize = 18
+LoadTitle.Parent = LoadingFrame
+
+local LoadSub = Instance.new("TextLabel")
+LoadSub.Size = UDim2.new(1, 0, 0, 20)
+LoadSub.Position = UDim2.new(0, 0, 0, 48)
+LoadSub.BackgroundTransparency = 1
+LoadSub.Text = "Loading Ark Suite Utilities..."
+LoadSub.TextColor3 = Color3.fromRGB(180, 180, 180)
+LoadSub.Font = VINTAGE_FONT
+LoadSub.TextSize = 10
+LoadSub.Parent = LoadingFrame
+
+local BarBg = Instance.new("Frame")
+BarBg.Size = UDim2.new(0.8, 0, 0, 8)
+BarBg.Position = UDim2.new(0.1, 0, 0, 85)
+BarBg.BackgroundColor3 = Color3.fromRGB(35, 30, 28)
+BarBg.BorderSizePixel = 0
+BarBg.Parent = LoadingFrame
+
+local BarBgCorner = Instance.new("UICorner")
+BarBgCorner.CornerRadius = UDim.new(0, 4)
+BarBgCorner.Parent = BarBg
+
+local BarFill = Instance.new("Frame")
+BarFill.Size = UDim2.new(0, 0, 1, 0)
+BarFill.BackgroundColor3 = HUB_THEME.ACCENT
+BarFill.BorderSizePixel = 0
+BarFill.Parent = BarBg
+
+local BarFillCorner = Instance.new("UICorner")
+BarFillCorner.CornerRadius = UDim.new(0, 4)
+BarFillCorner.Parent = BarFill
+
+-- Master Selector Window
+local HubFrame = Instance.new("Frame")
+HubFrame.Name = "HubFrame"
+HubFrame.Size = UDim2.new(0, 360, 0, 290)
+HubFrame.Position = UDim2.new(0.5, -180, 0.5, -145)
+HubFrame.BackgroundColor3 = HUB_THEME.BG
+HubFrame.BorderSizePixel = 0
+HubFrame.Active = true
+HubFrame.ClipsDescendants = true
+HubFrame.Visible = false
+HubFrame.Parent = HubGui
+
+local HubCorner = Instance.new("UICorner")
+HubCorner.CornerRadius = UDim.new(0, 6)
+HubCorner.Parent = HubFrame
+
+local HubStroke = Instance.new("UIStroke")
+HubStroke.Thickness = 2
+HubStroke.Color = HUB_THEME.ACCENT
+HubStroke.Parent = HubFrame
+
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 28)
+TitleBar.BackgroundColor3 = Color3.fromRGB(18, 15, 14)
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = HubFrame
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(1, -30, 1, 0)
+TitleLabel.Position = UDim2.new(0, 10, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "📜 Ark Hub - Select Tool"
+TitleLabel.TextColor3 = HUB_THEME.ACCENT
+TitleLabel.TextSize = 12
+TitleLabel.Font = VINTAGE_FONT
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = TitleBar
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 20, 0, 20)
+CloseBtn.Position = UDim2.new(1, -25, 0, 4)
+CloseBtn.BackgroundTransparency = 1
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = HUB_THEME.ACCENT
+CloseBtn.Font = Enum.Font.SourceSansBold
+CloseBtn.TextSize = 14
+CloseBtn.Parent = TitleBar
+
+CloseBtn.MouseButton1Click:Connect(function()
+    HubGui:Destroy()
+end)
+
+-- Window Dragging
+local hubDragging, hubDragStart, hubStartPos
+TitleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        hubDragging = true
+        hubDragStart = input.Position
+        hubStartPos = HubFrame.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if hubDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - hubDragStart
+        TweenService:Create(HubFrame, TWEEN_FAST, {Position = UDim2.new(hubStartPos.X.Scale, hubStartPos.X.Offset + delta.X, hubStartPos.Y.Scale, hubStartPos.Y.Offset + delta.Y)}):Play()
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        hubDragging = false
+    end
+end)
+
+-- Button Container
+local ButtonContainer = Instance.new("Frame")
+ButtonContainer.Size = UDim2.new(1, -30, 1, -48)
+ButtonContainer.Position = UDim2.new(0, 15, 0, 38)
+ButtonContainer.BackgroundTransparency = 1
+ButtonContainer.Parent = HubFrame
+
+local ButtonLayout = Instance.new("UIListLayout")
+ButtonLayout.Parent = ButtonContainer
+ButtonLayout.Padding = UDim.new(0, 10)
+ButtonLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+ButtonLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+
+local function createSelectionButton(text, subText, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 65)
+    btn.BackgroundColor3 = HUB_THEME.BTN
+    btn.AutoButtonColor = false
+    btn.Text = ""
+    btn.Parent = ButtonContainer
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = btn
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 1
+    stroke.Color = Color3.fromRGB(70, 60, 52)
+    stroke.Parent = btn
+
+    local mainLabel = Instance.new("TextLabel")
+    mainLabel.Size = UDim2.new(1, -20, 0, 25)
+    mainLabel.Position = UDim2.new(0, 10, 0, 8)
+    mainLabel.BackgroundTransparency = 1
+    mainLabel.Text = text
+    mainLabel.TextColor3 = HUB_THEME.ACCENT
+    mainLabel.Font = VINTAGE_FONT
+    mainLabel.TextSize = 13
+    mainLabel.TextXAlignment = Enum.TextXAlignment.Left
+    mainLabel.Parent = btn
+
+    local descLabel = Instance.new("TextLabel")
+    descLabel.Size = UDim2.new(1, -20, 0, 18)
+    descLabel.Position = UDim2.new(0, 10, 0, 32)
+    descLabel.BackgroundTransparency = 1
+    descLabel.Text = subText
+    descLabel.TextColor3 = HUB_THEME.TEXT
+    descLabel.Font = Enum.Font.SourceSans
+    descLabel.TextSize = 12
+    descLabel.TextXAlignment = Enum.TextXAlignment.Left
+    descLabel.Parent = btn
+
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn, TWEEN_FAST, {BackgroundColor3 = HUB_THEME.BTN_HOVER}):Play()
+        TweenService:Create(stroke, TWEEN_FAST, {Color = HUB_THEME.ACCENT}):Play()
+    end)
+
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn, TWEEN_FAST, {BackgroundColor3 = HUB_THEME.BTN}):Play()
+        TweenService:Create(stroke, TWEEN_FAST, {Color = Color3.fromRGB(70, 60, 52)}):Play()
+    end)
+
+    btn.MouseButton1Click:Connect(function()
+        HubGui:Destroy()
+        callback()
+    end)
+
+    return btn
+end
+
+-- Create Menu Buttons
+createSelectionButton("⚔️ Marvellous Playground", "Launch Troll, Custom Remotes & Combat tools", function()
+    loadMarvellousPlayground()
+end)
+
+createSelectionButton("🔍 Remote Spy Engine", "Capture, inspect & log game RemoteEvents/Functions", function()
+    loadRemoteSpy()
+end)
+
+createSelectionButton("⚽ Blue Lock:Skibidi", "Auto GK visual forcefield & remote trigger", function()
+    loadBlueLockSkibidi()
+end)
+
+-- Execute Introductory Loading Animation Routine
+task.spawn(function()
+    local fillTween = TweenService:Create(BarFill, TweenInfo.new(1.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.new(1, 0, 1, 0)})
+    fillTween:Play()
+    fillTween.Completed:Wait()
+
+    local fadeTween = TweenService:Create(LoadingFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 1})
+    TweenService:Create(LoadTitle, TWEEN_FAST, {TextTransparency = 1}):Play()
+    TweenService:Create(LoadSub, TWEEN_FAST, {TextTransparency = 1}):Play()
+    TweenService:Create(BarBg, TWEEN_FAST, {BackgroundTransparency = 1}):Play()
+    TweenService:Create(BarFill, TWEEN_FAST, {BackgroundTransparency = 1}):Play()
+    TweenService:Create(LoadingStroke, TWEEN_FAST, {Transparency = 1}):Play()
+    fadeTween:Play()
+    fadeTween.Completed:Wait()
+
+    LoadingFrame:Destroy()
+
+    -- Pop-in Launcher Hub Window
+    HubFrame.Visible = true
+    HubFrame.Size = UDim2.new(0, 0, 0, 0)
+    HubFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+    TweenService:Create(HubFrame, TWEEN_SMOOTH, {
+        Size = UDim2.new(0, 360, 0, 290),
+        Position = UDim2.new(0.5, -180, 0.5, -145)
+    }):Play()
+end)
