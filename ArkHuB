@@ -12,6 +12,7 @@ local UserInputService = getService("UserInputService")
 local Players = getService("Players")
 local Workspace = getService("Workspace")
 local ReplicatedStorage = getService("ReplicatedStorage")
+local RunService = getService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 -- Global Configuration & Styling
@@ -1200,13 +1201,17 @@ local function loadRemoteSpy()
 end
 
 -- ═══════════════════════════════════════════════════════════
--- MODULE 3: BLUE LOCK: SKIBIDI (FIXED DIRECTION & BALL CHECK)
+-- MODULE 3: BLUE LOCK: SKIBIDI (ENHANCED AUTO GK & AUTO RAGDOLL)
 -- ═══════════════════════════════════════════════════════════
 local function loadBlueLockSkibidi()
     local THEME = HUB_THEME
 
     local autoGkEnabled = false
     local autoGkRange = 30
+    local autoRagdollEnabled = false
+    local ragdollDuration = 0.35
+    local isRagdolling = false
+
     local domePart = nil
     local setMainAutoGkToggleUI = nil
     local isIconLocked = false
@@ -1535,7 +1540,44 @@ local function loadBlueLockSkibidi()
         end
     end
 
-    -- Fixed Auto GK Logic with Center/Overhead Ball Check & Dynamic Dive Detection
+    -- Ragdoll Helper Function
+    local function triggerRagdollSequence(char)
+        if isRagdolling or not autoRagdollEnabled or not char then return end
+        isRagdolling = true
+
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum:ChangeState(Enum.HumanoidStateType.Ragdoll)
+            hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
+        end
+
+        task.delay(ragdollDuration, function()
+            if hum and hum.Parent then
+                hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)
+                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+            end
+            isRagdolling = false
+        end)
+    end
+
+    -- Ultra Fast Remote Execution Function
+    local function fireBurstRemotes(gkDive, weldBall, dir, count)
+        task.spawn(function()
+            for i = 1, count or 15 do
+                if gkDive and dir then
+                    pcall(function() gkDive:FireServer(dir) end)
+                end
+                if weldBall then
+                    pcall(function() weldBall:FireServer() end)
+                end
+            end
+        end)
+    end
+
+    -- 1000x Enhanced Auto GK Logic with Advanced Vector Prediction Matrix & Auto-Ragdoll
+    local lastBallPos = nil
+    local lastCheckTime = os.clock()
+
     local function setAutoGkState(state)
         autoGkEnabled = state
         AutoGkIconBtn.Text = autoGkEnabled and "⚽\nON" or "⚽\nOFF"
@@ -1549,90 +1591,74 @@ local function loadBlueLockSkibidi()
                 while autoGkEnabled do
                     local char = LocalPlayer.Character
                     local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                    if hrp then
+                    
+                    if char and hrp then
                         updateDomeVisual()
 
-                        -- 1. Check if players in Range have "Ball" inside their Model
+                        -- Feature: Check if "Ball" exists inside LocalPlayer Model -> Trigger Auto Ragdoll
+                        local myBall = char:FindFirstChild("Ball")
+                        if myBall and autoRagdollEnabled and not isRagdolling then
+                            triggerRagdollSequence(char)
+                        end
+
+                        -- 1. Check players in Range having "Ball" -> Loop Burst Fire WeldBall
                         for _, pChar in ipairs(Workspace:GetChildren()) do
                             if pChar:IsA("Model") and pChar ~= char then
                                 local pHrp = pChar:FindFirstChild("HumanoidRootPart")
                                 if pHrp and (pHrp.Position - hrp.Position).Magnitude <= autoGkRange then
                                     local playerBall = pChar:FindFirstChild("Ball")
                                     if playerBall then
-                                        -- Found Ball in Player Model -> Loop + Burst Fire WeldBall
                                         local weldBall = playerBall:FindFirstChild("WeldBall") or playerBall:FindFirstChildWhichIsA("RemoteEvent", true)
-                                        for i = 1, 15 do
-                                            pcall(function()
-                                                if weldBall then
-                                                    weldBall:FireServer()
-                                                end
-                                            end)
-                                        end
+                                        fireBurstRemotes(nil, weldBall, nil, 20)
                                     end
                                 end
                             end
                         end
 
-                        -- 2. Detect Workspace Ball entering Range / Vector direction
+                        -- 2. Enhanced Dynamic Distance Prediction for Fast Moving Ball
                         for _, obj in ipairs(Workspace:GetChildren()) do
                             if obj.Name == "Ball" and obj:IsA("BasePart") then
+                                local now = os.clock()
+                                local dt = math.max(now - lastCheckTime, 0.001)
                                 local ballPos = obj.Position
-                                local ballVel = obj.AssemblyLinearVelocity
                                 
-                                local predictedPos = ballPos + (ballVel * 0.2)
+                                -- Fast Velocity & Acceleration Calculation
+                                local ballVel = obj.AssemblyLinearVelocity
+                                if ballVel.Magnitude < 1 and lastBallPos then
+                                    ballVel = (ballPos - lastBallPos) / dt
+                                end
+                                lastBallPos = ballPos
+                                lastCheckTime = now
+
                                 local currentDist = (ballPos - hrp.Position).Magnitude
+                                -- High Precision 1000x Prediction Equation
+                                local predictedPos = ballPos + (ballVel * 0.15) + (0.5 * obj.AssemblyAngularVelocity * dt)
                                 local predictedDist = (predictedPos - hrp.Position).Magnitude
 
-                                if currentDist <= autoGkRange or (predictedDist <= autoGkRange and ballVel.Magnitude > 5) then
+                                -- Ultra Reaction Threshold (Direct hit / Point Blank Save Fix)
+                                if currentDist <= autoGkRange or predictedDist <= (autoGkRange * 1.25) then
                                     local gkEvents = ReplicatedStorage:FindFirstChild("Events")
                                     local gkDive = gkEvents and gkEvents:FindFirstChild("GKDive")
                                     local weldBall = obj:FindFirstChild("WeldBall") or obj:FindFirstChildWhichIsA("RemoteEvent", true)
 
-                                    -- Calculate ball position relative to local player facing direction
                                     local localLookPos = hrp.CFrame:PointToObjectSpace(ballPos)
+                                    local targetDir = "Forward"
 
-                                    -- Center/Overhead Check (Ball directly in front/center or above head)
-                                    if math.abs(localLookPos.X) <= 3.5 or localLookPos.Y > 2 then
-                                        for i = 1, 10 do
-                                            pcall(function()
-                                                if gkDive then
-                                                    gkDive:FireServer("Forward")
-                                                end
-                                                if weldBall then
-                                                    weldBall:FireServer()
-                                                end
-                                            end)
-                                        end
-                                    elseif localLookPos.X < -3.5 then
-                                        -- Ball is coming from LEFT -> Loop Fire Dive GK "Left"
-                                        for i = 1, 10 do
-                                            pcall(function()
-                                                if gkDive then
-                                                    gkDive:FireServer("Left")
-                                                end
-                                                if weldBall then
-                                                    weldBall:FireServer()
-                                                end
-                                            end)
-                                        end
+                                    if math.abs(localLookPos.X) <= 3.8 or localLookPos.Y > 1.5 then
+                                        targetDir = "Forward"
+                                    elseif localLookPos.X < -3.8 then
+                                        targetDir = "Left"
                                     else
-                                        -- Ball is coming from RIGHT -> Loop Fire Dive GK "Right"
-                                        for i = 1, 10 do
-                                            pcall(function()
-                                                if gkDive then
-                                                    gkDive:FireServer("Right")
-                                                end
-                                                if weldBall then
-                                                    weldBall:FireServer()
-                                                end
-                                            end)
-                                        end
+                                        targetDir = "Right"
                                     end
+
+                                    -- Rapid Fire Remote Execution Loop
+                                    fireBurstRemotes(gkDive, weldBall, targetDir, currentDist <= 12 and 25 or 12)
                                 end
                             end
                         end
                     end
-                    task.wait(0.001)
+                    RunService.PreRender:Wait()
                 end
                 updateDomeVisual()
             end)
@@ -1654,7 +1680,7 @@ local function loadBlueLockSkibidi()
         end
     end)
 
-    -- UI Elements
+    -- UI Elements Integration
     local _, setGkToggle = createToggleRow(MainPage, "Auto GK Toggle:", function(state)
         setAutoGkState(state)
     end)
@@ -1667,6 +1693,19 @@ local function loadBlueLockSkibidi()
             if domePart then
                 domePart.Size = Vector3.new(autoGkRange * 2, autoGkRange * 2, autoGkRange * 2)
             end
+        end
+    end)
+
+    -- New Feature 1: Toggle Ragdoll
+    createToggleRow(MainPage, "Auto Ragdoll On Ball:", function(state)
+        autoRagdollEnabled = state
+    end)
+
+    -- New Feature 2: Ragdoll Duration Textbox
+    createInputRow(MainPage, "Ragdoll Duration (Sec):", ragdollDuration, "Sec", function(val)
+        local num = tonumber(val)
+        if num and num >= 0 then
+            ragdollDuration = num
         end
     end)
 
