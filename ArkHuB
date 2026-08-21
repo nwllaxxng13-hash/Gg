@@ -11,6 +11,7 @@ local TweenService = getService("TweenService")
 local UserInputService = getService("UserInputService")
 local Players = getService("Players")
 local Workspace = getService("Workspace")
+local ReplicatedStorage = getService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
 -- Global Configuration & Styling
@@ -33,7 +34,6 @@ local HUB_THEME = {
 -- MODULE 1: MARVELLOUS PLAYGROUND
 -- ═══════════════════════════════════════════════════════════
 local function loadMarvellousPlayground()
-    local ReplicatedStorage = getService("ReplicatedStorage")
     local THEME = HUB_THEME
 
     local erenBurstCount = 1
@@ -426,7 +426,7 @@ local function loadMarvellousPlayground()
 
     local CustomCorner = Instance.new("UICorner")
     CustomCorner.CornerRadius = UDim.new(0, 4)
-    CustomCorner.Parent = CustomFireBtn
+    CustomCorner.Parent = CustomPage
 
     CustomFireBtn.MouseButton1Click:Connect(function()
         fireCustomCode(customBurstCount)
@@ -1200,7 +1200,7 @@ local function loadRemoteSpy()
 end
 
 -- ═══════════════════════════════════════════════════════════
--- MODULE 3: BLUE LOCK: SKIBIDI (BUFFED & POSITION LOCK ADDED)
+-- MODULE 3: BLUE LOCK: SKIBIDI (ENHANCED PREDICTION & GK DIVE)
 -- ═══════════════════════════════════════════════════════════
 local function loadBlueLockSkibidi()
     local THEME = HUB_THEME
@@ -1500,13 +1500,13 @@ local function loadBlueLockSkibidi()
     local function toggleLockPosition(lockedState)
         isIconLocked = lockedState
         if isIconLocked then
-            AutoGkIconStroke.Color = Color3.fromRGB(220, 60, 60) -- Red outline when locked
+            AutoGkIconStroke.Color = Color3.fromRGB(220, 60, 60)
         else
             AutoGkIconStroke.Color = THEME.ACCENT
         end
     end
 
-    -- ForceField Dome Visual Creation/Destruction
+    -- Visual Dome Indicator
     local function updateDomeVisual()
         if autoGkEnabled then
             local char = LocalPlayer.Character
@@ -1535,7 +1535,7 @@ local function loadBlueLockSkibidi()
         end
     end
 
-    -- Fast-Firing Buffed Auto GK Execution Logic
+    -- Fixed Auto GK Logic: Loop DiveGk first, then immediately Loop Fire + Burst WeldBall
     local function setAutoGkState(state)
         autoGkEnabled = state
         AutoGkIconBtn.Text = autoGkEnabled and "⚽\nON" or "⚽\nOFF"
@@ -1554,25 +1554,46 @@ local function loadBlueLockSkibidi()
 
                         for _, obj in ipairs(Workspace:GetChildren()) do
                             if obj.Name == "Ball" and obj:IsA("BasePart") then
-                                local dist = (obj.Position - hrp.Position).Magnitude
-                                if dist <= autoGkRange then
-                                    -- BUFF: Loop fire 20 times per trigger cycle
-                                    for i = 1, 20 do
-                                        pcall(function()
-                                            local ball = Workspace:FindFirstChild("Ball")
-                                            if ball then
-                                                local weldBall = ball:FindFirstChild("WeldBall")
+                                local ballPos = obj.Position
+                                local ballVel = obj.AssemblyLinearVelocity
+                                
+                                -- Ball Prediction (Triggers slightly before entering range)
+                                local predictedPos = ballPos + (ballVel * 0.2)
+                                local currentDist = (ballPos - hrp.Position).Magnitude
+                                local predictedDist = (predictedPos - hrp.Position).Magnitude
+
+                                if currentDist <= autoGkRange or (predictedDist <= autoGkRange and ballVel.Magnitude > 5) then
+                                    local ball = Workspace:FindFirstChild("Ball")
+                                    if ball then
+                                        local gkEvents = ReplicatedStorage:FindFirstChild("Events")
+                                        local gkDive = gkEvents and gkEvents:FindFirstChild("GKDive")
+                                        local weldBall = ball:FindFirstChild("WeldBall")
+
+                                        -- 1. Loop fire DiveGk first
+                                        for i = 1, 10 do
+                                            pcall(function()
+                                                if gkDive then
+                                                    gkDive:FireServer("Forward")
+                                                end
+                                            end)
+                                        end
+
+                                        -- 2. Immediately loop fire + burst WeldBall
+                                        for i = 1, 20 do
+                                            pcall(function()
+                                                if gkDive then
+                                                    gkDive:FireServer("Forward")
+                                                end
                                                 if weldBall then
                                                     weldBall:FireServer()
                                                 end
-                                            end
-                                        end)
+                                            end)
+                                        end
                                     end
                                 end
                             end
                         end
                     end
-                    -- BUFF: Reduced delay to 0.001
                     task.wait(0.001)
                 end
                 updateDomeVisual()
