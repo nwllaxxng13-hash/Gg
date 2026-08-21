@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════
--- 📜 ARK HUB - MAIN LAUNCHER & HUB SUITE (ENHANCED)
+-- 📜 ARK HUB - MAIN LAUNCHER & HUB SUITE (ENHANCED & FIXED)
 -- ═══════════════════════════════════════════════════════════
 
 local function getService(name)
@@ -1200,7 +1200,7 @@ local function loadRemoteSpy()
 end
 
 -- ═══════════════════════════════════════════════════════════
--- MODULE 3: BLUE LOCK: SKIBIDI (ENHANCED PREDICTION & GK DIVE)
+-- MODULE 3: BLUE LOCK: SKIBIDI (FIXED DIRECTION & BALL CHECK)
 -- ═══════════════════════════════════════════════════════════
 local function loadBlueLockSkibidi()
     local THEME = HUB_THEME
@@ -1535,7 +1535,7 @@ local function loadBlueLockSkibidi()
         end
     end
 
-    -- Fixed Auto GK Logic: Loop DiveGk first, then immediately Loop Fire + Burst WeldBall
+    -- Fixed Auto GK Logic with Center/Overhead Ball Check & Dynamic Dive Detection
     local function setAutoGkState(state)
         autoGkEnabled = state
         AutoGkIconBtn.Text = autoGkEnabled and "⚽\nON" or "⚽\nOFF"
@@ -1552,37 +1552,75 @@ local function loadBlueLockSkibidi()
                     if hrp then
                         updateDomeVisual()
 
+                        -- 1. Check if players in Range have "Ball" inside their Model
+                        for _, pChar in ipairs(Workspace:GetChildren()) do
+                            if pChar:IsA("Model") and pChar ~= char then
+                                local pHrp = pChar:FindFirstChild("HumanoidRootPart")
+                                if pHrp and (pHrp.Position - hrp.Position).Magnitude <= autoGkRange then
+                                    local playerBall = pChar:FindFirstChild("Ball")
+                                    if playerBall then
+                                        -- Found Ball in Player Model -> Loop + Burst Fire WeldBall
+                                        local weldBall = playerBall:FindFirstChild("WeldBall") or playerBall:FindFirstChildWhichIsA("RemoteEvent", true)
+                                        for i = 1, 15 do
+                                            pcall(function()
+                                                if weldBall then
+                                                    weldBall:FireServer()
+                                                end
+                                            end)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+
+                        -- 2. Detect Workspace Ball entering Range / Vector direction
                         for _, obj in ipairs(Workspace:GetChildren()) do
                             if obj.Name == "Ball" and obj:IsA("BasePart") then
                                 local ballPos = obj.Position
                                 local ballVel = obj.AssemblyLinearVelocity
                                 
-                                -- Ball Prediction (Triggers slightly before entering range)
                                 local predictedPos = ballPos + (ballVel * 0.2)
                                 local currentDist = (ballPos - hrp.Position).Magnitude
                                 local predictedDist = (predictedPos - hrp.Position).Magnitude
 
                                 if currentDist <= autoGkRange or (predictedDist <= autoGkRange and ballVel.Magnitude > 5) then
-                                    local ball = Workspace:FindFirstChild("Ball")
-                                    if ball then
-                                        local gkEvents = ReplicatedStorage:FindFirstChild("Events")
-                                        local gkDive = gkEvents and gkEvents:FindFirstChild("GKDive")
-                                        local weldBall = ball:FindFirstChild("WeldBall")
+                                    local gkEvents = ReplicatedStorage:FindFirstChild("Events")
+                                    local gkDive = gkEvents and gkEvents:FindFirstChild("GKDive")
+                                    local weldBall = obj:FindFirstChild("WeldBall") or obj:FindFirstChildWhichIsA("RemoteEvent", true)
 
-                                        -- 1. Loop fire DiveGk first
+                                    -- Calculate ball position relative to local player facing direction
+                                    local localLookPos = hrp.CFrame:PointToObjectSpace(ballPos)
+
+                                    -- Center/Overhead Check (Ball directly in front/center or above head)
+                                    if math.abs(localLookPos.X) <= 3.5 or localLookPos.Y > 2 then
                                         for i = 1, 10 do
                                             pcall(function()
                                                 if gkDive then
                                                     gkDive:FireServer("Forward")
                                                 end
+                                                if weldBall then
+                                                    weldBall:FireServer()
+                                                end
                                             end)
                                         end
-
-                                        -- 2. Immediately loop fire + burst WeldBall
-                                        for i = 1, 20 do
+                                    elseif localLookPos.X < -3.5 then
+                                        -- Ball is coming from LEFT -> Loop Fire Dive GK "Left"
+                                        for i = 1, 10 do
                                             pcall(function()
                                                 if gkDive then
-                                                    gkDive:FireServer("Forward")
+                                                    gkDive:FireServer("Left")
+                                                end
+                                                if weldBall then
+                                                    weldBall:FireServer()
+                                                end
+                                            end)
+                                        end
+                                    else
+                                        -- Ball is coming from RIGHT -> Loop Fire Dive GK "Right"
+                                        for i = 1, 10 do
+                                            pcall(function()
+                                                if gkDive then
+                                                    gkDive:FireServer("Right")
                                                 end
                                                 if weldBall then
                                                     weldBall:FireServer()
