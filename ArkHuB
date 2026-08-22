@@ -1201,7 +1201,7 @@ local function loadRemoteSpy()
 end
 
 -- ═══════════════════════════════════════════════════════════
--- MODULE 3: BLUE LOCK: SKIBIDI (ENHANCED AUTO GK & AUTO RAGDOLL)
+-- MODULE 3: BLUE LOCK: SKIBIDI (AUTO GK, RAGDOLL & STEAL MODE)
 -- ═══════════════════════════════════════════════════════════
 local function loadBlueLockSkibidi()
     local THEME = HUB_THEME
@@ -1212,8 +1212,12 @@ local function loadBlueLockSkibidi()
     local ragdollDuration = 0.35
     local isRagdolling = false
 
+    -- Steal Mode Variable Global Controls
+    local stealModeEnabled = false
+
     local domePart = nil
     local setMainAutoGkToggleUI = nil
+    local setMainStealToggleUI = nil
     local isIconLocked = false
     local lockIconKeybind = Enum.KeyCode.L
     local setLockToggleUI = nil
@@ -1456,7 +1460,7 @@ local function loadBlueLockSkibidi()
     TabMainBtn.BackgroundColor3 = THEME.ACCENT
     TabMainBtn.TextColor3 = Color3.fromRGB(20, 20, 20)
 
-    -- Mobile Keybind Icon
+    -- Mobile Keybind Icon (Auto GK)
     local AutoGkIconBtn = Instance.new("TextButton")
     AutoGkIconBtn.Name = "AutoGkIconBtn"
     AutoGkIconBtn.Size = UDim2.new(0, 45, 0, 45)
@@ -1479,41 +1483,67 @@ local function loadBlueLockSkibidi()
     AutoGkIconStroke.Color = THEME.ACCENT
     AutoGkIconStroke.Parent = AutoGkIconBtn
 
-    -- Position Locking Feature
-    local iconDragging, iconDragStart, iconStartPos
-    AutoGkIconBtn.InputBegan:Connect(function(input)
-        if isIconLocked then return end
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            iconDragging = true
-            iconDragStart = input.Position
-            iconStartPos = AutoGkIconBtn.Position
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if isIconLocked then return end
-        if iconDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - iconDragStart
-            AutoGkIconBtn.Position = UDim2.new(iconStartPos.X.Scale, iconStartPos.X.Offset + delta.X, iconStartPos.Y.Scale, iconStartPos.Y.Offset + delta.Y)
-        end
-    end)
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            iconDragging = false
-        end
-    end)
+    -- Mobile Keybind Icon (Steal Mode) [NEW ITEM 1]
+    local StealIconBtn = Instance.new("TextButton")
+    StealIconBtn.Name = "StealIconBtn"
+    StealIconBtn.Size = UDim2.new(0, 45, 0, 45)
+    StealIconBtn.Position = UDim2.new(0.1, 0, 0.45, 0)
+    StealIconBtn.BackgroundColor3 = THEME.PANEL
+    StealIconBtn.Text = "🥷\nOFF"
+    StealIconBtn.TextColor3 = THEME.TEXT
+    StealIconBtn.Font = VINTAGE_FONT
+    StealIconBtn.TextSize = 9
+    StealIconBtn.Visible = false
+    StealIconBtn.Active = true
+    StealIconBtn.Parent = ScreenGui
+
+    local StealIconCorner = Instance.new("UICorner")
+    StealIconCorner.CornerRadius = UDim.new(0, 8)
+    StealIconCorner.Parent = StealIconBtn
+
+    local StealIconStroke = Instance.new("UIStroke")
+    StealIconStroke.Thickness = 2
+    StealIconStroke.Color = THEME.ACCENT
+    StealIconStroke.Parent = StealIconBtn
+
+    -- Shared Lock Position System Function
+    local function setupIconDragging(iconInstance)
+        local iconDrag, iconStartPos, iconDragStart
+        iconInstance.InputBegan:Connect(function(input)
+            if isIconLocked then return end
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                iconDrag = true
+                iconDragStart = input.Position
+                iconStartPos = iconInstance.Position
+            end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if isIconLocked then return end
+            if iconDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                local delta = input.Position - iconDragStart
+                iconInstance.Position = UDim2.new(iconStartPos.X.Scale, iconStartPos.X.Offset + delta.X, iconStartPos.Y.Scale, iconStartPos.Y.Offset + delta.Y)
+            end
+        end)
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                iconDrag = false
+            end
+        end)
+    end
+
+    setupIconDragging(AutoGkIconBtn)
+    setupIconDragging(StealIconBtn)
 
     local function toggleLockPosition(lockedState)
         isIconLocked = lockedState
-        if isIconLocked then
-            AutoGkIconStroke.Color = Color3.fromRGB(220, 60, 60)
-        else
-            AutoGkIconStroke.Color = THEME.ACCENT
-        end
+        local strokeColor = isIconLocked and Color3.fromRGB(220, 60, 60) or THEME.ACCENT
+        AutoGkIconStroke.Color = strokeColor
+        StealIconStroke.Color = strokeColor
     end
 
     -- Visual Dome Indicator
     local function updateDomeVisual()
-        if autoGkEnabled then
+        if autoGkEnabled or stealModeEnabled then
             local char = LocalPlayer.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             if hrp then
@@ -1540,27 +1570,91 @@ local function loadBlueLockSkibidi()
         end
     end
 
-    -- Ragdoll Helper Function
+    local function setCharacterRagdoll(char, state)
+        if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+
+        if not hum or not hrp then return end
+
+        if state then
+            hum:ChangeState(Enum.HumanoidStateType.Physics)
+            
+            for _, v in pairs(char:GetDescendants()) do
+                if v:IsA("Motor6D") and v.Part0 and v.Part1 and v.Name ~= "RootJoint" then
+                    local p0, p1 = v.Part0, v.Part1
+                    
+                    local att0 = p0:FindFirstChild(v.Name .. "RagdollAtt0") or Instance.new("Attachment")
+                    att0.Name = v.Name .. "RagdollAtt0"
+                    att0.CFrame = v.C0
+                    att0.Parent = p0
+
+                    local att1 = p1:FindFirstChild(v.Name .. "RagdollAtt1") or Instance.new("Attachment")
+                    att1.Name = v.Name .. "RagdollAtt1"
+                    att1.CFrame = v.C1
+                    att1.Parent = p1
+
+                    local bs = p0:FindFirstChild(v.Name .. "RagdollConstraint") or Instance.new("BallSocketConstraint")
+                    bs.Name = v.Name .. "RagdollConstraint"
+                    bs.Attachment0 = att0
+                    bs.Attachment1 = att1
+                    bs.LimitsEnabled = true
+                    bs.TwistLimitsEnabled = true
+                    bs.UpperAngle = 45
+                    bs.TwistLowerAngle = -45
+                    bs.TwistUpperAngle = 45
+                    bs.Parent = p0
+
+                    v.Enabled = false
+                elseif v:IsA("BasePart") and v ~= hrp then
+                    v.CanCollide = true
+                end
+            end
+            hrp.CanCollide = false
+        else
+            for _, v in pairs(char:GetDescendants()) do
+                if v:IsA("BallSocketConstraint") and v.Name:find("RagdollConstraint") then
+                    v:Destroy()
+                elseif v:IsA("Attachment") and v.Name:find("RagdollAtt") then
+                    v:Destroy()
+                elseif v:IsA("Motor6D") then
+                    v.Enabled = true
+                elseif v:IsA("BasePart") then
+                    if v.Name == "HumanoidRootPart" then
+                        v.CanCollide = false
+                    else
+                        v.CanCollide = true
+                    end
+                    v.AssemblyLinearVelocity = Vector3.zero
+                    v.AssemblyAngularVelocity = Vector3.zero
+                end
+            end
+
+            hum.PlatformStand = false
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+            
+            task.defer(function()
+                if hum and hum.Parent then
+                    hum:ChangeState(Enum.HumanoidStateType.Running)
+                end
+            end)
+        end
+    end
+
     local function triggerRagdollSequence(char)
         if isRagdolling or not autoRagdollEnabled or not char then return end
         isRagdolling = true
 
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then
-            hum:ChangeState(Enum.HumanoidStateType.Ragdoll)
-            hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
-        end
+        setCharacterRagdoll(char, true)
 
         task.delay(ragdollDuration, function()
-            if hum and hum.Parent then
-                hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)
-                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+            if char and char.Parent then
+                setCharacterRagdoll(char, false)
             end
             isRagdolling = false
         end)
     end
 
-    -- Ultra Fast Remote Execution Function
     local function fireBurstRemotes(gkDive, weldBall, dir, count)
         task.spawn(function()
             for i = 1, count or 15 do
@@ -1574,9 +1668,58 @@ local function loadBlueLockSkibidi()
         end)
     end
 
-    -- 1000x Enhanced Auto GK Logic with Advanced Vector Prediction Matrix & Auto-Ragdoll
+    -- [NEW ITEM 2] Steal Ball Fire Remote Burst Loop Function
+    local function triggerStealBall(targetChar)
+        task.spawn(function()
+            local stealRemote = ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("StealBallSlide")
+            if stealRemote then
+                for i = 1, 20 do
+                    pcall(function()
+                        stealRemote:InvokeServer(targetChar)
+                    end)
+                end
+            end
+        end)
+    end
+
     local lastBallPos = nil
     local lastCheckTime = os.clock()
+
+    -- Steal Mode System Switcher
+    local function setStealModeState(state)
+        stealModeEnabled = state
+        StealIconBtn.Text = stealModeEnabled and "🥷\nON" or "🥷\nOFF"
+        StealIconBtn.BackgroundColor3 = stealModeEnabled and THEME.TOGGLE_ON or THEME.PANEL
+        StealIconBtn.TextColor3 = stealModeEnabled and Color3.fromRGB(20, 20, 20) or THEME.TEXT
+
+        updateDomeVisual()
+
+        if stealModeEnabled then
+            task.spawn(function()
+                while stealModeEnabled do
+                    local char = LocalPlayer.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+                    if char and hrp then
+                        updateDomeVisual()
+                        -- [ITEM 2] Check Players within Auto GK Range having "Ball" -> Loop Fire + Burst
+                        for _, pChar in ipairs(Workspace:GetChildren()) do
+                            if pChar:IsA("Model") and pChar ~= char then
+                                local pHrp = pChar:FindFirstChild("HumanoidRootPart")
+                                if pHrp and (pHrp.Position - hrp.Position).Magnitude <= autoGkRange then
+                                    if pChar:FindFirstChild("Ball") then
+                                        triggerStealBall(pChar)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.05)
+                end
+                updateDomeVisual()
+            end)
+        end
+    end
 
     local function setAutoGkState(state)
         autoGkEnabled = state
@@ -1595,13 +1738,11 @@ local function loadBlueLockSkibidi()
                     if char and hrp then
                         updateDomeVisual()
 
-                        -- Feature: Check if "Ball" exists inside LocalPlayer Model -> Trigger Auto Ragdoll
                         local myBall = char:FindFirstChild("Ball")
                         if myBall and autoRagdollEnabled and not isRagdolling then
                             triggerRagdollSequence(char)
                         end
 
-                        -- 1. Check players in Range having "Ball" -> Loop Burst Fire WeldBall
                         for _, pChar in ipairs(Workspace:GetChildren()) do
                             if pChar:IsA("Model") and pChar ~= char then
                                 local pHrp = pChar:FindFirstChild("HumanoidRootPart")
@@ -1615,14 +1756,12 @@ local function loadBlueLockSkibidi()
                             end
                         end
 
-                        -- 2. Enhanced Dynamic Distance Prediction for Fast Moving Ball
                         for _, obj in ipairs(Workspace:GetChildren()) do
                             if obj.Name == "Ball" and obj:IsA("BasePart") then
                                 local now = os.clock()
                                 local dt = math.max(now - lastCheckTime, 0.001)
                                 local ballPos = obj.Position
                                 
-                                -- Fast Velocity & Acceleration Calculation
                                 local ballVel = obj.AssemblyLinearVelocity
                                 if ballVel.Magnitude < 1 and lastBallPos then
                                     ballVel = (ballPos - lastBallPos) / dt
@@ -1631,11 +1770,9 @@ local function loadBlueLockSkibidi()
                                 lastCheckTime = now
 
                                 local currentDist = (ballPos - hrp.Position).Magnitude
-                                -- High Precision 1000x Prediction Equation
                                 local predictedPos = ballPos + (ballVel * 0.15) + (0.5 * obj.AssemblyAngularVelocity * dt)
                                 local predictedDist = (predictedPos - hrp.Position).Magnitude
 
-                                -- Ultra Reaction Threshold (Direct hit / Point Blank Save Fix)
                                 if currentDist <= autoGkRange or predictedDist <= (autoGkRange * 1.25) then
                                     local gkEvents = ReplicatedStorage:FindFirstChild("Events")
                                     local gkDive = gkEvents and gkEvents:FindFirstChild("GKDive")
@@ -1652,7 +1789,6 @@ local function loadBlueLockSkibidi()
                                         targetDir = "Right"
                                     end
 
-                                    -- Rapid Fire Remote Execution Loop
                                     fireBurstRemotes(gkDive, weldBall, targetDir, currentDist <= 12 and 25 or 12)
                                 end
                             end
@@ -1671,7 +1807,12 @@ local function loadBlueLockSkibidi()
         if setMainAutoGkToggleUI then setMainAutoGkToggleUI(newState) end
     end)
 
-    -- Keyboard Keybind for Locking Icon Position
+    StealIconBtn.MouseButton1Click:Connect(function()
+        local newState = not stealModeEnabled
+        setStealModeState(newState)
+        if setMainStealToggleUI then setMainStealToggleUI(newState) end
+    end)
+
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if not gameProcessed and input.KeyCode == lockIconKeybind then
             local newState = not isIconLocked
@@ -1680,13 +1821,19 @@ local function loadBlueLockSkibidi()
         end
     end)
 
-    -- UI Elements Integration
+    -- UI Setup
     local _, setGkToggle = createToggleRow(MainPage, "Auto GK Toggle:", function(state)
         setAutoGkState(state)
     end)
     setMainAutoGkToggleUI = setGkToggle
 
-    createInputRow(MainPage, "Auto GK Range:", autoGkRange, "Range", function(val)
+    -- [NEW ITEM 1] UI Toggle for Steal Mode
+    local _, setStealToggle = createToggleRow(MainPage, "Steal Mode Toggle:", function(state)
+        setStealModeState(state)
+    end)
+    setMainStealToggleUI = setStealToggle
+
+    createInputRow(MainPage, "Auto GK / Steal Range:", autoGkRange, "Range", function(val)
         local num = tonumber(val)
         if num and num > 0 then
             autoGkRange = num
@@ -1696,12 +1843,10 @@ local function loadBlueLockSkibidi()
         end
     end)
 
-    -- New Feature 1: Toggle Ragdoll
     createToggleRow(MainPage, "Auto Ragdoll On Ball:", function(state)
         autoRagdollEnabled = state
     end)
 
-    -- New Feature 2: Ragdoll Duration Textbox
     createInputRow(MainPage, "Ragdoll Duration (Sec):", ragdollDuration, "Sec", function(val)
         local num = tonumber(val)
         if num and num >= 0 then
@@ -1709,16 +1854,20 @@ local function loadBlueLockSkibidi()
         end
     end)
 
-    createToggleRow(MainPage, "Mobile Icon Keybind:", function(state)
+    createToggleRow(MainPage, "Auto GK Icon Keybind:", function(state)
         AutoGkIconBtn.Visible = state
     end)
 
-    local _, setLockToggle = createToggleRow(MainPage, "Lock Icon Position:", function(state)
+    -- [NEW ITEM 1] Toggle "Steal Mode icon Keybind"
+    createToggleRow(MainPage, "Steal Mode Icon Keybind:", function(state)
+        StealIconBtn.Visible = state
+    end)
+
+    local _, setLockToggle = createToggleRow(MainPage, "Lock Icons Position:", function(state)
         toggleLockPosition(state)
     end)
     setLockToggleUI = setLockToggle
 
-    -- Lock Icon Keybind Selector
     local LockKeybindRow = Instance.new("Frame")
     LockKeybindRow.Size = UDim2.new(0.92, 0, 0, 28)
     LockKeybindRow.BackgroundColor3 = THEME.PANEL
@@ -1975,47 +2124,21 @@ local function createSelectionButton(text, subText, callback)
         HubGui:Destroy()
         callback()
     end)
-
-    return btn
 end
 
--- Create Menu Buttons
-createSelectionButton("⚔️ Marvellous Playground", "Launch Troll, Custom Remotes & Combat tools", function()
-    loadMarvellousPlayground()
-end)
+-- Create Module Launchers
+createSelectionButton("⚽ Blue Lock: Skibidi", "Auto GK, Auto Ragdoll & Steal Mode Suite", loadBlueLockSkibidi)
+createSelectionButton("💥 Marvellous SmackDown", "Eren Rumbling, Custom Remote & Combat Utilities", loadMarvellousPlayground)
+createSelectionButton("🔍 Ark Remote Spy", "Advanced Namecall Hook Remote Logger & Executor", loadRemoteSpy)
 
-createSelectionButton("🔍 Remote Spy Engine", "Capture, inspect & log game RemoteEvents/Functions", function()
-    loadRemoteSpy()
-end)
-
-createSelectionButton("⚽ Blue Lock:Skibidi", "Auto GK visual forcefield & remote trigger", function()
-    loadBlueLockSkibidi()
-end)
-
--- Execute Introductory Loading Animation Routine
+-- Loading Screen Sequence Initialization
 task.spawn(function()
-    local fillTween = TweenService:Create(BarFill, TweenInfo.new(1.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.new(1, 0, 1, 0)})
-    fillTween:Play()
-    fillTween.Completed:Wait()
-
-    local fadeTween = TweenService:Create(LoadingFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 1})
-    TweenService:Create(LoadTitle, TWEEN_FAST, {TextTransparency = 1}):Play()
-    TweenService:Create(LoadSub, TWEEN_FAST, {TextTransparency = 1}):Play()
-    TweenService:Create(BarBg, TWEEN_FAST, {BackgroundTransparency = 1}):Play()
-    TweenService:Create(BarFill, TWEEN_FAST, {BackgroundTransparency = 1}):Play()
-    TweenService:Create(LoadingStroke, TWEEN_FAST, {Transparency = 1}):Play()
-    fadeTween:Play()
-    fadeTween.Completed:Wait()
-
+    TweenService:Create(BarFill, TweenInfo.new(1.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.new(1, 0, 1, 0)}):Play()
+    task.wait(1.3)
+    TweenService:Create(LoadingFrame, TWEEN_FAST, {BackgroundTransparency = 1}):Play()
     LoadingFrame:Destroy()
-
-    -- Pop-in Launcher Hub Window
+    
     HubFrame.Visible = true
-    HubFrame.Size = UDim2.new(0, 0, 0, 0)
-    HubFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-
-    TweenService:Create(HubFrame, TWEEN_SMOOTH, {
-        Size = UDim2.new(0, 360, 0, 290),
-        Position = UDim2.new(0.5, -180, 0.5, -145)
-    }):Play()
+    HubFrame.Size = UDim2.new(0, 360, 0, 0)
+    TweenService:Create(HubFrame, TWEEN_SMOOTH, {Size = UDim2.new(0, 360, 0, 290)}):Play()
 end)
