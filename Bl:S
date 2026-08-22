@@ -1,0 +1,1345 @@
+-- ============================================================
+-- 📜 ARK HUB - BLUE LOCK: SKIBIDI (STANDALONE MODULE)
+-- ============================================================
+
+local function getService(name)
+    local service = game:GetService(name)
+    return (cloneref and cloneref(service)) or service
+end
+
+local TweenService = getService("TweenService")
+local UserInputService = getService("UserInputService")
+local Players = getService("Players")
+local Workspace = getService("Workspace")
+local ReplicatedStorage = getService("ReplicatedStorage")
+local RunService = getService("RunService")
+local Stats = getService("Stats")
+local LocalPlayer = Players.LocalPlayer
+
+-- ธีมและค่าคงที่
+local VINTAGE_FONT = Enum.Font.SpecialElite
+local TWEEN_FAST = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local TWEEN_SMOOTH = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+
+local HUB_THEME = {
+    ACCENT = Color3.fromRGB(180, 140, 75),
+    BG = Color3.fromRGB(32, 28, 26),
+    PANEL = Color3.fromRGB(25, 22, 20),
+    BTN = Color3.fromRGB(50, 42, 38),
+    BTN_HOVER = Color3.fromRGB(70, 60, 52),
+    TEXT = Color3.fromRGB(230, 220, 200),
+    TOGGLE_OFF = Color3.fromRGB(60, 50, 45),
+    TOGGLE_ON = Color3.fromRGB(180, 140, 75)
+}
+
+-- ============================================================
+-- โมดูล BLUE LOCK: SKIBIDI
+-- ============================================================
+local function loadBlueLockSkibidi()
+    local THEME = HUB_THEME
+
+    -- Mode flags
+    local autoGkEnabled = false        -- V1
+    local autoGkV2Enabled = false      -- V2
+    local autoGkV3Enabled = false      -- V3 (auto switch)
+    local autoGkV4Enabled = false      -- V4 (adaptive low/high)
+    local currentV3Mode = 1            -- 1 = V1, 2 = V2
+    local autoGkRange = 30
+    local autoRagdollEnabled = false
+    local ragdollDuration = 0.35
+    local isRagdolling = false
+
+    local stealModeEnabled = false
+
+    -- ESP Line
+    local espLineEnabled = false
+    local espLineLength = 50
+    local espLines = {}  -- player -> {linePart, weld, character}
+
+    -- Dome visual
+    local domePart = nil
+    local setMainAutoGkToggleUI = nil
+    local setMainAutoGkV2ToggleUI = nil
+    local setMainAutoGkV3ToggleUI = nil
+    local setMainAutoGkV4ToggleUI = nil
+    local setMainStealToggleUI = nil
+    local isIconLocked = false
+    local lockIconKeybind = Enum.KeyCode.L
+    local setLockToggleUI = nil
+
+    -- V2 state machine
+    local v2State = "idle"
+    local v2FiredThisRound = false
+    local v2JumpedThisRound = false
+
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "ArkHub_BlueLockSkibidi"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Size = UDim2.new(0, 500, 0, 320)
+    MainFrame.Position = UDim2.new(0.5, -250, 0.4, -160)
+    MainFrame.BackgroundColor3 = THEME.BG
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Active = true
+    MainFrame.ClipsDescendants = true
+    MainFrame.Parent = ScreenGui
+
+    local MainCorner = Instance.new("UICorner")
+    MainCorner.CornerRadius = UDim.new(0, 6)
+    MainCorner.Parent = MainFrame
+
+    local MainStroke = Instance.new("UIStroke")
+    MainStroke.Thickness = 2
+    MainStroke.Color = THEME.ACCENT
+    MainStroke.Parent = MainFrame
+
+    local TitleBar = Instance.new("Frame")
+    TitleBar.Size = UDim2.new(1, 0, 0, 28)
+    TitleBar.BackgroundColor3 = Color3.fromRGB(18, 15, 14)
+    TitleBar.BorderSizePixel = 0
+    TitleBar.Parent = MainFrame
+
+    local TitleLabel = Instance.new("TextLabel")
+    TitleLabel.Size = UDim2.new(0.6, 0, 1, 0)
+    TitleLabel.Position = UDim2.new(0, 10, 0, 0)
+    TitleLabel.BackgroundTransparency = 1
+    TitleLabel.Text = "⚽ Ark Hub - Blue Lock:Skibidi"
+    TitleLabel.TextColor3 = THEME.ACCENT
+    TitleLabel.TextSize = 11
+    TitleLabel.Font = VINTAGE_FONT
+    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLabel.Parent = TitleBar
+
+    local MinimizeBtn = Instance.new("TextButton")
+    MinimizeBtn.Size = UDim2.new(0, 20, 0, 20)
+    MinimizeBtn.Position = UDim2.new(1, -25, 0, 4)
+    MinimizeBtn.BackgroundTransparency = 1
+    MinimizeBtn.Text = "-"
+    MinimizeBtn.TextColor3 = THEME.ACCENT
+    MinimizeBtn.Font = Enum.Font.SourceSansBold
+    MinimizeBtn.TextSize = 18
+    MinimizeBtn.Parent = TitleBar
+
+    local dragging, dragStart, startPos
+    TitleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = MainFrame.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            TweenService:Create(MainFrame, TWEEN_FAST, {Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)}):Play()
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    local isMinimized = false
+    MinimizeBtn.MouseButton1Click:Connect(function()
+        isMinimized = not isMinimized
+        TweenService:Create(MainFrame, TWEEN_SMOOTH, {Size = isMinimized and UDim2.new(0, 500, 0, 28) or UDim2.new(0, 500, 0, 320)}):Play()
+    end)
+
+    local Sidebar = Instance.new("Frame")
+    Sidebar.Size = UDim2.new(0, 130, 1, -28)
+    Sidebar.Position = UDim2.new(0, 0, 0, 28)
+    Sidebar.BackgroundColor3 = THEME.PANEL
+    Sidebar.BorderSizePixel = 0
+    Sidebar.Parent = MainFrame
+
+    local SidebarLayout = Instance.new("UIListLayout")
+    SidebarLayout.Parent = Sidebar
+    SidebarLayout.Padding = UDim.new(0, 4)
+    SidebarLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+    local SidebarPadding = Instance.new("UIPadding")
+    SidebarPadding.PaddingTop = UDim.new(0, 8)
+    SidebarPadding.Parent = Sidebar
+
+    local ContentContainer = Instance.new("Frame")
+    ContentContainer.Size = UDim2.new(1, -130, 1, -28)
+    ContentContainer.Position = UDim2.new(0, 130, 0, 28)
+    ContentContainer.BackgroundTransparency = 1
+    ContentContainer.ClipsDescendants = true
+    ContentContainer.Parent = MainFrame
+
+    local function createTabButton(name)
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0.9, 0, 0, 28)
+        btn.BackgroundColor3 = THEME.BTN
+        btn.Text = name
+        btn.TextColor3 = THEME.TEXT
+        btn.Font = VINTAGE_FONT
+        btn.TextSize = 10
+        btn.Parent = Sidebar
+
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 4)
+        corner.Parent = btn
+
+        return btn
+    end
+
+    local function createPage()
+        local page = Instance.new("ScrollingFrame")
+        page.Size = UDim2.new(1, 0, 1, 0)
+        page.BackgroundTransparency = 1
+        page.ScrollBarThickness = 3
+        page.ScrollBarImageColor3 = THEME.ACCENT
+        page.Visible = false
+        page.Parent = ContentContainer
+
+        local layout = Instance.new("UIListLayout")
+        layout.Parent = page
+        layout.Padding = UDim.new(0, 8)
+        layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+        local padding = Instance.new("UIPadding")
+        padding.PaddingTop = UDim.new(0, 8)
+        padding.Parent = page
+
+        return page
+    end
+
+    local function createInputRow(parent, labelText, defaultVal, placeholder, onChanged)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(0.92, 0, 0, 28)
+        row.BackgroundColor3 = THEME.PANEL
+        row.Parent = parent
+
+        local rCorner = Instance.new("UICorner")
+        rCorner.CornerRadius = UDim.new(0, 4)
+        rCorner.Parent = row
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0.6, 0, 1, 0)
+        label.Position = UDim2.new(0, 8, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = labelText
+        label.TextColor3 = THEME.TEXT
+        label.Font = VINTAGE_FONT
+        label.TextSize = 9
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = row
+
+        local box = Instance.new("TextBox")
+        box.Size = UDim2.new(0.35, -5, 0.7, 0)
+        box.Position = UDim2.new(0.65, 0, 0.15, 0)
+        box.BackgroundColor3 = THEME.BTN
+        box.Text = tostring(defaultVal)
+        box.PlaceholderText = placeholder
+        box.TextColor3 = THEME.TEXT
+        box.Font = Enum.Font.Code
+        box.TextSize = 9
+        box.Parent = row
+
+        local bCorner = Instance.new("UICorner")
+        bCorner.CornerRadius = UDim.new(0, 3)
+        bCorner.Parent = box
+
+        box.FocusLost:Connect(function()
+            onChanged(box.Text)
+        end)
+        return row
+    end
+
+    local function createToggleRow(parent, labelText, onChanged)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(0.92, 0, 0, 28)
+        row.BackgroundColor3 = THEME.PANEL
+        row.Parent = parent
+
+        local rCorner = Instance.new("UICorner")
+        rCorner.CornerRadius = UDim.new(0, 4)
+        rCorner.Parent = row
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0.6, 0, 1, 0)
+        label.Position = UDim2.new(0, 8, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = labelText
+        label.TextColor3 = THEME.TEXT
+        label.Font = VINTAGE_FONT
+        label.TextSize = 9
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = row
+
+        local toggleBtn = Instance.new("TextButton")
+        toggleBtn.Size = UDim2.new(0.35, -5, 0.7, 0)
+        toggleBtn.Position = UDim2.new(0.65, 0, 0.15, 0)
+        toggleBtn.BackgroundColor3 = THEME.TOGGLE_OFF
+        toggleBtn.Text = "OFF"
+        toggleBtn.TextColor3 = THEME.TEXT
+        toggleBtn.Font = VINTAGE_FONT
+        toggleBtn.TextSize = 9
+        toggleBtn.Parent = row
+
+        local tCorner = Instance.new("UICorner")
+        tCorner.CornerRadius = UDim.new(0, 3)
+        tCorner.Parent = toggleBtn
+
+        local state = false
+        local function setToggleState(newState)
+            state = newState
+            toggleBtn.Text = state and "ON" or "OFF"
+            toggleBtn.BackgroundColor3 = state and THEME.TOGGLE_ON or THEME.TOGGLE_OFF
+            toggleBtn.TextColor3 = state and Color3.fromRGB(20, 20, 20) or THEME.TEXT
+            onChanged(state)
+        end
+
+        toggleBtn.MouseButton1Click:Connect(function()
+            setToggleState(not state)
+        end)
+
+        return row, setToggleState
+    end
+
+    local TabMainBtn = createTabButton("Main")
+    local MainPage = createPage()
+
+    MainPage.Visible = true
+    TabMainBtn.BackgroundColor3 = THEME.ACCENT
+    TabMainBtn.TextColor3 = Color3.fromRGB(20, 20, 20)
+
+    -- Icon: Auto GK V1
+    local AutoGkIconBtn = Instance.new("TextButton")
+    AutoGkIconBtn.Name = "AutoGkIconBtn"
+    AutoGkIconBtn.Size = UDim2.new(0, 45, 0, 45)
+    AutoGkIconBtn.Position = UDim2.new(0.1, 0, 0.25, 0)
+    AutoGkIconBtn.BackgroundColor3 = THEME.PANEL
+    AutoGkIconBtn.Text = "⚽\nOFF"
+    AutoGkIconBtn.TextColor3 = THEME.TEXT
+    AutoGkIconBtn.Font = VINTAGE_FONT
+    AutoGkIconBtn.TextSize = 9
+    AutoGkIconBtn.Visible = false
+    AutoGkIconBtn.Active = true
+    AutoGkIconBtn.Parent = ScreenGui
+
+    local AutoGkIconCorner = Instance.new("UICorner")
+    AutoGkIconCorner.CornerRadius = UDim.new(0, 8)
+    AutoGkIconCorner.Parent = AutoGkIconBtn
+
+    local AutoGkIconStroke = Instance.new("UIStroke")
+    AutoGkIconStroke.Thickness = 2
+    AutoGkIconStroke.Color = THEME.ACCENT
+    AutoGkIconStroke.Parent = AutoGkIconBtn
+
+    -- Icon: Auto GK V2
+    local AutoGkV2IconBtn = Instance.new("TextButton")
+    AutoGkV2IconBtn.Name = "AutoGkV2IconBtn"
+    AutoGkV2IconBtn.Size = UDim2.new(0, 45, 0, 45)
+    AutoGkV2IconBtn.Position = UDim2.new(0.1, 0, 0.35, 0)
+    AutoGkV2IconBtn.BackgroundColor3 = THEME.PANEL
+    AutoGkV2IconBtn.Text = "⚽2\nOFF"
+    AutoGkV2IconBtn.TextColor3 = THEME.TEXT
+    AutoGkV2IconBtn.Font = VINTAGE_FONT
+    AutoGkV2IconBtn.TextSize = 9
+    AutoGkV2IconBtn.Visible = false
+    AutoGkV2IconBtn.Active = true
+    AutoGkV2IconBtn.Parent = ScreenGui
+
+    local AutoGkV2IconCorner = Instance.new("UICorner")
+    AutoGkV2IconCorner.CornerRadius = UDim.new(0, 8)
+    AutoGkV2IconCorner.Parent = AutoGkV2IconBtn
+
+    local AutoGkV2IconStroke = Instance.new("UIStroke")
+    AutoGkV2IconStroke.Thickness = 2
+    AutoGkV2IconStroke.Color = THEME.ACCENT
+    AutoGkV2IconStroke.Parent = AutoGkV2IconBtn
+
+    -- Icon: Auto GK V3
+    local AutoGkV3IconBtn = Instance.new("TextButton")
+    AutoGkV3IconBtn.Name = "AutoGkV3IconBtn"
+    AutoGkV3IconBtn.Size = UDim2.new(0, 45, 0, 45)
+    AutoGkV3IconBtn.Position = UDim2.new(0.1, 0, 0.45, 0)
+    AutoGkV3IconBtn.BackgroundColor3 = THEME.PANEL
+    AutoGkV3IconBtn.Text = "⚽3\n" .. currentV3Mode
+    AutoGkV3IconBtn.TextColor3 = THEME.TEXT
+    AutoGkV3IconBtn.Font = VINTAGE_FONT
+    AutoGkV3IconBtn.TextSize = 9
+    AutoGkV3IconBtn.Visible = false
+    AutoGkV3IconBtn.Active = true
+    AutoGkV3IconBtn.Parent = ScreenGui
+
+    local AutoGkV3IconCorner = Instance.new("UICorner")
+    AutoGkV3IconCorner.CornerRadius = UDim.new(0, 8)
+    AutoGkV3IconCorner.Parent = AutoGkV3IconBtn
+
+    local AutoGkV3IconStroke = Instance.new("UIStroke")
+    AutoGkV3IconStroke.Thickness = 2
+    AutoGkV3IconStroke.Color = THEME.ACCENT
+    AutoGkV3IconStroke.Parent = AutoGkV3IconBtn
+
+    -- Icon: Auto GK V4
+    local AutoGkV4IconBtn = Instance.new("TextButton")
+    AutoGkV4IconBtn.Name = "AutoGkV4IconBtn"
+    AutoGkV4IconBtn.Size = UDim2.new(0, 45, 0, 45)
+    AutoGkV4IconBtn.Position = UDim2.new(0.1, 0, 0.55, 0)
+    AutoGkV4IconBtn.BackgroundColor3 = THEME.PANEL
+    AutoGkV4IconBtn.Text = "⚽4\nOFF"
+    AutoGkV4IconBtn.TextColor3 = THEME.TEXT
+    AutoGkV4IconBtn.Font = VINTAGE_FONT
+    AutoGkV4IconBtn.TextSize = 9
+    AutoGkV4IconBtn.Visible = false
+    AutoGkV4IconBtn.Active = true
+    AutoGkV4IconBtn.Parent = ScreenGui
+
+    local AutoGkV4IconCorner = Instance.new("UICorner")
+    AutoGkV4IconCorner.CornerRadius = UDim.new(0, 8)
+    AutoGkV4IconCorner.Parent = AutoGkV4IconBtn
+
+    local AutoGkV4IconStroke = Instance.new("UIStroke")
+    AutoGkV4IconStroke.Thickness = 2
+    AutoGkV4IconStroke.Color = THEME.ACCENT
+    AutoGkV4IconStroke.Parent = AutoGkV4IconBtn
+
+    -- Icon: Steal Mode
+    local StealIconBtn = Instance.new("TextButton")
+    StealIconBtn.Name = "StealIconBtn"
+    StealIconBtn.Size = UDim2.new(0, 45, 0, 45)
+    StealIconBtn.Position = UDim2.new(0.1, 0, 0.65, 0)
+    StealIconBtn.BackgroundColor3 = THEME.PANEL
+    StealIconBtn.Text = "🥷\nOFF"
+    StealIconBtn.TextColor3 = THEME.TEXT
+    StealIconBtn.Font = VINTAGE_FONT
+    StealIconBtn.TextSize = 9
+    StealIconBtn.Visible = false
+    StealIconBtn.Active = true
+    StealIconBtn.Parent = ScreenGui
+
+    local StealIconCorner = Instance.new("UICorner")
+    StealIconCorner.CornerRadius = UDim.new(0, 8)
+    StealIconCorner.Parent = StealIconBtn
+
+    local StealIconStroke = Instance.new("UIStroke")
+    StealIconStroke.Thickness = 2
+    StealIconStroke.Color = THEME.ACCENT
+    StealIconStroke.Parent = StealIconBtn
+
+    -- FIX 1: Icon: Fire ShidouHit
+    local FireShidouIconBtn = Instance.new("TextButton")
+    FireShidouIconBtn.Name = "FireShidouIconBtn"
+    FireShidouIconBtn.Size = UDim2.new(0, 45, 0, 45)
+    FireShidouIconBtn.Position = UDim2.new(0.1, 0, 0.75, 0)
+    FireShidouIconBtn.BackgroundColor3 = THEME.PANEL
+    FireShidouIconBtn.Text = "⚡\nHit"
+    FireShidouIconBtn.TextColor3 = THEME.TEXT
+    FireShidouIconBtn.Font = VINTAGE_FONT
+    FireShidouIconBtn.TextSize = 9
+    FireShidouIconBtn.Visible = false
+    FireShidouIconBtn.Active = true
+    FireShidouIconBtn.Parent = ScreenGui
+
+    local FireShidouIconCorner = Instance.new("UICorner")
+    FireShidouIconCorner.CornerRadius = UDim.new(0, 8)
+    FireShidouIconCorner.Parent = FireShidouIconBtn
+
+    local FireShidouIconStroke = Instance.new("UIStroke")
+    FireShidouIconStroke.Thickness = 2
+    FireShidouIconStroke.Color = THEME.ACCENT
+    FireShidouIconStroke.Parent = FireShidouIconBtn
+
+    local function setupIconDragging(iconInstance)
+        local iconDrag, iconStartPos, iconDragStart
+        iconInstance.InputBegan:Connect(function(input)
+            if isIconLocked then return end
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                iconDrag = true
+                iconDragStart = input.Position
+                iconStartPos = iconInstance.Position
+            end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if isIconLocked then return end
+            if iconDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                local delta = input.Position - iconDragStart
+                iconInstance.Position = UDim2.new(iconStartPos.X.Scale, iconStartPos.X.Offset + delta.X, iconStartPos.Y.Scale, iconStartPos.Y.Offset + delta.Y)
+            end
+        end)
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                iconDrag = false
+            end
+        end)
+    end
+
+    setupIconDragging(AutoGkIconBtn)
+    setupIconDragging(AutoGkV2IconBtn)
+    setupIconDragging(AutoGkV3IconBtn)
+    setupIconDragging(AutoGkV4IconBtn)
+    setupIconDragging(StealIconBtn)
+    setupIconDragging(FireShidouIconBtn)
+
+    local function toggleLockPosition(lockedState)
+        isIconLocked = lockedState
+        local strokeColor = isIconLocked and Color3.fromRGB(220, 60, 60) or THEME.ACCENT
+        AutoGkIconStroke.Color = strokeColor
+        AutoGkV2IconStroke.Color = strokeColor
+        AutoGkV3IconStroke.Color = strokeColor
+        AutoGkV4IconStroke.Color = strokeColor
+        StealIconStroke.Color = strokeColor
+        FireShidouIconStroke.Color = strokeColor
+    end
+
+    -- Ping display
+    local PingFrame = Instance.new("Frame")
+    PingFrame.Size = UDim2.new(0, 65, 0, 20)
+    PingFrame.Position = UDim2.new(1, -75, 0, 5)
+    PingFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    PingFrame.BackgroundTransparency = 0.3
+    PingFrame.BorderSizePixel = 0
+    PingFrame.Parent = ScreenGui
+
+    local PingCorner = Instance.new("UICorner")
+    PingCorner.CornerRadius = UDim.new(0, 4)
+    PingCorner.Parent = PingFrame
+
+    local PingLabel = Instance.new("TextLabel")
+    PingLabel.Size = UDim2.new(1, 0, 1, 0)
+    PingLabel.BackgroundTransparency = 1
+    PingLabel.Text = "Ping: --"
+    PingLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    PingLabel.Font = Enum.Font.SourceSansBold
+    PingLabel.TextSize = 10
+    PingLabel.Parent = PingFrame
+
+    task.spawn(function()
+        while true do
+            local pingVal = 0
+            pcall(function()
+                pingVal = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+            end)
+            if pingVal == 0 then
+                pcall(function()
+                    pingVal = (LocalPlayer:GetNetworkPing() or 0) * 1000
+                end)
+            end
+            PingLabel.Text = "Ping: " .. math.floor(pingVal) .. " ms"
+            task.wait(0.5)
+        end
+    end)
+
+    -- Visual Dome
+    local function updateDomeVisual()
+        if autoGkEnabled or autoGkV2Enabled or autoGkV3Enabled or autoGkV4Enabled or stealModeEnabled then
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                if not domePart or not domePart.Parent then
+                    domePart = Instance.new("Part")
+                    domePart.Name = "AutoGK_DomeVisual"
+                    domePart.Shape = Enum.PartType.Ball
+                    domePart.Material = Enum.Material.ForceField
+                    domePart.Color = THEME.ACCENT
+                    domePart.Transparency = 0.5
+                    domePart.CanCollide = false
+                    domePart.Anchored = true
+                    domePart.Massless = true
+                    domePart.CastShadow = false
+                    domePart.Parent = Workspace
+                end
+                domePart.Size = Vector3.new(autoGkRange * 2, autoGkRange * 2, autoGkRange * 2)
+                domePart.CFrame = hrp.CFrame
+            end
+        else
+            if domePart then
+                domePart:Destroy()
+                domePart = nil
+            end
+        end
+    end
+
+    local function setCharacterRagdoll(char, state)
+        if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hum or not hrp then return end
+
+        if state then
+            hum:ChangeState(Enum.HumanoidStateType.Physics)
+            for _, v in pairs(char:GetDescendants()) do
+                if v:IsA("Motor6D") and v.Part0 and v.Part1 and v.Name ~= "RootJoint" then
+                    local p0, p1 = v.Part0, v.Part1
+                    local att0 = p0:FindFirstChild(v.Name .. "RagdollAtt0") or Instance.new("Attachment")
+                    att0.Name = v.Name .. "RagdollAtt0"
+                    att0.CFrame = v.C0
+                    att0.Parent = p0
+                    local att1 = p1:FindFirstChild(v.Name .. "RagdollAtt1") or Instance.new("Attachment")
+                    att1.Name = v.Name .. "RagdollAtt1"
+                    att1.CFrame = v.C1
+                    att1.Parent = p1
+                    local bs = p0:FindFirstChild(v.Name .. "RagdollConstraint") or Instance.new("BallSocketConstraint")
+                    bs.Name = v.Name .. "RagdollConstraint"
+                    bs.Attachment0 = att0
+                    bs.Attachment1 = att1
+                    bs.LimitsEnabled = true
+                    bs.TwistLimitsEnabled = true
+                    bs.UpperAngle = 45
+                    bs.TwistLowerAngle = -45
+                    bs.TwistUpperAngle = 45
+                    bs.Parent = p0
+                    v.Enabled = false
+                elseif v:IsA("BasePart") and v ~= hrp then
+                    v.CanCollide = true
+                end
+            end
+            hrp.CanCollide = false
+        else
+            for _, v in pairs(char:GetDescendants()) do
+                if v:IsA("BallSocketConstraint") and v.Name:find("RagdollConstraint") then
+                    v:Destroy()
+                elseif v:IsA("Attachment") and v.Name:find("RagdollAtt") then
+                    v:Destroy()
+                elseif v:IsA("Motor6D") then
+                    v.Enabled = true
+                elseif v:IsA("BasePart") then
+                    if v.Name == "HumanoidRootPart" then
+                        v.CanCollide = false
+                    else
+                        v.CanCollide = true
+                    end
+                    v.AssemblyLinearVelocity = Vector3.zero
+                    v.AssemblyAngularVelocity = Vector3.zero
+                end
+            end
+            hum.PlatformStand = false
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+            task.defer(function()
+                if hum and hum.Parent then
+                    hum:ChangeState(Enum.HumanoidStateType.Running)
+                end
+            end)
+        end
+    end
+
+    local function triggerRagdollSequence(char)
+        if isRagdolling or not autoRagdollEnabled or not char then return end
+        isRagdolling = true
+        setCharacterRagdoll(char, true)
+        task.delay(ragdollDuration, function()
+            if char and char.Parent then
+                setCharacterRagdoll(char, false)
+            end
+            isRagdolling = false
+        end)
+    end
+
+    local function fireBurstRemotes(gkDive, weldBall, dir, count)
+        task.spawn(function()
+            for i = 1, count or 15 do
+                if gkDive and dir then
+                    pcall(function() gkDive:FireServer(dir) end)
+                end
+                if weldBall then
+                    pcall(function() weldBall:FireServer() end)
+                end
+            end
+        end)
+    end
+
+    local function triggerStealBall(targetChar)
+        task.spawn(function()
+            local stealRemote = ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("StealBallSlide")
+            if stealRemote then
+                for i = 1, 20 do
+                    pcall(function()
+                        stealRemote:InvokeServer(targetChar)
+                    end)
+                end
+            end
+        end)
+    end
+
+    local lastBallPos = nil
+    local lastCheckTime = os.clock()
+
+    local function setStealModeState(state)
+        stealModeEnabled = state
+        StealIconBtn.Text = stealModeEnabled and "🥷\nON" or "🥷\nOFF"
+        StealIconBtn.BackgroundColor3 = stealModeEnabled and THEME.TOGGLE_ON or THEME.PANEL
+        StealIconBtn.TextColor3 = stealModeEnabled and Color3.fromRGB(20, 20, 20) or THEME.TEXT
+        updateDomeVisual()
+        if stealModeEnabled then
+            task.spawn(function()
+                while stealModeEnabled do
+                    local char = LocalPlayer.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if char and hrp then
+                        updateDomeVisual()
+                        for _, pChar in ipairs(Workspace:GetChildren()) do
+                            if pChar:IsA("Model") and pChar ~= char then
+                                local pHrp = pChar:FindFirstChild("HumanoidRootPart")
+                                if pHrp and (pHrp.Position - hrp.Position).Magnitude <= autoGkRange then
+                                    if pChar:FindFirstChild("Ball") then
+                                        triggerStealBall(pChar)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.05)
+                end
+                updateDomeVisual()
+            end)
+        end
+    end
+
+    local setAutoGkV2State
+
+    -- FIX 1: ฟังก์ชันสำหรับ Fire ShidouHit Remote โดยตรงแบบทันที
+    local function fireShidouHitDirectly()
+        task.spawn(function()
+            local ball = Workspace:FindFirstChild("Ball")
+            if ball then
+                local remote = ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("ShidouDJumpHitBall")
+                if remote then
+                    pcall(function() remote:InvokeServer(ball) end)
+                end
+            end
+        end)
+    end
+
+    -- ShidouDoubleJump
+    local function doShidouDoubleJump()
+        pcall(function()
+            local p4 = LocalPlayer
+            local char = p4.Character or p4.CharacterAdded:Wait()
+            local humanoid = char:WaitForChild("Humanoid")
+            local rootPart = char:WaitForChild("HumanoidRootPart")
+
+            humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+            task.wait(0.02)
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+
+            if ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("UI") then
+                ReplicatedStorage.Events.UI.CooldownBind:Fire("Double Jump", 4)
+            end
+
+            local anims = ReplicatedStorage:FindFirstChild("Anims") and ReplicatedStorage.Anims.Shidou.DoubleJumps:GetChildren()
+            local animTrack = nil
+            if anims and #anims > 0 then
+                local randomAnim = anims[math.random(1, #anims)]
+                animTrack = humanoid.Animator:LoadAnimation(randomAnim)
+                animTrack:Play()
+            end
+
+            if ReplicatedStorage:FindFirstChild("Events") then
+                ReplicatedStorage.Events.RandomGeneralEvent:FireServer("ShidouDoubleJump")
+                ReplicatedStorage.Events.GeneralEffectBind:Fire("ShidouDoubleJump", {["Character"] = char})
+                ReplicatedStorage.Events.DashSeqBindable:Fire("ShidouDoubleJump")
+            end
+
+            char:SetAttribute("Stunned", true)
+            char:SetAttribute("CurrentlyShidouDoubleJumping", true)
+            char:SetAttribute("CantHeader", true)
+
+            local MuchachoHitbox = require(ReplicatedStorage.Modules.MuchachoHitbox)
+            local hitbox = MuchachoHitbox.CreateHitbox()
+            hitbox.CFrame = rootPart
+            hitbox.Size = Vector3.new(13, 13, 13)
+            hitbox.DetectionMode = "HitParts"
+            hitbox.Visualizer = false
+
+            local hitBall = false
+
+            hitbox.Touched:Connect(function(part)
+                if part.Name == "Ball" and part:FindFirstChild("WeldBall") then
+                    local success = ReplicatedStorage.Events.ShidouDJumpHitBall:InvokeServer(part)
+                    if success == true then
+                        hitBall = true
+                        hitbox:Stop()
+                        if animTrack then animTrack:Stop() end
+                    end
+                end
+            end)
+
+            hitbox:Start()
+
+            task.delay(0.8, function()
+                hitbox:Stop()
+                if hitBall == false then
+                    char:SetAttribute("Stunned", false)
+                end
+            end)
+
+            task.delay(1, function()
+                char:SetAttribute("CurrentlyShidouDoubleJumping", nil)
+                char:SetAttribute("CantHeader", nil)
+            end)
+        end)
+    end
+
+    -- FIX 2: ปรับแต่งการตรวจสอบความสูงของบอล
+    -- Low = ขาลงไป (<= legY)
+    -- High = ลำตัวขึ้นไป (>= torsoY)
+    local function getBallHeightType(ball, char)
+        local legY = nil
+        local torsoY = nil
+
+        local legParts = {}
+        for _, part in ipairs(char:GetChildren()) do
+            if part:IsA("BasePart") and (part.Name:lower():find("leg") or part.Name:lower():find("foot")) then
+                table.insert(legParts, part)
+            end
+        end
+        if #legParts == 0 then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then legY = hrp.Position.Y - 2 end
+        else
+            legY = legParts[1].Position.Y
+            for _, p in ipairs(legParts) do
+                if p.Position.Y < legY then legY = p.Position.Y end
+            end
+        end
+
+        local torsoPart = nil
+        for _, part in ipairs(char:GetChildren()) do
+            if part:IsA("BasePart") and part.Name:lower():find("torso") then
+                torsoPart = part
+                break
+            end
+        end
+        if torsoPart then
+            torsoY = torsoPart.Position.Y
+        else
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then torsoY = hrp.Position.Y + 1 end
+        end
+
+        if not legY or not torsoY then
+            return "low"
+        end
+
+        local ballY = ball.Position.Y
+        
+        -- ตรวจสอบเงื่อนไขตาม Leg / Torso
+        if ballY <= legY then
+            return "low"
+        elseif ballY >= torsoY then
+            return "high"
+        else
+            -- กรณีอยู่ระหว่างกึ่งกลางขาและลำตัว
+            local mid = (legY + torsoY) / 2
+            if ballY <= mid then
+                return "low"
+            else
+                return "high"
+            end
+        end
+    end
+
+    local function performAutoGkAction(mode)
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not char or not hrp then return end
+
+        updateDomeVisual()
+
+        if autoRagdollEnabled and not isRagdolling and char:FindFirstChild("Ball") then
+            triggerRagdollSequence(char)
+        end
+
+        if mode == 1 then
+            -- V1
+            for _, pChar in ipairs(Workspace:GetChildren()) do
+                if pChar:IsA("Model") and pChar ~= char then
+                    local pHrp = pChar:FindFirstChild("HumanoidRootPart")
+                    if pHrp and (pHrp.Position - hrp.Position).Magnitude <= autoGkRange then
+                        local playerBall = pChar:FindFirstChild("Ball")
+                        if playerBall then
+                            local weldBall = playerBall:FindFirstChild("WeldBall") or playerBall:FindFirstChildWhichIsA("RemoteEvent", true)
+                            fireBurstRemotes(nil, weldBall, nil, 20)
+                        end
+                    end
+                end
+            end
+
+            for _, obj in ipairs(Workspace:GetChildren()) do
+                if obj.Name == "Ball" and obj:IsA("BasePart") then
+                    local now = os.clock()
+                    local dt = math.max(now - lastCheckTime, 0.001)
+                    local ballPos = obj.Position
+                    local ballVel = obj.AssemblyLinearVelocity
+                    if ballVel.Magnitude < 1 and lastBallPos then
+                        ballVel = (ballPos - lastBallPos) / dt
+                    end
+                    lastBallPos = ballPos
+                    lastCheckTime = now
+
+                    local currentDist = (ballPos - hrp.Position).Magnitude
+                    local predictedPos = ballPos + (ballVel * 0.15) + (0.5 * obj.AssemblyAngularVelocity * dt)
+                    local predictedDist = (predictedPos - hrp.Position).Magnitude
+
+                    if currentDist <= autoGkRange or predictedDist <= (autoGkRange * 1.25) then
+                        local gkEvents = ReplicatedStorage:FindFirstChild("Events")
+                        local gkDive = gkEvents and gkEvents:FindFirstChild("GKDive")
+                        local weldBall = obj:FindFirstChild("WeldBall") or obj:FindFirstChildWhichIsA("RemoteEvent", true)
+
+                        local localLookPos = hrp.CFrame:PointToObjectSpace(ballPos)
+                        local targetDir = "Forward"
+                        if math.abs(localLookPos.X) <= 3.8 or localLookPos.Y > 1.5 then
+                            targetDir = "Forward"
+                        elseif localLookPos.X < -3.8 then
+                            targetDir = "Left"
+                        else
+                            targetDir = "Right"
+                        end
+
+                        fireBurstRemotes(gkDive, weldBall, targetDir, currentDist <= 12 and 25 or 12)
+                    end
+                end
+            end
+        elseif mode == 2 then
+            -- V2
+            local ball = Workspace:FindFirstChild("Ball")
+            
+            local isOwnedByUs = char:FindFirstChild("Ball") or (ball and ball:IsDescendantOf(char))
+            
+            if isOwnedByUs then
+                setAutoGkV2State(false)
+                if setMainAutoGkV2ToggleUI then setMainAutoGkV2ToggleUI(false) end
+                v2State = "idle"
+                v2FiredThisRound = false
+                v2JumpedThisRound = false
+                return
+            end
+
+            if not ball or not ball:IsA("BasePart") then
+                v2State = "idle"
+                v2FiredThisRound = false
+                v2JumpedThisRound = false
+                return
+            end
+
+            local ballPos = ball.Position
+            local ballVel = ball.AssemblyLinearVelocity
+            local dist = (ballPos - hrp.Position).Magnitude
+            
+            local fastPredictedPos = ballPos + (ballVel * 0.12)
+            local fastPredictedDist = (fastPredictedPos - hrp.Position).Magnitude
+
+            if dist <= autoGkRange or fastPredictedDist <= autoGkRange then
+                if not v2FiredThisRound then
+                    v2FiredThisRound = true
+                    
+                    if not v2JumpedThisRound then
+                        v2JumpedThisRound = true
+                        task.spawn(doShidouDoubleJump)
+                    end
+
+                    task.spawn(function()
+                        local remote = ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("ShidouDJumpHitBall")
+                        if remote then
+                            pcall(function() remote:InvokeServer(ball) end)
+                        end
+                    end)
+                end
+            else
+                if v2State ~= "idle" then
+                    v2State = "idle"
+                    v2FiredThisRound = false
+                    v2JumpedThisRound = false
+                end
+            end
+        elseif mode == 4 then
+            -- FIX 2: V4 Adaptive (Low = V1, High = V2)
+            local ball = Workspace:FindFirstChild("Ball")
+            if ball and ball:IsA("BasePart") then
+                local heightType = getBallHeightType(ball, char)
+                if heightType == "low" then
+                    return performAutoGkAction(1) -- Low = V1
+                else
+                    return performAutoGkAction(2) -- High = V2
+                end
+            end
+        end
+    end
+
+    local autoGkLoopRunning = false
+    local function ensureAutoGkLoop()
+        if autoGkLoopRunning then return end
+        autoGkLoopRunning = true
+        task.spawn(function()
+            while autoGkEnabled or autoGkV2Enabled or autoGkV3Enabled or autoGkV4Enabled do
+                local mode = nil
+                if autoGkV4Enabled then
+                    mode = 4
+                elseif autoGkV3Enabled then
+                    mode = currentV3Mode
+                elseif autoGkV2Enabled then
+                    mode = 2
+                elseif autoGkEnabled then
+                    mode = 1
+                end
+                if mode then
+                    performAutoGkAction(mode)
+                end
+                RunService.PreRender:Wait()
+            end
+            autoGkLoopRunning = false
+            updateDomeVisual()
+        end)
+    end
+
+    local function setAutoGkState(state)
+        autoGkEnabled = state
+        AutoGkIconBtn.Text = autoGkEnabled and "⚽\nON" or "⚽\nOFF"
+        AutoGkIconBtn.BackgroundColor3 = autoGkEnabled and THEME.TOGGLE_ON or THEME.PANEL
+        AutoGkIconBtn.TextColor3 = autoGkEnabled and Color3.fromRGB(20, 20, 20) or THEME.TEXT
+        updateDomeVisual()
+        ensureAutoGkLoop()
+    end
+
+    setAutoGkV2State = function(state)
+        autoGkV2Enabled = state
+        AutoGkV2IconBtn.Text = autoGkV2Enabled and "⚽2\nON" or "⚽2\nOFF"
+        AutoGkV2IconBtn.BackgroundColor3 = autoGkV2Enabled and THEME.TOGGLE_ON or THEME.PANEL
+        AutoGkV2IconBtn.TextColor3 = autoGkV2Enabled and Color3.fromRGB(20, 20, 20) or THEME.TEXT
+        if not state then
+            v2State = "idle"
+            v2FiredThisRound = false
+            v2JumpedThisRound = false
+        end
+        updateDomeVisual()
+        ensureAutoGkLoop()
+    end
+
+    local function setAutoGkV3State(state)
+        autoGkV3Enabled = state
+        AutoGkV3IconBtn.Text = autoGkV3Enabled and "⚽3\n" .. currentV3Mode or "⚽3\nOFF"
+        AutoGkV3IconBtn.BackgroundColor3 = autoGkV3Enabled and THEME.TOGGLE_ON or THEME.PANEL
+        AutoGkV3IconBtn.TextColor3 = autoGkV3Enabled and Color3.fromRGB(20, 20, 20) or THEME.TEXT
+        updateDomeVisual()
+        ensureAutoGkLoop()
+    end
+
+    local function setAutoGkV4State(state)
+        autoGkV4Enabled = state
+        AutoGkV4IconBtn.Text = autoGkV4Enabled and "⚽4\nON" or "⚽4\nOFF"
+        AutoGkV4IconBtn.BackgroundColor3 = autoGkV4Enabled and THEME.TOGGLE_ON or THEME.PANEL
+        AutoGkV4IconBtn.TextColor3 = autoGkV4Enabled and Color3.fromRGB(20, 20, 20) or THEME.TEXT
+        if not state then
+            v2State = "idle"
+            v2FiredThisRound = false
+            v2JumpedThisRound = false
+        end
+        updateDomeVisual()
+        ensureAutoGkLoop()
+    end
+
+    local function connectOwnershipWatcher(char)
+        char.ChildAdded:Connect(function(child)
+            if child.Name == "Ball" then
+                if autoGkV2Enabled then
+                    setAutoGkV2State(false)
+                    if setMainAutoGkV2ToggleUI then setMainAutoGkV2ToggleUI(false) end
+                end
+                if autoGkV3Enabled then
+                    currentV3Mode = (currentV3Mode == 1) and 2 or 1
+                    AutoGkV3IconBtn.Text = "⚽3\n" .. currentV3Mode
+                end
+            end
+        end)
+    end
+
+    LocalPlayer.CharacterAdded:Connect(function(char)
+        connectOwnershipWatcher(char)
+    end)
+    if LocalPlayer.Character then
+        connectOwnershipWatcher(LocalPlayer.Character)
+    end
+
+    -- Click handlers for icons
+    AutoGkIconBtn.MouseButton1Click:Connect(function()
+        local newState = not autoGkEnabled
+        setAutoGkState(newState)
+        if setMainAutoGkToggleUI then setMainAutoGkToggleUI(newState) end
+    end)
+
+    AutoGkV2IconBtn.MouseButton1Click:Connect(function()
+        local newState = not autoGkV2Enabled
+        setAutoGkV2State(newState)
+        if setMainAutoGkV2ToggleUI then setMainAutoGkV2ToggleUI(newState) end
+    end)
+
+    AutoGkV3IconBtn.MouseButton1Click:Connect(function()
+        local newState = not autoGkV3Enabled
+        setAutoGkV3State(newState)
+        if setMainAutoGkV3ToggleUI then setMainAutoGkV3ToggleUI(newState) end
+    end)
+
+    AutoGkV4IconBtn.MouseButton1Click:Connect(function()
+        local newState = not autoGkV4Enabled
+        setAutoGkV4State(newState)
+        if setMainAutoGkV4ToggleUI then setMainAutoGkV4ToggleUI(newState) end
+    end)
+
+    StealIconBtn.MouseButton1Click:Connect(function()
+        local newState = not stealModeEnabled
+        setStealModeState(newState)
+        if setMainStealToggleUI then setMainStealToggleUI(newState) end
+    end)
+
+    -- FIX 1: Click Event สำหรับ Fire ShidouHit Icon
+    FireShidouIconBtn.MouseButton1Click:Connect(function()
+        fireShidouHitDirectly()
+    end)
+
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if not gameProcessed and input.KeyCode == lockIconKeybind then
+            local newState = not isIconLocked
+            toggleLockPosition(newState)
+            if setLockToggleUI then setLockToggleUI(newState) end
+        end
+    end)
+
+    -- สร้าง UI Toggle ต่าง ๆ
+    local _, setGkToggle = createToggleRow(MainPage, "Auto GK V1 Toggle:", function(state)
+        setAutoGkState(state)
+    end)
+    setMainAutoGkToggleUI = setGkToggle
+
+    local _, setGkV2Toggle = createToggleRow(MainPage, "Auto GK V2 Toggle:", function(state)
+        setAutoGkV2State(state)
+    end)
+    setMainAutoGkV2ToggleUI = setGkV2Toggle
+
+    local _, setGkV3Toggle = createToggleRow(MainPage, "Auto GK V3 Toggle:", function(state)
+        setAutoGkV3State(state)
+    end)
+    setMainAutoGkV3ToggleUI = setGkV3Toggle
+
+    local _, setGkV4Toggle = createToggleRow(MainPage, "Auto GK V4 Toggle:", function(state)
+        setAutoGkV4State(state)
+    end)
+    setMainAutoGkV4ToggleUI = setGkV4Toggle
+
+    local _, setStealToggle = createToggleRow(MainPage, "Steal Mode Toggle:", function(state)
+        setStealModeState(state)
+    end)
+    setMainStealToggleUI = setStealToggle
+
+    createInputRow(MainPage, "Auto GK / Steal Range:", autoGkRange, "Range", function(val)
+        local num = tonumber(val)
+        if num and num > 0 then
+            autoGkRange = num
+            if domePart then
+                domePart.Size = Vector3.new(autoGkRange * 2, autoGkRange * 2, autoGkRange * 2)
+            end
+        end
+    end)
+
+    createToggleRow(MainPage, "Auto Ragdoll On Ball:", function(state)
+        autoRagdollEnabled = state
+    end)
+
+    createInputRow(MainPage, "Ragdoll Duration (Sec):", ragdollDuration, "Sec", function(val)
+        local num = tonumber(val)
+        if num and num >= 0 then
+            ragdollDuration = num
+        end
+    end)
+
+    createToggleRow(MainPage, "Auto GK V1 Icon Keybind:", function(state)
+        AutoGkIconBtn.Visible = state
+    end)
+
+    createToggleRow(MainPage, "Auto GK V2 Icon Keybind:", function(state)
+        AutoGkV2IconBtn.Visible = state
+    end)
+
+    createToggleRow(MainPage, "Auto GK V3 Icon Keybind:", function(state)
+        AutoGkV3IconBtn.Visible = state
+    end)
+
+    createToggleRow(MainPage, "Auto GK V4 Icon Keybind:", function(state)
+        AutoGkV4IconBtn.Visible = state
+    end)
+
+    createToggleRow(MainPage, "Steal Mode Icon Keybind:", function(state)
+        StealIconBtn.Visible = state
+    end)
+
+    -- FIX 1: เพิ่ม Toggle เปิด/ปิด Icon Fire ShidouHit ใน UI
+    createToggleRow(MainPage, "Fire ShidouHit Icon Keybind:", function(state)
+        FireShidouIconBtn.Visible = state
+    end)
+
+    local _, setLockToggle = createToggleRow(MainPage, "Lock Icons Position:", function(state)
+        toggleLockPosition(state)
+    end)
+    setLockToggleUI = setLockToggle
+
+    -- Lock keybind row
+    local LockKeybindRow = Instance.new("Frame")
+    LockKeybindRow.Size = UDim2.new(0.92, 0, 0, 28)
+    LockKeybindRow.BackgroundColor3 = THEME.PANEL
+    LockKeybindRow.Parent = MainPage
+
+    local LockKeyCorner = Instance.new("UICorner")
+    LockKeyCorner.CornerRadius = UDim.new(0, 4)
+    LockKeyCorner.Parent = LockKeybindRow
+
+    local LockKeyLabel = Instance.new("TextLabel")
+    LockKeyLabel.Size = UDim2.new(0.6, 0, 1, 0)
+    LockKeyLabel.Position = UDim2.new(0, 8, 0, 0)
+    LockKeyLabel.BackgroundTransparency = 1
+    LockKeyLabel.Text = "Lock Icon Keybind:"
+    LockKeyLabel.TextColor3 = THEME.TEXT
+    LockKeyLabel.Font = VINTAGE_FONT
+    LockKeyLabel.TextSize = 9
+    LockKeyLabel.TextXAlignment = Enum.TextXAlignment.Left
+    LockKeyLabel.Parent = LockKeybindRow
+
+    local LockKeyBtn = Instance.new("TextButton")
+    LockKeyBtn.Size = UDim2.new(0.35, -5, 0.7, 0)
+    LockKeyBtn.Position = UDim2.new(0.65, 0, 0.15, 0)
+    LockKeyBtn.BackgroundColor3 = THEME.BTN
+    LockKeyBtn.Text = "L"
+    LockKeyBtn.TextColor3 = THEME.ACCENT
+    LockKeyBtn.Font = VINTAGE_FONT
+    LockKeyBtn.TextSize = 9
+    LockKeyBtn.Parent = LockKeybindRow
+
+    local LockKeyBtnCorner = Instance.new("UICorner")
+    LockKeyBtnCorner.CornerRadius = UDim.new(0, 3)
+    LockKeyBtnCorner.Parent = LockKeyBtn
+
+    local listeningForLockKey = false
+    LockKeyBtn.MouseButton1Click:Connect(function()
+        listeningForLockKey = true
+        LockKeyBtn.Text = "..."
+    end)
+
+    UserInputService.InputBegan:Connect(function(input)
+        if listeningForLockKey and input.UserInputType == Enum.UserInputType.Keyboard then
+            lockIconKeybind = input.KeyCode
+            LockKeyBtn.Text = input.KeyCode.Name
+            listeningForLockKey = false
+        end
+    end)
+
+    -- ESP Line
+    local function createEspLine(player)
+        if espLines[player] then
+            local existing = espLines[player]
+            if existing.character ~= player.Character then
+                if existing.linePart then existing.linePart:Destroy() end
+                espLines[player] = nil
+            else
+                return
+            end
+        end
+
+        local character = player.Character
+        if not character then return end
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+
+        local linePart = Instance.new("Part")
+        linePart.Name = "EspLine_" .. player.Name
+        linePart.Size = Vector3.new(0.2, 0.2, espLineLength)
+        linePart.Material = Enum.Material.Neon
+        linePart.Color = Color3.fromRGB(255, 0, 0)
+        linePart.CanCollide = false
+        linePart.Anchored = true
+        linePart.CastShadow = false
+        linePart.Parent = Workspace
+
+        linePart.CFrame = hrp.CFrame * CFrame.new(0, 0, -espLineLength / 2)
+
+        local weld = Instance.new("WeldConstraint")
+        weld.Part0 = hrp
+        weld.Part1 = linePart
+        weld.C0 = CFrame.new(0, 0, -espLineLength / 2)
+        weld.Parent = linePart
+
+        espLines[player] = {
+            linePart = linePart,
+            weld = weld,
+            character = character
+        }
+    end
+
+    local function removeEspLine(player)
+        local data = espLines[player]
+        if data then
+            if data.linePart then data.linePart:Destroy() end
+            espLines[player] = nil
+        end
+    end
+
+    local function updateEspLines()
+        local localTeam = LocalPlayer.Team
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                local isEnemy = true
+                if localTeam and player.Team then
+                    isEnemy = (player.Team ~= localTeam)
+                end
+                if isEnemy and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    createEspLine(player)
+                else
+                    removeEspLine(player)
+                end
+            end
+        end
+        for player, _ in pairs(espLines) do
+            if not Players:GetPlayers()[player] then
+                removeEspLine(player)
+            end
+        end
+    end
+
+    local function setEspLineState(state)
+        espLineEnabled = state
+        if not espLineEnabled then
+            for player, data in pairs(espLines) do
+                if data.linePart then data.linePart:Destroy() end
+            end
+            espLines = {}
+        end
+    end
+
+    createToggleRow(MainPage, "ESP Line Toggle:", function(state)
+        setEspLineState(state)
+    end)
+
+    createInputRow(MainPage, "ESP Line Length:", espLineLength, "Length", function(val)
+        local num = tonumber(val)
+        if num and num > 0 then
+            espLineLength = num
+            for player, data in pairs(espLines) do
+                data.linePart.Size = Vector3.new(0.2, 0.2, espLineLength)
+                data.weld.C0 = CFrame.new(0, 0, -espLineLength / 2)
+            end
+        end
+    end)
+
+    task.spawn(function()
+        while true do
+            if espLineEnabled then
+                updateEspLines()
+            end
+            task.wait(0.5)
+        end
+    end)
+
+    Players.PlayerRemoving:Connect(function(player)
+        removeEspLine(player)
+    end)
+end
+
+-- ============================================================
+-- เรียกใช้งานทันที
+-- ============================================================
+loadBlueLockSkibidi()
