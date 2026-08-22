@@ -1212,6 +1212,7 @@ local function loadBlueLockSkibidi()
     local ragdollDuration = 0.35
     local isRagdolling = false
 
+    -- Steal Mode Variable Global Controls
     local stealModeEnabled = false
 
     local domePart = nil
@@ -1482,7 +1483,7 @@ local function loadBlueLockSkibidi()
     AutoGkIconStroke.Color = THEME.ACCENT
     AutoGkIconStroke.Parent = AutoGkIconBtn
 
-    -- Mobile Keybind Icon (Steal Mode)
+    -- Mobile Keybind Icon (Steal Mode) [NEW ITEM 1]
     local StealIconBtn = Instance.new("TextButton")
     StealIconBtn.Name = "StealIconBtn"
     StealIconBtn.Size = UDim2.new(0, 45, 0, 45)
@@ -1569,107 +1570,69 @@ local function loadBlueLockSkibidi()
         end
     end
 
-    -- =================================================================
-    -- FIXED RAGDOLL LOGIC (Ball-safe)
-    -- =================================================================
-    local ballBackup = nil -- เก็บข้อมูล Ball ตอน ragdoll
-
-    local function setRagdoll(char, state)
+    local function setCharacterRagdoll(char, state)
         if not char then return end
         local hum = char:FindFirstChildOfClass("Humanoid")
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if not hum or not root then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
 
-        -- Collect joints & parts
-        local joints, parts = {}, {}
-        for _,v in pairs(char:GetDescendants()) do
-            if v:IsA("Motor6D") and v.Part0 and v.Part1 and v.Name ~= "RootJoint" then
-                table.insert(joints, v)
-            end
-            if v:IsA("BasePart") and v.Name ~= "HumanoidRootPart" then
-                table.insert(parts, v)
-            end
-        end
-
-        for _,p in pairs(parts) do
-            -- Head and Torso always collide to avoid ground clipping
-            if p.Name == "Head" or p.Name == "Torso" or p.Name == "UpperTorso" then
-                p.CanCollide = true
-            else
-                p.CanCollide = not state
-            end
-        end
-
-        -- จัดการ Ball: ถ้า state = true ให้ disable collision และ save ค่าเดิม
-        local ball = char:FindFirstChild("Ball")
-        if ball and ball:IsA("BasePart") then
-            if state then
-                ballBackup = {
-                    CanCollide = ball.CanCollide,
-                    Anchored = ball.Anchored,
-                    CFrame = ball.CFrame
-                }
-                ball.CanCollide = false
-                ball.Anchored = false
-            else
-                if ballBackup then
-                    ball.CanCollide = ballBackup.CanCollide
-                    ball.Anchored = ballBackup.Anchored
-                    ball.CFrame = ballBackup.CFrame
-                    ballBackup = nil
-                end
-            end
-        end
-
-        for _,j in pairs(joints) do
-            if state then
-                if not j.Part0:FindFirstChild("RagdollConstraint_"..j.Name) then
-                    local a0, a1 = j.C0, j.C1
-                    local p0, p1 = j.Part0, j.Part1
-
-                    local att0 = Instance.new("Attachment", p0)
-                    local att1 = Instance.new("Attachment", p1)
-                    att0.CFrame = a0
-                    att1.CFrame = a1
-
-                    local bs = Instance.new("BallSocketConstraint")
-                    bs.Name = "RagdollConstraint_"..j.Name
-                    bs.Attachment0 = att0
-                    bs.Attachment1 = att1
-                    bs.LimitsEnabled = true
-                    bs.TwistLimitsEnabled = false
-                    bs.UpperAngle = 90
-                    bs.Parent = p0
-
-                    j.Enabled = false
-                end
-            else
-                for _,child in pairs(j.Part0:GetChildren()) do
-                    if child:IsA("BallSocketConstraint") and child.Name:find("RagdollConstraint") then 
-                        child:Destroy() 
-                    end
-                end
-                for _,p in pairs({j.Part0, j.Part1}) do
-                    for _,a in pairs(p:GetChildren()) do
-                        if a:IsA("Attachment") and not a.Name:find("Original") then 
-                            a:Destroy() 
-                        end
-                    end
-                end
-                j.Enabled = true
-            end
-        end
-
-        -- Reset velocities เพื่อกันบัค
-        for _,p in pairs(parts) do
-            p.AssemblyLinearVelocity = Vector3.zero
-            p.AssemblyAngularVelocity = Vector3.zero
-        end
+        if not hum or not hrp then return end
 
         if state then
             hum:ChangeState(Enum.HumanoidStateType.Physics)
+            
+            for _, v in pairs(char:GetDescendants()) do
+                if v:IsA("Motor6D") and v.Part0 and v.Part1 and v.Name ~= "RootJoint" then
+                    local p0, p1 = v.Part0, v.Part1
+                    
+                    local att0 = p0:FindFirstChild(v.Name .. "RagdollAtt0") or Instance.new("Attachment")
+                    att0.Name = v.Name .. "RagdollAtt0"
+                    att0.CFrame = v.C0
+                    att0.Parent = p0
+
+                    local att1 = p1:FindFirstChild(v.Name .. "RagdollAtt1") or Instance.new("Attachment")
+                    att1.Name = v.Name .. "RagdollAtt1"
+                    att1.CFrame = v.C1
+                    att1.Parent = p1
+
+                    local bs = p0:FindFirstChild(v.Name .. "RagdollConstraint") or Instance.new("BallSocketConstraint")
+                    bs.Name = v.Name .. "RagdollConstraint"
+                    bs.Attachment0 = att0
+                    bs.Attachment1 = att1
+                    bs.LimitsEnabled = true
+                    bs.TwistLimitsEnabled = true
+                    bs.UpperAngle = 45
+                    bs.TwistLowerAngle = -45
+                    bs.TwistUpperAngle = 45
+                    bs.Parent = p0
+
+                    v.Enabled = false
+                elseif v:IsA("BasePart") and v ~= hrp then
+                    v.CanCollide = true
+                end
+            end
+            hrp.CanCollide = false
         else
+            for _, v in pairs(char:GetDescendants()) do
+                if v:IsA("BallSocketConstraint") and v.Name:find("RagdollConstraint") then
+                    v:Destroy()
+                elseif v:IsA("Attachment") and v.Name:find("RagdollAtt") then
+                    v:Destroy()
+                elseif v:IsA("Motor6D") then
+                    v.Enabled = true
+                elseif v:IsA("BasePart") then
+                    if v.Name == "HumanoidRootPart" then
+                        v.CanCollide = false
+                    else
+                        v.CanCollide = true
+                    end
+                    v.AssemblyLinearVelocity = Vector3.zero
+                    v.AssemblyAngularVelocity = Vector3.zero
+                end
+            end
+
+            hum.PlatformStand = false
             hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+            
             task.defer(function()
                 if hum and hum.Parent then
                     hum:ChangeState(Enum.HumanoidStateType.Running)
@@ -1678,42 +1641,20 @@ local function loadBlueLockSkibidi()
         end
     end
 
-    -- Helper: trigger ragdoll via attribute (true then false after duration)
-    local function triggerRagdollWithAttribute(char)
+    local function triggerRagdollSequence(char)
         if isRagdolling or not autoRagdollEnabled or not char then return end
         isRagdolling = true
-        char:SetAttribute("Ragdoll", true)
+
+        setCharacterRagdoll(char, true)
+
         task.delay(ragdollDuration, function()
             if char and char.Parent then
-                char:SetAttribute("Ragdoll", false)
-                setRagdoll(char, false) -- เรียกตรงเพื่อความชัวร์
+                setCharacterRagdoll(char, false)
             end
             isRagdolling = false
         end)
     end
 
-    -- Connect attribute changed for each character spawn
-    local function setupRagdollAttribute(char)
-        char:SetAttribute("Ragdoll", false)
-        char:GetAttributeChangedSignal("Ragdoll"):Connect(function()
-            local state = char:GetAttribute("Ragdoll") or false
-            setRagdoll(char, state)
-        end)
-    end
-
-    -- Handle character added
-    if LocalPlayer.Character then
-        setupRagdollAttribute(LocalPlayer.Character)
-    end
-    LocalPlayer.CharacterAdded:Connect(function(char)
-        setupRagdollAttribute(char)
-    end)
-
-    -- =================================================================
-    -- END FIXED RAGDOLL LOGIC
-    -- =================================================================
-
-    -- ฟังก์ชันยิง Remote แบบเร็ว + random delay (กัน suspicious)
     local function fireBurstRemotes(gkDive, weldBall, dir, count)
         task.spawn(function()
             for i = 1, count or 15 do
@@ -1723,13 +1664,11 @@ local function loadBlueLockSkibidi()
                 if weldBall then
                     pcall(function() weldBall:FireServer() end)
                 end
-                -- สุ่ม delay ระหว่าง 0.01 ถึง 0.03 วินาที
-                task.wait(math.random(10, 30) / 1000)
             end
         end)
     end
 
-    -- [ITEM 2] Steal Ball Fire Remote Burst Loop Function
+    -- [NEW ITEM 2] Steal Ball Fire Remote Burst Loop Function
     local function triggerStealBall(targetChar)
         task.spawn(function()
             local stealRemote = ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("StealBallSlide")
@@ -1738,14 +1677,12 @@ local function loadBlueLockSkibidi()
                     pcall(function()
                         stealRemote:InvokeServer(targetChar)
                     end)
-                    task.wait(math.random(5, 15) / 1000)
                 end
             end
         end)
     end
 
     local lastBallPos = nil
-    local lastBallVel = nil
     local lastCheckTime = os.clock()
 
     -- Steal Mode System Switcher
@@ -1765,6 +1702,7 @@ local function loadBlueLockSkibidi()
 
                     if char and hrp then
                         updateDomeVisual()
+                        -- [ITEM 2] Check Players within Auto GK Range having "Ball" -> Loop Fire + Burst
                         for _, pChar in ipairs(Workspace:GetChildren()) do
                             if pChar:IsA("Model") and pChar ~= char then
                                 local pHrp = pChar:FindFirstChild("HumanoidRootPart")
@@ -1802,10 +1740,9 @@ local function loadBlueLockSkibidi()
 
                         local myBall = char:FindFirstChild("Ball")
                         if myBall and autoRagdollEnabled and not isRagdolling then
-                            triggerRagdollWithAttribute(char)
+                            triggerRagdollSequence(char)
                         end
 
-                        -- ยิงใส่ผู้เล่นที่มีบอลในระยะ
                         for _, pChar in ipairs(Workspace:GetChildren()) do
                             if pChar:IsA("Model") and pChar ~= char then
                                 local pHrp = pChar:FindFirstChild("HumanoidRootPart")
@@ -1819,38 +1756,29 @@ local function loadBlueLockSkibidi()
                             end
                         end
 
-                        -- ตรวจลูกบอลอิสระ (ในสนาม)
                         for _, obj in ipairs(Workspace:GetChildren()) do
                             if obj.Name == "Ball" and obj:IsA("BasePart") then
                                 local now = os.clock()
                                 local dt = math.max(now - lastCheckTime, 0.001)
                                 local ballPos = obj.Position
+                                
                                 local ballVel = obj.AssemblyLinearVelocity
-
-                                -- คำนวณความเร่งโดยประมาณจากความเร็วเก่า
-                                local accel = Vector3.zero
-                                if lastBallVel and dt > 0 then
-                                    accel = (ballVel - lastBallVel) / dt
+                                if ballVel.Magnitude < 1 and lastBallPos then
+                                    ballVel = (ballPos - lastBallPos) / dt
                                 end
-
-                                -- ทำนายตำแหน่งใน 0.2 วินาทีข้างหน้า
-                                local predictTime = 0.2
-                                local predictedPos = ballPos + ballVel * predictTime + 0.5 * accel * predictTime * predictTime
+                                lastBallPos = ballPos
+                                lastCheckTime = now
 
                                 local currentDist = (ballPos - hrp.Position).Magnitude
+                                local predictedPos = ballPos + (ballVel * 0.15) + (0.5 * obj.AssemblyAngularVelocity * dt)
                                 local predictedDist = (predictedPos - hrp.Position).Magnitude
-
-                                lastBallPos = ballPos
-                                lastBallVel = ballVel
-                                lastCheckTime = now
 
                                 if currentDist <= autoGkRange or predictedDist <= (autoGkRange * 1.25) then
                                     local gkEvents = ReplicatedStorage:FindFirstChild("Events")
                                     local gkDive = gkEvents and gkEvents:FindFirstChild("GKDive")
                                     local weldBall = obj:FindFirstChild("WeldBall") or obj:FindFirstChildWhichIsA("RemoteEvent", true)
 
-                                    -- หาทิศทางที่ควรพุ่ง
-                                    local localLookPos = hrp.CFrame:PointToObjectSpace(predictedPos) -- ใช้ predictedPos
+                                    local localLookPos = hrp.CFrame:PointToObjectSpace(ballPos)
                                     local targetDir = "Forward"
 
                                     if math.abs(localLookPos.X) <= 3.8 or localLookPos.Y > 1.5 then
@@ -1861,14 +1789,12 @@ local function loadBlueLockSkibidi()
                                         targetDir = "Right"
                                     end
 
-                                    -- ยิงจำนวนครั้งตามระยะใกล้/ไกล
-                                    local burstCount = currentDist <= 12 and 25 or 12
-                                    fireBurstRemotes(gkDive, weldBall, targetDir, burstCount)
+                                    fireBurstRemotes(gkDive, weldBall, targetDir, currentDist <= 12 and 25 or 12)
                                 end
                             end
                         end
                     end
-                    RunService.PreRender:Wait() -- เร็วที่สุดโดยไม่ทำให้ loop ค้าง
+                    RunService.PreRender:Wait()
                 end
                 updateDomeVisual()
             end)
@@ -1901,6 +1827,7 @@ local function loadBlueLockSkibidi()
     end)
     setMainAutoGkToggleUI = setGkToggle
 
+    -- [NEW ITEM 1] UI Toggle for Steal Mode
     local _, setStealToggle = createToggleRow(MainPage, "Steal Mode Toggle:", function(state)
         setStealModeState(state)
     end)
@@ -1931,6 +1858,7 @@ local function loadBlueLockSkibidi()
         AutoGkIconBtn.Visible = state
     end)
 
+    -- [NEW ITEM 1] Toggle "Steal Mode icon Keybind"
     createToggleRow(MainPage, "Steal Mode Icon Keybind:", function(state)
         StealIconBtn.Visible = state
     end)
