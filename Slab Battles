@@ -10,19 +10,13 @@ end
 
 game:GetService("GuiService"):ClearError()
 
--- โหลด WindUI Library
-local WindUI
-do
-    local ok, result = pcall(function()
-        return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
-    end)
-    
-    if ok then
-        WindUI = result
-    else
-        warn("ไม่สามารถโหลด WindUI ได้")
-        return
-    end
+-- โหลด WindUI Library (using shared loader)
+local WindUILoader = require(script.Parent.shared.WindUILoader)
+local PlayerUtils = require(script.Parent.shared.PlayerUtils)
+local WindUI = WindUILoader.load()
+if not WindUI then
+    warn("ไม่สามารถโหลด WindUI ได้")
+    return
 end
 
 -- ตรวจสอบ PlaceID

@@ -19,22 +19,15 @@ local Workspace = game:GetService("Workspace")
 local InsertService = game:GetService("InsertService")
 local StarterGui = game:GetService("StarterGui")
 
--- Load WindUI
-local WindUI
-do
-    local ok, result = pcall(function()
-        return require("./src/Init")
-    end)
-    if ok then
-        WindUI = result
-    else
-        if RunService:IsStudio() or not writefile then
-            WindUI = require(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init"))
-        else
-            WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
-        end
-    end
-end
+-- Shared Utilities
+local WindUILoader = require(script.Parent.shared.WindUILoader)
+local SharedLighting = require(script.Parent.shared.Lighting)
+local AntiAFK = require(script.Parent.shared.AntiAFK)
+local SharedESP = require(script.Parent.shared.ESP)
+local Movement = require(script.Parent.shared.Movement)
+
+-- Load WindUI via shared loader
+local WindUI = WindUILoader.load()
 
 -- Window creation
 local Window = WindUI:CreateWindow({
@@ -99,35 +92,27 @@ local function fireVoteServer(selectedMapNumber)
     end
 end
 
+-- Lighting functions now use shared Lighting module
+SharedLighting.saveDefaults()
+
 local function applyFullBrightness()
-    game.Lighting.Brightness = 2
-    game.Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-    game.Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-    game.Lighting.GlobalShadows = false
+    SharedLighting.applyFullBright()
 end
 
 local function removeFullBrightness()
-    game.Lighting.Brightness = originalBrightness
-    game.Lighting.OutdoorAmbient = originalOutdoorAmbient
-    game.Lighting.Ambient = originalAmbient
-    game.Lighting.GlobalShadows = originalGlobalShadows
+    SharedLighting.removeFullBright()
 end
 
 local function applySuperFullBrightness()
-    game.Lighting.Brightness = 15
-    game.Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-    game.Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-    game.Lighting.GlobalShadows = false
+    SharedLighting.applySuperBright()
 end
 
 local function applyNoFog()
-    game.Lighting.FogEnd = 1000000
-    game.Lighting.FogStart = 999999
+    SharedLighting.applyNoFog()
 end
 
 local function removeNoFog()
-    game.Lighting.FogEnd = originalFogEnd
-    game.Lighting.FogStart = originalFogStart
+    SharedLighting.removeNoFog()
 end
 
 local function applyVibrant()
@@ -142,12 +127,10 @@ local function removeVibrant()
     game.Lighting.ColorCorrection.Contrast = originalContrast
 end
 
+local PlayerUtils = require(script.Parent.shared.PlayerUtils)
+
 local function getLocalPlayerCharacter()
-    local player = Players.LocalPlayer
-    if player then
-        return player.Character or player.CharacterAdded:Wait()
-    end
-    return nil
+    return PlayerUtils.getCharacter() or LocalPlayer.CharacterAdded:Wait()
 end
 
 local function CreateEsp(Char, Color, Text, ParentPart, YOffset)

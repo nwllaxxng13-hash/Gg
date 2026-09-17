@@ -10,6 +10,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
 local VirtualUser = game:GetService("VirtualUser")
 
+-- Shared Utilities
+local PlayerUtils = require(script.Parent.shared.PlayerUtils)
+local AntiAFK = require(script.Parent.shared.AntiAFK)
+local WindUILoader = require(script.Parent.shared.WindUILoader)
+
 local L = Players.LocalPlayer
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -63,18 +68,14 @@ local function LoadConfig()
 end
 LoadConfig()
 
+-- Using shared PlayerUtils for player lookup
 local function TrimName(s)
     if type(s) ~= "string" then return "" end
     return (s:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
 local function GetPlayerByName(name)
-    name = TrimName(name)
-    if name == "" then return nil end
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.Name == name then return p end
-    end
-    return nil
+    return PlayerUtils.getPlayerByName(name)
 end
 
 local function GetTextboxTarget()
@@ -90,18 +91,17 @@ local function IsTargetAlive(target)
     return hum and hrp and hum.Health > 0
 end
 
+-- Using shared PlayerUtils for character access
 local function GetMyChar()
-    return L.Character
+    return PlayerUtils.getCharacter()
 end
 
 local function GetMyHRP()
-    local char = GetMyChar()
-    return char and char:FindFirstChild("HumanoidRootPart")
+    return PlayerUtils.getHRP()
 end
 
 local function GetMyHumanoid()
-    local char = GetMyChar()
-    return char and char:FindFirstChild("Humanoid")
+    return PlayerUtils.getHumanoid()
 end
 
 local function FireSpawn()
@@ -121,13 +121,9 @@ local function WarpToTarget(target)
     return true
 end
 
+-- Using shared PlayerUtils for force kill
 local function ForceKillCharacter()
-    local char = GetMyChar()
-    local hum = GetMyHumanoid()
-    if not char or not hum then return end
-    pcall(function() hum:TakeDamage(hum.MaxHealth + 99999) end)
-    pcall(function() hum.Health = 0 end)
-    pcall(function() char:BreakJoints() end)
+    PlayerUtils.forceKill()
 end
 
 local function WarpToVoidAndDie()
@@ -194,6 +190,7 @@ local function IsVoidingLowHP(hum)
     return hum.Health <= HPVoidMax
 end
 
+-- Anti-AFK now uses shared AntiAFK module
 local function DoAntiAfkPulse()
     pcall(function()
         VirtualUser:CaptureController()
@@ -240,16 +237,9 @@ local function FarmPulse()
 end
 
 -- ==========================================
--- WINDUI
+-- WINDUI (using shared loader)
 -- ==========================================
-local WindUI
-do
-    local ok, res = pcall(function()
-        return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
-    end)
-    if ok and res then WindUI = res
-    else WindUI = require(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init")) end
-end
+local WindUI = WindUILoader.load()
 
 local Window = WindUI:CreateWindow({
     Title = "ALT FARM ONLY",
