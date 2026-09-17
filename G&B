@@ -592,10 +592,23 @@ CombatTab:Toggle({
     end
 })
 
+-- REMOVED: Loading unaudited code from third-party repo (dyumra/dyumrascript-) is an RCE risk
+-- Replaced with inline fly implementation
 CombatTab:Button({
     Title = "สคริปต์บินเก่า V3 (Old Fly)",
     Callback = function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/dyumra/dyumrascript-/refs/heads/main/Flua"))() 
+        pcall(function()
+            local char = LocalPlayer.Character
+            if not char then return end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+            local bodyVelocity = Instance.new("BodyVelocity")
+            bodyVelocity.Velocity = Vector3.new(0, 50, 0)
+            bodyVelocity.MaxForce = Vector3.new(0, math.huge, 0)
+            bodyVelocity.Parent = hrp
+            task.delay(3, function() bodyVelocity:Destroy() end)
+        end)
+        WindUI:Notify({Title = "Fly", Content = "Fly V3 activated (3s burst)", Duration = 3})
     end,
 })
 
@@ -791,7 +804,20 @@ EspTab:Toggle({
 --====================================================
 MiscTab:Section({ Title = "จิปาถะ & ล็อคเป้า (Misc & Aimbot)" })
 
-MiscTab:Button({ Title = "เพิ่มเฟรมเรท (Boost FPS)", Callback = function() loadstring(game:HttpGet("https://pastebin.com/raw/eDeT31nb"))() end })
+-- REMOVED: Pastebin-sourced loadstring is an arbitrary code execution risk (content can be changed by anyone)
+-- MiscTab:Button({ Title = "เพิ่มเฟรมเรท (Boost FPS)", Callback = function() loadstring(game:HttpGet("https://pastebin.com/raw/eDeT31nb"))() end })
+MiscTab:Button({ Title = "เพิ่มเฟรมเรท (Boost FPS)", Callback = function()
+    -- Safe inline FPS boost: reduce rendering quality locally
+    pcall(function()
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        for _, v in pairs(Lighting:GetDescendants()) do
+            if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("BloomEffect") then
+                v.Enabled = false
+            end
+        end
+    end)
+    WindUI:Notify({Title = "FPS Boost", Content = "Rendering quality reduced for better FPS", Duration = 3})
+end })
 
 local fullBrightEnabled = false
 local noFogEnabled = false
