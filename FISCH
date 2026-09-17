@@ -26,15 +26,27 @@ do
 		return require("./src/Init")
 	end)
 
-	if ok then
+	if ok and result then
 		WindUI = result
 	else
-		if RunService:IsStudio() or not writefile then
-			WindUI = require(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init"))
+		local fetchOk, fetchResult = pcall(function()
+			if RunService:IsStudio() or not writefile then
+				return require(ReplicatedStorage:WaitForChild("WindUI"):WaitForChild("Init"))
+			else
+				return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+			end
+		end)
+		if fetchOk then
+			WindUI = fetchResult
 		else
-			WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+			warn("[Ark Hub - Fisch] Failed to load WindUI: " .. tostring(fetchResult))
 		end
 	end
+end
+
+if not WindUI then
+	warn("[Ark Hub - Fisch] WindUI could not be loaded; aborting.")
+	return
 end
 
 -- Window Configuration

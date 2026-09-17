@@ -112,13 +112,14 @@ local CodesList = {
 
 local SaveFileName = "ArkHub_SavedConfig.json"
 local function SaveConfig()
-    pcall(function()
+    local ok, err = pcall(function()
         if writefile then writefile(SaveFileName, HttpService:JSONEncode(Config)) end
     end)
+    if not ok then warn("[Ark Hub] Failed to save config: " .. tostring(err)) end
 end
 
 local function LoadConfig()
-    pcall(function()
+    local ok, err = pcall(function()
         if isfile and readfile and isfile(SaveFileName) then
             local data = HttpService:JSONDecode(readfile(SaveFileName))
             for k, v in pairs(data) do
@@ -130,6 +131,7 @@ local function LoadConfig()
             end
         end
     end)
+    if not ok then warn("[Ark Hub] Failed to load config: " .. tostring(err)) end
 end
 
 LoadConfig()

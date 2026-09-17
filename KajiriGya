@@ -84,13 +84,14 @@ local SaveFileName = "ArkHub_SavedConfig.json"
 local oldCashoutTick = 0
 
 local function SaveConfig()
-    pcall(function()
+    local ok, err = pcall(function()
         if writefile then writefile(SaveFileName, HttpService:JSONEncode(Config)) end
     end)
+    if not ok then warn("[Ark Hub | Ro-Ghoul] Failed to save config: " .. tostring(err)) end
 end
 
 local function LoadConfig()
-    pcall(function()
+    local ok, err = pcall(function()
         if isfile and readfile and isfile(SaveFileName) then
             local data = HttpService:JSONDecode(readfile(SaveFileName))
             for k, v in pairs(data) do
@@ -102,6 +103,7 @@ local function LoadConfig()
             end
         end
     end)
+    if not ok then warn("[Ark Hub | Ro-Ghoul] Failed to load config: " .. tostring(err)) end
 end
 
 LoadConfig()
@@ -633,7 +635,13 @@ end)
 -- ==========================================
 -- 10. x2zu UI Library Integration 
 -- ==========================================
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/x2zu/OPEN-SOURCE-UI-ROBLOX/refs/heads/main/X2ZU%20UI%20ROBLOX%20OPEN%20SOURCE/DummyUi-leak-by-x2zu/fetching-main/Tools/Framework.luau"))()
+local okLib, Library = pcall(function()
+    return loadstring(game:HttpGet("https://raw.githubusercontent.com/x2zu/OPEN-SOURCE-UI-ROBLOX/refs/heads/main/X2ZU%20UI%20ROBLOX%20OPEN%20SOURCE/DummyUi-leak-by-x2zu/fetching-main/Tools/Framework.luau"))()
+end)
+if not okLib or not Library then
+    warn("[Ark Hub | Ro-Ghoul] Failed to load x2zu UI library: " .. tostring(Library))
+    return
+end
 
 local Window = Library:Window({
     Title = "✨ Ark Hub Premium | Ro-Ghoul",

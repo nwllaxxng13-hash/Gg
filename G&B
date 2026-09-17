@@ -21,11 +21,23 @@ do
     local ok, result = pcall(function()
         return require("./src/Init")
     end)
-    if ok then
+    if ok and result then
         WindUI = result
     else
-        WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+        local fetchOk, fetchResult = pcall(function()
+            return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+        end)
+        if fetchOk then
+            WindUI = fetchResult
+        else
+            warn("[Guts & Blackpowder] Failed to load WindUI: " .. tostring(fetchResult))
+        end
     end
+end
+
+if not WindUI then
+    warn("[Guts & Blackpowder] WindUI could not be loaded; aborting.")
+    return
 end
 
 -- สร้างหน้าต่างหลัก

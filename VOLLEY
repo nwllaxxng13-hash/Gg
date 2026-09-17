@@ -38,7 +38,18 @@ CoreGui.ChildAdded:Connect(function(child)
 end)
 
 -- Load WindUI library
-local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+local WindUI
+do
+    local ok, result = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+    end)
+    if ok and result then
+        WindUI = result
+    else
+        warn("[ArkUI] Failed to load WindUI: " .. tostring(result))
+        return
+    end
+end
 
 -- Create GUI window
 local Window = WindUI:CreateWindow({
