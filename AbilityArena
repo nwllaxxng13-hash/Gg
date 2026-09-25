@@ -40,7 +40,7 @@ local TWEEN_SPEED = 150
 local LOBBY_Y_THRESHOLD = 90
 
 local AutoFollowEnabled = false
-local AutoFollowMode = "สุ่มผู้เล่นใกล้สุด" -- "สุ่มผู้เล่นใกล้สุด" หรือ "เลือกผู้เล่น"
+local AutoFollowMode = "สุ่มผู้เล่นใกล้สุด"
 local SelectedPlayerName = ""
 local AutoEnterArenaEnabled = false
 
@@ -275,12 +275,13 @@ RunService.Heartbeat:Connect(function()
         local dist = (targetRoot.Position - root.Position).Magnitude
         
         if dist > 5 then
-            local duration = dist / TWEEN_SPEED
+            local duration = math.clamp(dist / TWEEN_SPEED, 0.05, 3)
             stopTween() 
             
+            local targetCFrame = targetRoot.CFrame * CFrame.new(0, 0, 2)
             local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut)
             CurrentTween = TweenService:Create(root, tweenInfo, {
-                CFrame = CFrame.new(targetRoot.Position + Vector3.new(0, 1.5, 0)) 
+                CFrame = targetCFrame
             })
             CurrentTween:Play()
         elseif dist > 0 and dist <= 5 then
@@ -457,6 +458,6 @@ end
 
 Rayfield:Notify({
     Title = "ability arena",
-    Content = "โหลดสคริปต์สำเร็จแล้ว",
+    Content = "แก้ไขจุดบกพร่อง และ โหลดสคริปต์สำเร็จแล้ว",
     Duration = 6
 })
