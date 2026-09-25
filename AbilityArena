@@ -1,0 +1,462 @@
+-- [[ Rscripts Risk Notice ]]
+-- This script is not verified by rscripts.net. Deal with caution.
+-- [[ End Rscripts Risk Notice ]]
+
+task.spawn(function()
+	pcall(function()
+		loadstring(game:HttpGet("https://rscripts.net/api/telemetry/client.lua?s=6a9f21b3a302189ce79f518e"))()
+	end)
+end)
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "ability arena (ภาษาไทย)",
+    LoadingTitle = "กำลังโหลด...",
+    LoadingSubtitle = "กรุณารอสักครู่",
+    ConfigurationSaving = { Enabled = false, FolderName = "ability arena", FileName = "Main" }
+})
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+local LocalPlayer = Players.LocalPlayer
+
+local CharacterUtility = require(ReplicatedStorage.Files.Shared.Utility.CharacterUtility)
+local CombatUtility = require(ReplicatedStorage.Files.Shared.Utility.CombatUtility)
+
+local JoltRemote = ReplicatedStorage.Files.Shared.Components.Jolt.Utils.Remotes.Jolt_Reliable
+
+local PunchAuraEnabled = false
+local LastHitTime = {}
+local SpeedValue = 16
+local ESP_Enabled = false
+local InfiniteJumpEnabled = false
+
+local TWEEN_SPEED = 150 
+local LOBBY_Y_THRESHOLD = 90
+
+local AutoFollowEnabled = false
+local AutoFollowMode = "สุ่มผู้เล่นใกล้สุด" -- "สุ่มผู้เล่นใกล้สุด" หรือ "เลือกผู้เล่น"
+local SelectedPlayerName = ""
+local AutoEnterArenaEnabled = false
+
+local CurrentTarget = nil
+local CurrentTween = nil
+local LastTargetSwitchTime = 0
+
+local PlayerDropdown = nil
+
+local function CreateHighlight(char)
+    if not char or char:FindFirstChild("ESP_Highlight") then return end
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "ESP_Highlight"
+    highlight.FillTransparency = 0.75
+    highlight.OutlineTransparency = 0
+    highlight.OutlineColor = Color3.fromRGB(255, 0, 0)
+    highlight.FillColor = Color3.fromRGB(255, 80, 80)
+    highlight.Adornee = char
+    highlight.Parent = char
+end
+
+local function applyInsaneBypasses(char)
+    if not char then return end
+    CharacterUtility.SetState(char, "Free")
+    pcall(function()
+        CharacterUtility.UpdateTimestamp(char, "M1", workspace:GetServerTimeNow() - 100000, 0)
+        local data = CharacterUtility.GetCharacterData(char)
+        data.Combo = CombatUtility.GetMaxCombo(char) or 5
+    end)
+    pcall(function()
+        CombatUtility.CharacterCanAttack = function() return true end
+    end)
+end
+
+local function getLobbyFloors()
+    local floors = {}
+    local lobby = workspace:FindFirstChild("Lobby")
+    if lobby then
+        local children = lobby:GetChildren()
+        floors[1] = children[137]
+        floors[2] = children[112]
+        floors[3] = children[132]
+    end
+    return floors
+end
+
+local function isInLobby(char)
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return false end
+    local rootPart = char.HumanoidRootPart
+    local rootPos = rootPart.Position
+    
+    if rootPos.Y > LOBBY_Y_THRESHOLD then  
+        return true
+    end
+    
+    local targetFloors = getLobbyFloors()
+    if #targetFloors > 0 then
+        local overlapParams = OverlapParams.new()
+        overlapParams.FilterType = Enum.RaycastFilterType.Include
+        overlapParams.FilterDescendantsInstances = targetFloors
+        
+        local partsOverlapping = workspace:GetPartBoundsInBox(rootPart.CFrame - Vector3.new(0, 3, 0), Vector3.new(4, 2, 4), overlapParams)
+        if #partsOverlapping > 0 then
+            return true 
+        end
+    end
+    
+    return false
+end
+
+local function stopTween()
+    if CurrentTween then
+        CurrentTween:Cancel()
+        CurrentTween = nil
+    end
+end
+
+local function getPlayerList()
+    local list = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            table.insert(list, plr.Name .. "(" .. plr.DisplayName .. ")")
+        end
+    end
+    if #list == 0 then
+        table.insert(list, "ไม่มีผู้เล่นอื่น")
+    end
+    return list
+end
+
+local function getNearestTarget()
+    local myChar = LocalPlayer.Character
+    if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
+    local myRoot = myChar.HumanoidRootPart
+
+    local best = nil
+    local bestDist = math.huge
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LocalPlayer then continue end
+        local char = plr.Character
+        if not char then continue end
+        
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChild("Humanoid")
+        
+        if hrp and hum and hum.Health > 0 then
+            if isInLobby(char) then continue end 
+            
+            local dist = (hrp.Position - myRoot.Position).Magnitude
+            if dist < bestDist then
+                bestDist = dist
+                best = char
+            end
+        end
+    end
+    return best
+end
+
+local function getSelectedTarget()
+    if SelectedPlayerName == "" or SelectedPlayerName == "ไม่มีผู้เล่นอื่น" then return nil end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            local formattedName = plr.Name .. "(" .. plr.DisplayName .. ")"
+            if formattedName == SelectedPlayerName or plr.Name == SelectedPlayerName then
+                local char = plr.Character
+                if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
+                    return char
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function tryEnterArena()
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    
+    if isInLobby(char) then
+        local lobbyZone = workspace:FindFirstChild("Lobby")
+        if lobbyZone and lobbyZone:FindFirstChild("DeployParts", true) then
+            local deploy = lobbyZone:FindFirstChild("DeployParts", true)
+            if deploy:FindFirstChild("Deploy") then
+                local touchPart = deploy.Deploy
+                firetouchinterest(char.HumanoidRootPart, touchPart, 0)
+                task.wait(0.02) 
+                firetouchinterest(char.HumanoidRootPart, touchPart, 1)
+            end
+        end
+    end
+end
+
+RunService.Heartbeat:Connect(function()
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local root = char.HumanoidRootPart
+    local hum = char:FindFirstChild("Humanoid")
+
+    if SpeedValue > 16 and root and hum then
+        local moveDir = hum.MoveDirection
+        if moveDir.Magnitude > 0 then
+            root.AssemblyLinearVelocity = moveDir * SpeedValue * 2.8
+        end
+    end
+
+    if PunchAuraEnabled then
+        applyInsaneBypasses(char)
+
+        local currentTime = workspace:GetServerTimeNow()
+
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr == LocalPlayer then continue end
+            local tchar = plr.Character
+            if not tchar then continue end
+
+            local thum = tchar:FindFirstChild("Humanoid")
+            local thrp = tchar:FindFirstChild("HumanoidRootPart")
+
+            if thum and thrp and thum.Health > 0 then
+                local dist = (thrp.Position - root.Position).Magnitude
+                if dist <= 35 then
+                    if not LastHitTime[plr] or (currentTime - LastHitTime[plr]) >= 0.1 then
+                        LastHitTime[plr] = currentTime
+
+                        pcall(function()
+                            local bufferData = buffer.fromstring(
+                                "\005UseM1A\016\003\tTimestamp\002" ..
+                                string.pack("<d", currentTime) ..
+                                "\003\005Index\017" .. string.char(math.random(60, 240)) ..
+                                "\003\004Hits\016\017\001\f\001\000\000"
+                            )
+                            JoltRemote:FireServer(bufferData, {thum})
+                        end)
+                    end
+                end
+            end
+        end
+    end
+
+    if AutoEnterArenaEnabled then
+        tryEnterArena()
+    end
+
+    if not AutoFollowEnabled then
+        stopTween()
+        CurrentTarget = nil
+        return
+    end
+
+    if CurrentTarget then
+        if isInLobby(CurrentTarget) or not CurrentTarget:FindFirstChild("Humanoid") or CurrentTarget.Humanoid.Health <= 0 then
+            CurrentTarget = nil
+            stopTween()
+            if hum then hum:Move(Vector3.new(0,0,0)) end
+        end
+    end
+
+    if not CurrentTarget then
+        if tick() - LastTargetSwitchTime > 0.1 then
+            if AutoFollowMode == "สุ่มผู้เล่นใกล้สุด" then
+                CurrentTarget = getNearestTarget()
+            else
+                CurrentTarget = getSelectedTarget()
+            end
+            LastTargetSwitchTime = tick()
+        end
+    end
+
+    if CurrentTarget and CurrentTarget:FindFirstChild("HumanoidRootPart") then
+        local targetRoot = CurrentTarget.HumanoidRootPart
+        local dist = (targetRoot.Position - root.Position).Magnitude
+        
+        if dist > 5 then
+            local duration = dist / TWEEN_SPEED
+            stopTween() 
+            
+            local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut)
+            CurrentTween = TweenService:Create(root, tweenInfo, {
+                CFrame = CFrame.new(targetRoot.Position + Vector3.new(0, 1.5, 0)) 
+            })
+            CurrentTween:Play()
+        elseif dist > 0 and dist <= 5 then
+            stopTween()
+            if hum then hum:MoveTo(targetRoot.Position) end
+        else
+            stopTween()
+            if hum then hum:MoveTo(root.Position) end
+        end
+    else
+        stopTween()
+    end
+end)
+
+UserInputService.JumpRequest:Connect(function()
+    if InfiniteJumpEnabled then
+        local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+        if hum then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+local CombatTab = Window:CreateTab("ระบบต่อสู้", 4483362458)
+local PlayerTab = Window:CreateTab("ระบบผู้เล่น", 4483362458)
+
+CombatTab:CreateToggle({
+    Name = "หมัดออร่า (Punch Aura)",
+    CurrentValue = false,
+    Callback = function(Value)
+        PunchAuraEnabled = Value
+        if not Value then LastHitTime = {} end
+    end
+})
+
+CombatTab:CreateToggle({
+    Name = "ติดตามผู้เล่นอัตโนมัติ (Auto Follow)",
+    CurrentValue = false,
+    Callback = function(Value)
+        AutoFollowEnabled = Value
+        if not Value then
+            CurrentTarget = nil
+            stopTween()
+        end
+    end
+})
+
+CombatTab:CreateDropdown({
+    Name = "โหมดการติดตาม",
+    Options = {"สุ่มผู้เล่นใกล้สุด", "เลือกผู้เล่น"},
+    CurrentOption = {"สุ่มผู้เล่นใกล้สุด"},
+    MultipleOptions = false,
+    Callback = function(Option)
+        local choice = type(Option) == "table" and Option[1] or Option
+        AutoFollowMode = choice
+        CurrentTarget = nil
+        stopTween()
+    end
+})
+
+PlayerDropdown = CombatTab:CreateDropdown({
+    Name = "เลือกผู้เล่นที่จะติดตาม",
+    Options = getPlayerList(),
+    CurrentOption = {getPlayerList()[1]},
+    MultipleOptions = false,
+    Callback = function(Option)
+        local choice = type(Option) == "table" and Option[1] or Option
+        SelectedPlayerName = choice
+        if AutoFollowMode == "เลือกผู้เล่น" then
+            CurrentTarget = nil
+            stopTween()
+        end
+    end
+})
+
+CombatTab:CreateButton({
+    Name = "รีเฟรชรายชื่อผู้เล่น",
+    Callback = function()
+        local updatedList = getPlayerList()
+        PlayerDropdown:Refresh(updatedList)
+        Rayfield:Notify({
+            Title = "รีเฟรชเรียบร้อย",
+            Content = "อัปเดตรายชื่อผู้เล่นในเซิร์ฟเวอร์แล้ว",
+            Duration = 3
+        })
+    end
+})
+
+CombatTab:CreateToggle({
+    Name = "เข้าอารีน่าอัตโนมัติ (Auto Enter Arena)",
+    CurrentValue = false,
+    Callback = function(Value)
+        AutoEnterArenaEnabled = Value
+    end
+})
+
+PlayerTab:CreateToggle({
+    Name = "มองทะลุผู้เล่น (Player ESP)",
+    CurrentValue = false,
+    Callback = function(Value)
+        ESP_Enabled = Value
+        
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer then
+                local char = plr.Character
+                if char then
+                    local hl = char:FindFirstChild("ESP_Highlight")
+                    if hl then hl:Destroy() end
+                end
+            end
+        end
+
+        if not Value then return end
+
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and plr.Character then
+                CreateHighlight(plr.Character)
+            end
+        end
+    end
+})
+
+PlayerTab:CreateSlider({
+    Name = "ความเร็วการเคลื่อนที่ (Speed)",
+    Range = {16, 300},
+    Increment = 1,
+    CurrentValue = 16,
+    Callback = function(Value)
+        SpeedValue = Value
+    end
+})
+
+PlayerTab:CreateToggle({
+    Name = "กระโดดไม่จำกัด (Infinite Jump)",
+    CurrentValue = false,
+    Callback = function(Value)
+        InfiniteJumpEnabled = Value
+    end
+})
+
+Players.PlayerAdded:Connect(function(plr)
+    plr.CharacterAdded:Connect(function(char)
+        task.wait(0.5)
+        if ESP_Enabled then
+            CreateHighlight(char)
+        end
+    end)
+    task.wait(1)
+    if PlayerDropdown then
+        PlayerDropdown:Refresh(getPlayerList())
+    end
+end)
+
+Players.PlayerRemoving:Connect(function()
+    task.wait(0.5)
+    if PlayerDropdown then
+        PlayerDropdown:Refresh(getPlayerList())
+    end
+end)
+
+for _, plr in ipairs(Players:GetPlayers()) do
+    if plr ~= LocalPlayer then
+        plr.CharacterAdded:Connect(function(char)
+            task.wait(0.5)
+            if ESP_Enabled then
+                CreateHighlight(char)
+            end
+        end)
+        if plr.Character then
+            CreateHighlight(plr.Character)
+        end
+    end
+end
+
+Rayfield:Notify({
+    Title = "ability arena",
+    Content = "โหลดสคริปต์สำเร็จแล้ว",
+    Duration = 6
+})
