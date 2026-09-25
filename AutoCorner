@@ -1,0 +1,293 @@
+-- Volleyball Legends - Advanced Auto Corner Spike Script (With Smart Lock)
+-- Mobile / PC Compatible with Custom Set Selector, Visualizers & Smart Lock
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+----------------------------------------------------------------
+-- 1. ชุดข้อมูลพิกัด (Sets Data)
+----------------------------------------------------------------
+local Sets = {
+    Set1 = {
+        Left = Vector3.new(-369, -24, -1308),
+        Right = Vector3.new(-416, -23, -1308)
+    },
+    Set2 = {
+        Left = Vector3.new(-417, -23, -1406),
+        Right = Vector3.new(-369, -23, -1405)
+    }
+}
+
+local CurrentSetKey = "Set1"
+local AutoCornerEnabled = false
+local SmartLockEnabled = false
+
+----------------------------------------------------------------
+-- 2. ระบบสร้าง Part แสดงจุด Visualizer (Neon Parts)
+----------------------------------------------------------------
+local VisualFolder = Workspace:FindFirstChild("CornerVisuals") or Instance.new("Folder")
+VisualFolder.Name = "CornerVisuals"
+VisualFolder.Parent = Workspace
+
+local function CreateVisualPart(name)
+    local part = VisualFolder:FindFirstChild(name) or Instance.new("Part")
+    part.Name = name
+    part.Shape = Enum.PartType.Ball
+    part.Size = Vector3.new(3, 3, 3)
+    part.Material = Enum.Material.Neon
+    part.Color = Color3.fromRGB(255, 255, 255)
+    part.Anchored = true
+    part.CanCollide = false
+    part.Transparency = 0.2
+    part.Parent = VisualFolder
+    return part
+end
+
+local VisualLeft = CreateVisualPart("Visual_Left")
+local VisualRight = CreateVisualPart("Visual_Right")
+
+local function UpdateVisualizerPositions()
+    local currentSet = Sets[CurrentSetKey]
+    VisualLeft.Position = currentSet.Left
+    VisualRight.Position = currentSet.Right
+end
+
+UpdateVisualizerPositions()
+
+----------------------------------------------------------------
+-- 3. ระบบ GUI & Draggable UI (Auto Corner, Smart Lock, Set Dropdown)
+----------------------------------------------------------------
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AutoCornerGui"
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.ResetOnSpawn = false
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 170, 0, 140)
+MainFrame.Position = UDim2.new(0.05, 0, 0.4, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = MainFrame
+
+-- ปุ่ม Toggle Auto Corner
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Size = UDim2.new(0.9, 0, 0.26, 0)
+ToggleButton.Position = UDim2.new(0.05, 0, 0.07, 0)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextScaled = true
+ToggleButton.Font = Enum.Font.SourceSansBold
+ToggleButton.Text = "Auto Corner: OFF"
+ToggleButton.Parent = MainFrame
+
+local ButtonCorner1 = Instance.new("UICorner")
+ButtonCorner1.CornerRadius = UDim.new(0, 6)
+ButtonCorner1.Parent = ToggleButton
+
+-- ปุ่ม Toggle Smart Lock
+local SmartLockButton = Instance.new("TextButton")
+SmartLockButton.Name = "SmartLockButton"
+SmartLockButton.Size = UDim2.new(0.9, 0, 0.26, 0)
+SmartLockButton.Position = UDim2.new(0.05, 0, 0.37, 0)
+SmartLockButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+SmartLockButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+SmartLockButton.TextScaled = true
+SmartLockButton.Font = Enum.Font.SourceSansBold
+SmartLockButton.Text = "Smart Lock: OFF"
+SmartLockButton.Parent = MainFrame
+
+local ButtonCorner2 = Instance.new("UICorner")
+ButtonCorner2.CornerRadius = UDim.new(0, 6)
+ButtonCorner2.Parent = SmartLockButton
+
+-- ปุ่ม Dropdown เลือก Set
+local SetDropdownButton = Instance.new("TextButton")
+SetDropdownButton.Name = "SetDropdownButton"
+SetDropdownButton.Size = UDim2.new(0.9, 0, 0.26, 0)
+SetDropdownButton.Position = UDim2.new(0.05, 0, 0.67, 0)
+SetDropdownButton.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+SetDropdownButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+SetDropdownButton.TextScaled = true
+SetDropdownButton.Font = Enum.Font.SourceSansBold
+SetDropdownButton.Text = "Mode: Set 1"
+SetDropdownButton.Parent = MainFrame
+
+local ButtonCorner3 = Instance.new("UICorner")
+ButtonCorner3.CornerRadius = UDim.new(0, 6)
+ButtonCorner3.Parent = SetDropdownButton
+
+-- ระบบ Drag GUI บน Mobile/PC
+local dragging, dragInput, dragStart, startPos
+
+MainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+MainFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+-- Events
+ToggleButton.MouseButton1Click:Connect(function()
+    AutoCornerEnabled = not AutoCornerEnabled
+    if AutoCornerEnabled then
+        ToggleButton.Text = "Auto Corner: ON"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(40, 180, 40)
+    else
+        ToggleButton.Text = "Auto Corner: OFF"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+    end
+end)
+
+SmartLockButton.MouseButton1Click:Connect(function()
+    SmartLockEnabled = not SmartLockEnabled
+    if SmartLockEnabled then
+        SmartLockButton.Text = "Smart Lock: ON"
+        SmartLockButton.BackgroundColor3 = Color3.fromRGB(40, 180, 40)
+    else
+        SmartLockButton.Text = "Smart Lock: OFF"
+        SmartLockButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+    end
+end)
+
+SetDropdownButton.MouseButton1Click:Connect(function()
+    if CurrentSetKey == "Set1" then
+        CurrentSetKey = "Set2"
+        SetDropdownButton.Text = "Mode: Set 2"
+    else
+        CurrentSetKey = "Set1"
+        SetDropdownButton.Text = "Mode: Set 1"
+    end
+    UpdateVisualizerPositions()
+end)
+
+----------------------------------------------------------------
+-- 4. Smart Lock Raycast & Collision Engine
+----------------------------------------------------------------
+local function IsPathBlockedByEnemy(originPos, targetPos)
+    local direction = targetPos - originPos
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = RaycastFilterType.Exclude
+
+    -- กรองตัวละครผู้เล่นฝั่งตัวเองออก
+    local ignoreList = {LocalPlayer.Character, VisualFolder}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer or (LocalPlayer.Team and player.Team == LocalPlayer.Team) then
+            if player.Character then
+                table.insert(ignoreList, player.Character)
+            end
+        end
+    end
+    raycastParams.FilterDescendantsInstances = ignoreList
+
+    local rayResult = Workspace:Raycast(originPos, direction, raycastParams)
+    
+    if rayResult and rayResult.Instance then
+        local hitChar = rayResult.Instance:FindFirstAncestorOfClass("Model")
+        if hitChar and Players:GetPlayerFromCharacter(hitChar) then
+            return true -- พบศัตรูขวางเส้นทาง
+        end
+    end
+    
+    return false
+end
+
+local function GetSmartTargetCorner()
+    local camCFrame = Camera.CFrame
+    local camPos = camCFrame.Position
+    local camLook = camCFrame.LookVector
+    local currentSet = Sets[CurrentSetKey]
+
+    local dirLeft = (currentSet.Left - camPos).Unit
+    local dirRight = (currentSet.Right - camPos).Unit
+
+    local dotLeft = camLook:Dot(dirLeft)
+    local dotRight = camLook:Dot(dirRight)
+
+    -- คำนวณฝั่งหลักตามทิศทางกล้อง
+    local primaryIsLeft = dotLeft > dotRight
+    local charPos = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character.HumanoidRootPart.Position or camPos
+
+    if SmartLockEnabled then
+        local leftBlocked = IsPathBlockedByEnemy(charPos, currentSet.Left)
+        local rightBlocked = IsPathBlockedByEnemy(charPos, currentSet.Right)
+
+        -- กรณีถูกบังแค่ฝั่งเดียว ให้หลบไปอีกฝั่ง
+        if leftBlocked and not rightBlocked then
+            VisualLeft.Color = Color3.fromRGB(255, 255, 255)
+            VisualRight.Color = Color3.fromRGB(255, 0, 0)
+            return currentSet.Right
+        elseif rightBlocked and not leftBlocked then
+            VisualLeft.Color = Color3.fromRGB(255, 0, 0)
+            VisualRight.Color = Color3.fromRGB(255, 255, 255)
+            return currentSet.Left
+        end
+        -- กรณีโดนบังทั้งคู่ หรือไม่โดนบังเลย ให้ใช้ทิศทางตามกล้อง
+    end
+
+    -- Default Camera Lock
+    if primaryIsLeft then
+        VisualLeft.Color = Color3.fromRGB(255, 0, 0)
+        VisualRight.Color = Color3.fromRGB(255, 255, 255)
+        return currentSet.Left
+    else
+        VisualLeft.Color = Color3.fromRGB(255, 255, 255)
+        VisualRight.Color = Color3.fromRGB(255, 0, 0)
+        return currentSet.Right
+    end
+end
+
+----------------------------------------------------------------
+-- 5. Execution Loop
+----------------------------------------------------------------
+RunService.RenderStepped:Connect(function()
+    local targetCorner = GetSmartTargetCorner()
+
+    if not AutoCornerEnabled then return end
+
+    local character = LocalPlayer.Character
+    if not character then return end
+
+    local root = character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not root or not humanoid then return end
+
+    local state = humanoid:GetState()
+    local isJumping = (state == Enum.HumanoidStateType.Jumping) or 
+                      (state == Enum.HumanoidStateType.Freefall) or 
+                      (root.Velocity.Y > 0.5)
+
+    if isJumping then
+        root.CFrame = CFrame.new(root.Position, Vector3.new(targetCorner.X, root.Position.Y, targetCorner.Z))
+    end
+end)
