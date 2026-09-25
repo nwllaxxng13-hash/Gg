@@ -21,7 +21,6 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -36,7 +35,6 @@ local SpeedValue = 16
 local ESP_Enabled = false
 local InfiniteJumpEnabled = false
 
-local TWEEN_SPEED = 150 
 local LOBBY_Y_THRESHOLD = 90
 
 local AutoFollowEnabled = false
@@ -45,7 +43,6 @@ local SelectedPlayerName = ""
 local AutoEnterArenaEnabled = false
 
 local CurrentTarget = nil
-local CurrentTween = nil
 local LastTargetSwitchTime = 0
 
 local PlayerDropdown = nil
@@ -109,13 +106,6 @@ local function isInLobby(char)
     end
     
     return false
-end
-
-local function stopTween()
-    if CurrentTween then
-        CurrentTween:Cancel()
-        CurrentTween = nil
-    end
 end
 
 local function getPlayerList()
@@ -194,6 +184,26 @@ local function tryEnterArena()
     end
 end
 
+-- Dedicated CFrame Warp Loop
+task.spawn(function()
+    while true do
+        RunService.RenderStepped:Wait()
+        
+        if AutoFollowEnabled then
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                local root = char.HumanoidRootPart
+                
+                if CurrentTarget and CurrentTarget:FindFirstChild("HumanoidRootPart") then
+                    local targetRoot = CurrentTarget.HumanoidRootPart
+                    root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 3)
+                    root.AssemblyLinearVelocity = Vector3.zero
+                end
+            end
+        end
+    end
+end)
+
 RunService.Heartbeat:Connect(function()
     local char = LocalPlayer.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
@@ -246,7 +256,6 @@ RunService.Heartbeat:Connect(function()
     end
 
     if not AutoFollowEnabled then
-        stopTween()
         CurrentTarget = nil
         return
     end
@@ -254,8 +263,6 @@ RunService.Heartbeat:Connect(function()
     if CurrentTarget then
         if isInLobby(CurrentTarget) or not CurrentTarget:FindFirstChild("Humanoid") or CurrentTarget.Humanoid.Health <= 0 then
             CurrentTarget = nil
-            stopTween()
-            if hum then hum:Move(Vector3.new(0,0,0)) end
         end
     end
 
@@ -268,31 +275,6 @@ RunService.Heartbeat:Connect(function()
             end
             LastTargetSwitchTime = tick()
         end
-    end
-
-    if CurrentTarget and CurrentTarget:FindFirstChild("HumanoidRootPart") then
-        local targetRoot = CurrentTarget.HumanoidRootPart
-        local dist = (targetRoot.Position - root.Position).Magnitude
-        
-        if dist > 5 then
-            local duration = math.clamp(dist / TWEEN_SPEED, 0.05, 3)
-            stopTween() 
-            
-            local targetCFrame = targetRoot.CFrame * CFrame.new(0, 0, 2)
-            local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut)
-            CurrentTween = TweenService:Create(root, tweenInfo, {
-                CFrame = targetCFrame
-            })
-            CurrentTween:Play()
-        elseif dist > 0 and dist <= 5 then
-            stopTween()
-            if hum then hum:MoveTo(targetRoot.Position) end
-        else
-            stopTween()
-            if hum then hum:MoveTo(root.Position) end
-        end
-    else
-        stopTween()
     end
 end)
 
@@ -324,7 +306,6 @@ CombatTab:CreateToggle({
         AutoFollowEnabled = Value
         if not Value then
             CurrentTarget = nil
-            stopTween()
         end
     end
 })
@@ -338,7 +319,6 @@ CombatTab:CreateDropdown({
         local choice = type(Option) == "table" and Option[1] or Option
         AutoFollowMode = choice
         CurrentTarget = nil
-        stopTween()
     end
 })
 
@@ -352,7 +332,6 @@ PlayerDropdown = CombatTab:CreateDropdown({
         SelectedPlayerName = choice
         if AutoFollowMode == "เลือกผู้เล่น" then
             CurrentTarget = nil
-            stopTween()
         end
     end
 })
@@ -458,6 +437,6 @@ end
 
 Rayfield:Notify({
     Title = "ability arena",
-    Content = "แก้ไขจุดบกพร่อง และ โหลดสคริปต์สำเร็จแล้ว",
+    Content = "เปิดใช้งาน Loop CFrame Warp เรียบร้อย",
     Duration = 6
 })
