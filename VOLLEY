@@ -5,7 +5,6 @@ local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local CoreGui = game:GetService("CoreGui")
 local TeleportService = game:GetService("TeleportService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Local player and camera
 local LocalPlayer = Players.LocalPlayer
@@ -40,12 +39,16 @@ end)
 -- Load WindUI library
 local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
 
+-- Set global background transparency (0.5)
+WindUI.TransparencyValue = 0.5
+
 -- Create GUI window
 local Window = WindUI:CreateWindow({
     Title = "ArkUI",
     Folder = "ArkUI_Config",
     Theme = "Dark",
-    Size = UDim2.fromOffset(580, 460),
+    Transparent = true,
+    Size = UDim2.fromOffset(600, 480),
     
     OpenButton = {
         Title = "เปิด ARK UI",
@@ -63,7 +66,7 @@ local Window = WindUI:CreateWindow({
     
     Topbar = {
         Height = 44,
-        ButtonsType = "Mac",
+        ButtonsType = "Default",
     },
 })
 
@@ -79,7 +82,6 @@ local BallTab = Window:Tab({
 
 local hitboxScale = 5.0
 
--- Find the first BasePart in a model
 local function findFirstPart(model)
     for _, descendant in ipairs(model:GetDescendants()) do
         if descendant:IsA("BasePart") then
@@ -88,7 +90,6 @@ local function findFirstPart(model)
     end
 end
 
--- Update hitboxes for client balls
 local function updateHitboxes(scale)
     for _, model in ipairs(Workspace:GetChildren()) do
         if model:IsA("Model") and model.Name:match("^CLIENT_BALL_%d+$") then
@@ -115,7 +116,6 @@ local function updateHitboxes(scale)
     end
 end
 
--- Remove all hitboxes
 local function removeHitboxes()
     for _, model in ipairs(Workspace:GetChildren()) do
         if model:IsA("Model") and model.Name:match("^CLIENT_BALL_%d+$") then
@@ -127,7 +127,6 @@ local function removeHitboxes()
     end
 end
 
--- Monitor for new client balls
 Workspace.ChildAdded:Connect(function(child)
     if child:IsA("Model") and child.Name:match("^CLIENT_BALL_%d+$") then
         task.wait(0.1)
@@ -184,13 +183,11 @@ local airMovement = false
 local airMovementSpeed = 16
 local bodyVelocity = nil
 
--- Get current walk speed
 local function getWalkSpeed()
     local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
     return humanoid and humanoid.WalkSpeed or 16
 end
 
--- Apply air control velocity
 local function applyAirControl(rootPart)
     if bodyVelocity then return end
     bodyVelocity = Instance.new("BodyVelocity")
@@ -201,7 +198,6 @@ local function applyAirControl(rootPart)
     bodyVelocity.Parent = rootPart
 end
 
--- Remove air control velocity
 local function removeAirControl()
     if bodyVelocity then
         bodyVelocity:Destroy()
@@ -209,10 +205,11 @@ local function removeAirControl()
     end
 end
 
--- Character setup
 local function setupCharacter(character)
-    local humanoid = character:WaitForChild("Humanoid")
-    local rootPart = character:WaitForChild("HumanoidRootPart")
+    local humanoid = character:WaitForChild("Humanoid", 5)
+    local rootPart = character:WaitForChild("HumanoidRootPart", 5)
+    if not humanoid or not rootPart then return end
+    
     airMovementSpeed = getWalkSpeed()
 
     humanoid:GetPropertyChangedSignal("Jump"):Connect(function()
@@ -232,7 +229,7 @@ local function setupCharacter(character)
         end
     end)
 
-    humanoid.StateChanged:Connect(function(oldState, newState)
+    humanoid.StateChanged:Connect(function(_, newState)
         if newState == Enum.HumanoidStateType.Freefall then
             if airMovement then
                 applyAirControl(rootPart)
@@ -244,7 +241,6 @@ local function setupCharacter(character)
     end)
 end
 
--- Initialize character
 if LocalPlayer.Character then
     setupCharacter(LocalPlayer.Character)
 end
@@ -286,7 +282,6 @@ CharacterTab:Slider({
     end,
 })
 
--- Update air movement velocity
 RunService.RenderStepped:Connect(function()
     if airMovement and bodyVelocity and LocalPlayer.Character then
         local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
@@ -297,7 +292,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════
--- เส้น (Lines Tab)
+-- เส้น (Lines Tab) - FIXED dynamic creation & tracking
 -- ═══════════════════════════════════════════════════════════
 local LinesTab = Window:Tab({
     Title = "เส้นมุมมอง",
@@ -320,73 +315,86 @@ local lineColors = {
     Color3.fromRGB(0, 100, 0)
 }
 
--- Remove line for a player
 local function removeLine(player)
-    local data = lines[player]
-    if data then
+    if lines[player] then
+        local data = lines[player]
         if data.beam then data.beam:Destroy() end
-        if data.target and data.target.Parent then data.target:Destroy() end
-        if data.attachment and data.attachment.Parent then data.attachment:Destroy() end
+        if data.targetAttachment then data.targetAttachment:Destroy() end
+        if data.headAttachment then data.headAttachment:Destroy() end
+        if data.targetPart then data.targetPart:Destroy() end
         lines[player] = nil
     end
 end
 
--- Update line for a player
-local function updateLine(player, index)
-    if not linesEnabled then
-        removeLine(player)
-        return
-    end
-
+local function createLine(player, colorIndex)
+    removeLine(player)
+    
     local character = player.Character
-    if not character or not character:FindFirstChild("Head") or not character:FindFirstChild("HumanoidRootPart") then
-        removeLine(player)
-        return
-    end
+    if not character then return end
+    local head = character:FindFirstChild("Head")
+    if not head then return end
 
-    local head = character.Head
-    local rootPart = character.HumanoidRootPart
+    local headAttachment = Instance.new("Attachment")
+    headAttachment.Name = "LineESPHeadAttachment"
+    headAttachment.Parent = head
 
-    if not lines[player] then
-        local attachment = Instance.new("Attachment", head)
-        local target = Instance.new("Part")
-        target.Anchored = true
-        target.CanCollide = false
-        target.Transparency = 1
-        target.Size = Vector3.new(0.1, 0.1, 0.1)
-        target.Parent = Workspace
+    local targetPart = Instance.new("Part")
+    targetPart.Name = "LineESPTarget"
+    targetPart.Anchored = true
+    targetPart.CanCollide = false
+    targetPart.Transparency = 1
+    targetPart.Size = Vector3.new(0.05, 0.05, 0.05)
+    targetPart.Parent = Workspace
 
-        local targetAttachment = Instance.new("Attachment", target)
-        local beam = Instance.new("Beam")
-        beam.Attachment0 = attachment
-        beam.Attachment1 = targetAttachment
-        beam.Width0 = 0.25
-        beam.Width1 = 0.25
-        beam.FaceCamera = true
-        beam.LightEmission = 1
-        beam.Transparency = NumberSequence.new(0.3)
-        beam.Color = ColorSequence.new(lineColors[(index - 1) % #lineColors + 1])
-        beam.Parent = head
+    local targetAttachment = Instance.new("Attachment")
+    targetAttachment.Parent = targetPart
 
-        lines[player] = { beam = beam, target = target, attachment = attachment }
-    end
+    local beam = Instance.new("Beam")
+    beam.Attachment0 = headAttachment
+    beam.Attachment1 = targetAttachment
+    beam.Width0 = 0.25
+    beam.Width1 = 0.25
+    beam.FaceCamera = true
+    beam.LightEmission = 1
+    beam.Transparency = NumberSequence.new(0.3)
+    beam.Color = ColorSequence.new(lineColors[(colorIndex - 1) % #lineColors + 1])
+    beam.Parent = head
 
-    local data = lines[player]
-    data.target.Position = head.Position + rootPart.CFrame.LookVector * lineDistance
+    lines[player] = {
+        beam = beam,
+        headAttachment = headAttachment,
+        targetAttachment = targetAttachment,
+        targetPart = targetPart
+    }
 end
 
--- Update lines for all players
-RunService.RenderStepped:Connect(function()
-    if linesEnabled then
-        for index, player in ipairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer and player.Team ~= LocalPlayer.Team then
-                updateLine(player, index)
+RunService.Heartbeat:Connect(function()
+    if not linesEnabled then
+        for player in pairs(lines) do
+            removeLine(player)
+        end
+        return
+    end
+
+    local currentPlayers = Players:GetPlayers()
+    for index, player in ipairs(currentPlayers) do
+        if player ~= LocalPlayer and (not LocalPlayer.Team or player.Team ~= LocalPlayer.Team) then
+            local character = player.Character
+            if character and character:FindFirstChild("Head") and character:FindFirstChild("HumanoidRootPart") then
+                if not lines[player] or not lines[player].headAttachment.Parent then
+                    createLine(player, index)
+                end
+                
+                local data = lines[player]
+                if data and data.targetPart then
+                    local head = character.Head
+                    local rootPart = character.HumanoidRootPart
+                    data.targetPart.Position = head.Position + (rootPart.CFrame.LookVector * lineDistance)
+                end
             else
                 removeLine(player)
             end
-        end
-    else
-        for player in pairs(lines) do
+        else
             removeLine(player)
         end
     end
@@ -411,22 +419,15 @@ LinesTab:Space()
 
 LinesTab:Slider({
     Title = "ระยะเส้น",
-    Step = 10,
+    Step = 5,
     Value = {
-        Min = 0,
-        Max = 100,
+        Min = 10,
+        Max = 200,
         Default = 50,
     },
     Callback = function(value)
         lineDistance = value
     end,
-})
-
-LinesTab:Space()
-
-LinesTab:Section({
-    Title = "หมายเหตุ: ถ้าเส้นไม่ปรากฏ ให้ปิดแล้วเปิดใหม่",
-    TextSize = 13,
 })
 
 -- ═══════════════════════════════════════════════════════════
@@ -446,13 +447,12 @@ local defaultFogEnd = Lighting.FogEnd
 local nightMode = false
 local fullbright = false
 
--- ESP functionality
 local espEnabled = true
 local espHighlights = {}
 local espConnections = {}
 
 local function isEnemy(player)
-    return player ~= LocalPlayer and player.Team and LocalPlayer.Team and player.Team ~= LocalPlayer.Team
+    return player ~= LocalPlayer and (not LocalPlayer.Team or player.Team ~= LocalPlayer.Team)
 end
 
 local function applyESP(player)
@@ -489,9 +489,8 @@ local function setupESP(player)
     if player == LocalPlayer then return end
     local function onCharacterAdded(character)
         cleanupConnections(player)
-        local humanoid = character:WaitForChild("Humanoid", 3)
-        local head = character:FindFirstChild("Head")
-        if not humanoid or not head then return end
+        local humanoid = character:WaitForChild("Humanoid", 5)
+        if not humanoid then return end
 
         local stateConnection = humanoid.StateChanged:Connect(function(_, newState)
             if not espEnabled then return end
@@ -530,6 +529,7 @@ for _, player in ipairs(Players:GetPlayers()) do
     setupESP(player)
 end
 Players.PlayerAdded:Connect(setupESP)
+Players.PlayerRemoving:Connect(cleanupConnections)
 
 VisualTab:Toggle({
     Title = "ESP (กระโดด)",
@@ -547,57 +547,37 @@ VisualTab:Toggle({
 
 VisualTab:Space()
 
--- Night mode
-local function toggleNightMode(enabled)
-    nightMode = enabled
-    if enabled then
-        Lighting.Ambient = Color3.fromRGB(20, 20, 20)
-        Lighting.Brightness = 1
-    else
-        Lighting.Ambient = defaultAmbient
-        Lighting.Brightness = defaultBrightness
-    end
-end
-
 VisualTab:Toggle({
     Title = "โหมดกลางคืน",
     Value = false,
     Callback = function(value)
-        toggleNightMode(value)
-        WindUI:Notify({
-            Title = value and "โหมดกลางคืนเปิด" or "โหมดกลางคืนปิด",
-            Content = value and "ปรับแสงแล้ว" or "รีเซ็ตแสงแล้ว",
-            Duration = 2,
-        })
+        nightMode = value
+        if value then
+            Lighting.Ambient = Color3.fromRGB(20, 20, 20)
+            Lighting.Brightness = 1
+        else
+            Lighting.Ambient = defaultAmbient
+            Lighting.Brightness = defaultBrightness
+        end
     end,
 })
 
 VisualTab:Space()
 
--- Fullbright
-local function toggleFullbright(enabled)
-    fullbright = enabled
-    if enabled then
-        Lighting.Brightness = 3
-        Lighting.Ambient = Color3.new(1, 1, 1)
-        Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
-    else
-        Lighting.Brightness = defaultBrightness
-        Lighting.Ambient = defaultAmbient
-        Lighting.OutdoorAmbient = defaultOutdoorAmbient
-    end
-end
-
 VisualTab:Toggle({
     Title = "ไฟสว่างเต็มที่",
     Value = false,
     Callback = function(value)
-        toggleFullbright(value)
-        WindUI:Notify({
-            Title = "ไฟสว่างเต็มที่",
-            Content = value and "เปิดแล้ว" or "ปิดแล้ว",
-            Duration = 2,
-        })
+        fullbright = value
+        if value then
+            Lighting.Brightness = 3
+            Lighting.Ambient = Color3.new(1, 1, 1)
+            Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
+        else
+            Lighting.Brightness = defaultBrightness
+            Lighting.Ambient = defaultAmbient
+            Lighting.OutdoorAmbient = defaultOutdoorAmbient
+        end
     end,
 })
 
@@ -616,82 +596,6 @@ VisualTab:Slider({
     end,
 })
 
-VisualTab:Space()
-
-VisualTab:Colorpicker({
-    Title = "สีแสง Ambient",
-    Default = Lighting.Ambient,
-    Callback = function(color)
-        Lighting.Ambient = color
-    end,
-})
-
-VisualTab:Space()
-
--- Bloom effect
-local bloomEffect = Instance.new("BloomEffect", Lighting)
-bloomEffect.Intensity = 0
-bloomEffect.Size = 56
-bloomEffect.Threshold = 1
-
-VisualTab:Slider({
-    Title = "ความสว่าง Bloom",
-    Step = 0.1,
-    Value = {
-        Min = 0,
-        Max = 5,
-        Default = 0,
-    },
-    Callback = function(value)
-        bloomEffect.Intensity = value
-    end,
-})
-
-VisualTab:Space()
-
--- Save default settings
-local defaultSettings = {
-    Brightness = Lighting.Brightness,
-    Ambient = Lighting.Ambient,
-    OutdoorAmbient = Lighting.OutdoorAmbient,
-    FogEnd = Lighting.FogEnd,
-    Effects = {}
-}
-
-for _, effect in pairs(Lighting:GetChildren()) do
-    if effect:IsA("PostEffect") then
-        defaultSettings.Effects[#defaultSettings.Effects + 1] = effect:Clone()
-    end
-end
-
-VisualTab:Button({
-    Title = "🔄 รีเซ็ตทั้งหมด",
-    Justify = "Center",
-    Callback = function()
-        Lighting.Brightness = defaultSettings.Brightness
-        Lighting.Ambient = defaultSettings.Ambient
-        Lighting.OutdoorAmbient = defaultSettings.OutdoorAmbient
-        Lighting.FogEnd = defaultSettings.FogEnd
-        
-        for _, effect in pairs(Lighting:GetChildren()) do
-            if effect:IsA("PostEffect") then
-                effect:Destroy()
-            end
-        end
-        
-        for _, effect in pairs(defaultSettings.Effects) do
-            local clonedEffect = effect:Clone()
-            clonedEffect.Parent = Lighting
-        end
-        
-        WindUI:Notify({
-            Title = "รีเซ็ตแสงแล้ว",
-            Content = "รีเซ็ตการตั้งค่าแสงแล้ว",
-            Duration = 2,
-        })
-    end,
-})
-
 -- ═══════════════════════════════════════════════════════════
 -- อื่นๆ (Others Tab)
 -- ═══════════════════════════════════════════════════════════
@@ -704,7 +608,6 @@ local OthersTab = Window:Tab({
 
 OthersTab:Button({
     Title = "เข้าเกมใหม่",
-    Icon = "refresh-cw",
     Justify = "Center",
     Callback = rejoin,
 })
@@ -713,9 +616,7 @@ OthersTab:Space()
 
 OthersTab:Button({
     Title = "ปิดฟีเจอร์ทั้งหมด",
-    Icon = "power-off",
     Justify = "Center",
-    Color = Color3.fromRGB(255, 50, 50),
     Callback = function()
         removeHitboxes()
         autoShiftLock = false
@@ -732,9 +633,8 @@ OthersTab:Button({
     end,
 })
 
--- Notification on load
 WindUI:Notify({
-    Title = "KIM UI — ULTRA",
-    Content = "โหลดสำเร็จ! ยินดีต้อนรับ",
-    Duration = 5,
+    Title = "ARK UI",
+    Content = "โหลดสำเร็จแล้ว",
+    Duration = 4,
 })
