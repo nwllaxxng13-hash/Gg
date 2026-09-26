@@ -1,5 +1,6 @@
 -- ============================================================
--- Volleyball Legends — Big UI v3.9 · By Ark (Performance Edition)
+-- Volleyball Legends — Big UI v3.8 · By Ark
+-- ESP Auto-Sync · Bigger Thai · Scrolling Sections
 -- ============================================================
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -52,7 +53,7 @@ loadCfg()
 -- i18n
 -- ============================================================
 local STR = {
-    th = { title="Volleyball Legends", sub="v3.9 · By Ark",
+    th = { title="Volleyball Legends", sub="v3.8 · By Ark",
         tab_corner="มุมตบ", tab_hitbox="บอล", tab_esp="ESP", tab_settings="ตั้งค่า",
         sec_court="สนาม", sec_actions="การทำงาน",
         sec_ball="ลูกบอล", sec_esp="เส้น ESP", sec_appear="ธีม & ภาษา", sec_config="การตั้งค่า",
@@ -67,10 +68,10 @@ local STR = {
         set_save="บันทึก", set_load="โหลด", set_reset="รีเซ็ต",
         saved="บันทึกแล้ว", loaded="โหลดแล้ว", reset_done="รีเซ็ตแล้ว",
         no_fs="Executor ไม่รองรับ savefile", set_scale="ขนาด UI",
-        credit="สร้างโดย Ark", version="เวอร์ชัน 3.9",
+        credit="สร้างโดย Ark", version="เวอร์ชัน 3.8",
         hello="สวัสดี", founder="ผู้ก่อตั้งและ CEO",
     },
-    en = { title="Volleyball Legends", sub="v3.9 · By Ark",
+    en = { title="Volleyball Legends", sub="v3.8 · By Ark",
         tab_corner="Auto Corner", tab_hitbox="Hitbox", tab_esp="ESP Line", tab_settings="Settings",
         sec_court="Court", sec_actions="Actions",
         sec_ball="Ball Hitbox", sec_esp="ESP Line", sec_appear="Appearance", sec_config="Configuration",
@@ -85,7 +86,7 @@ local STR = {
         set_save="Save", set_load="Load", set_reset="Reset",
         saved="Saved", loaded="Loaded", reset_done="Reset done",
         no_fs="Executor has no file API", set_scale="UI Scale",
-        credit="Created by Ark", version="Version 3.9",
+        credit="Created by Ark", version="Version 3.8",
         hello="Hello", founder="Ceo And Founder",
     }
 }
@@ -95,11 +96,12 @@ local function t(k, ...)
     if select("#", ...) > 0 then return string.format(s, ...) end
     return s
 end
+-- Thai +4 (bigger)
 local TH_OFFSET = 4
 local function fs(px) return (LANG == "th") and (px + TH_OFFSET) or px end
 
 -- ============================================================
--- Theme + Accent (with cache)
+-- Theme
 -- ============================================================
 local Themes = {
     RGB = { rgb = true, base = Color3.fromRGB(120, 180, 255) },
@@ -114,18 +116,8 @@ local Themes = {
 }
 local AccentTargets = {}
 local function regAccent(i, p) table.insert(AccentTargets, { inst = i, prop = p }) end
-local lastAccent = nil
 local function applyAccent(c)
-    -- skip if same color (performance)
-    if lastAccent and lastAccent == c then return end
-    lastAccent = c
-    for i = 1, #AccentTargets do
-        local e = AccentTargets[i]
-        local inst = e.inst
-        if inst and inst.Parent then
-            pcall(function() inst[e.prop] = c end)
-        end
-    end
+    for _, e in ipairs(AccentTargets) do pcall(function() e.inst[e.prop] = c end) end
 end
 
 -- ============================================================
@@ -153,6 +145,9 @@ local VTarget = mkVis("Visual_Target",Color3.fromRGB(255,0,0))
 local VSafe   = mkVis("Visual_Safe",  Color3.fromRGB(0,200,255))
 VSafe.Transparency = 0.4; VSafe.Size = Vector3.new(4,4,4)
 
+-- ============================================================
+-- Blur
+-- ============================================================
 local blur = Instance.new("BlurEffect")
 blur.Name = "VL_Blur"; blur.Size = 0; blur.Parent = Lighting
 
@@ -177,7 +172,9 @@ local function showLoadingScreen(onDone)
     bg.Size = UDim2.fromScale(1, 1)
     bg.BackgroundColor3 = Color3.fromRGB(8, 6, 18)
     bg.BackgroundTransparency = 1
-    bg.BorderSizePixel = 0; bg.ZIndex = 1; bg.Parent = loader
+    bg.BorderSizePixel = 0
+    bg.ZIndex = 1
+    bg.Parent = loader
 
     local bgGrad = Instance.new("UIGradient", bg)
     bgGrad.Color = ColorSequence.new{
@@ -193,12 +190,15 @@ local function showLoadingScreen(onDone)
     card.Size = UDim2.fromOffset(420, 230)
     card.BackgroundColor3 = Color3.fromRGB(16, 14, 26)
     card.BackgroundTransparency = 1
-    card.BorderSizePixel = 0; card.ZIndex = 2; card.Parent = loader
+    card.BorderSizePixel = 0
+    card.ZIndex = 2
+    card.Parent = loader
     Instance.new("UICorner", card).CornerRadius = UDim.new(0, 20)
 
     local cardStroke = Instance.new("UIStroke", card)
     cardStroke.Color = Themes[Config.Theme].base
-    cardStroke.Thickness = 2; cardStroke.Transparency = 1
+    cardStroke.Thickness = 2
+    cardStroke.Transparency = 1
     regAccent(cardStroke, "Color")
 
     local iconCircle = Instance.new("Frame")
@@ -206,17 +206,22 @@ local function showLoadingScreen(onDone)
     iconCircle.Position = UDim2.new(0.5, 0, 0, 24)
     iconCircle.Size = UDim2.fromOffset(64, 64)
     iconCircle.BackgroundColor3 = Themes[Config.Theme].base
-    iconCircle.BorderSizePixel = 0; iconCircle.ZIndex = 3; iconCircle.Parent = card
+    iconCircle.BorderSizePixel = 0
+    iconCircle.ZIndex = 3
+    iconCircle.Parent = card
     Instance.new("UICorner", iconCircle).CornerRadius = UDim.new(1, 0)
     regAccent(iconCircle, "BackgroundColor3")
 
     local iconLbl = Instance.new("TextLabel")
     iconLbl.BackgroundTransparency = 1
     iconLbl.Size = UDim2.fromScale(1, 1)
-    iconLbl.Font = FONT_TITLE; iconLbl.TextSize = 26
+    iconLbl.Font = FONT_TITLE
+    iconLbl.TextSize = 26
     iconLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
-    iconLbl.Text = "A"; iconLbl.TextTransparency = 1
-    iconLbl.ZIndex = 4; iconLbl.Parent = iconCircle
+    iconLbl.Text = "A"
+    iconLbl.TextTransparency = 1
+    iconLbl.ZIndex = 4
+    iconLbl.Parent = iconCircle
 
     local displayName = LP.DisplayName or LP.Name
     local helloLbl = Instance.new("TextLabel")
@@ -224,29 +229,36 @@ local function showLoadingScreen(onDone)
     helloLbl.AnchorPoint = Vector2.new(0.5, 0)
     helloLbl.Position = UDim2.new(0.5, 0, 0, 100)
     helloLbl.Size = UDim2.new(1, -40, 0, 40)
-    helloLbl.Font = FONT_TITLE; helloLbl.TextSize = 26
+    helloLbl.Font = FONT_TITLE
+    helloLbl.TextSize = 26
     helloLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
     helloLbl.Text = string.format("%s, %s", t("hello"), displayName)
     helloLbl.TextTransparency = 1
-    helloLbl.ZIndex = 3; helloLbl.Parent = card
+    helloLbl.ZIndex = 3
+    helloLbl.Parent = card
 
     local divider = Instance.new("Frame")
     divider.AnchorPoint = Vector2.new(0.5, 0)
     divider.Position = UDim2.new(0.5, 0, 0, 148)
     divider.Size = UDim2.new(0.7, 0, 0, 1)
     divider.BackgroundColor3 = Color3.fromRGB(120, 120, 160)
-    divider.BackgroundTransparency = 1; divider.BorderSizePixel = 0
-    divider.ZIndex = 3; divider.Parent = card
+    divider.BackgroundTransparency = 1
+    divider.BorderSizePixel = 0
+    divider.ZIndex = 3
+    divider.Parent = card
 
     local creditLbl = Instance.new("TextLabel")
     creditLbl.BackgroundTransparency = 1
     creditLbl.AnchorPoint = Vector2.new(0.5, 0)
     creditLbl.Position = UDim2.new(0.5, 0, 0, 158)
     creditLbl.Size = UDim2.new(1, -40, 0, 30)
-    creditLbl.Font = FONT_BOLD; creditLbl.TextSize = 20
+    creditLbl.Font = FONT_BOLD
+    creditLbl.TextSize = 20
     creditLbl.TextColor3 = Themes[Config.Theme].base
-    creditLbl.Text = t("credit"); creditLbl.TextTransparency = 1
-    creditLbl.ZIndex = 3; creditLbl.Parent = card
+    creditLbl.Text = t("credit")
+    creditLbl.TextTransparency = 1
+    creditLbl.ZIndex = 3
+    creditLbl.Parent = card
     regAccent(creditLbl, "TextColor3")
 
     local founderLbl = Instance.new("TextLabel")
@@ -254,11 +266,13 @@ local function showLoadingScreen(onDone)
     founderLbl.AnchorPoint = Vector2.new(0.5, 0)
     founderLbl.Position = UDim2.new(0.5, 0, 0, 184)
     founderLbl.Size = UDim2.new(1, -40, 0, 22)
-    founderLbl.Font = FONT_BODY; founderLbl.TextSize = 14
+    founderLbl.Font = FONT_BODY
+    founderLbl.TextSize = 14
     founderLbl.TextColor3 = Color3.fromRGB(180, 170, 210)
     founderLbl.Text = "(" .. t("founder") .. ")"
     founderLbl.TextTransparency = 1
-    founderLbl.ZIndex = 3; founderLbl.Parent = card
+    founderLbl.ZIndex = 3
+    founderLbl.Parent = card
 
     TS:Create(bg, TweenInfo.new(0.4), { BackgroundTransparency = 0.05 }):Play()
     TS:Create(card, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
@@ -274,7 +288,7 @@ local function showLoadingScreen(onDone)
     local rs = 0
     local rotConn
     rotConn = RS.RenderStepped:Connect(function(dt)
-        rs = (rs + dt * 90) % 360
+        rs = rs + dt * 60
         iconLbl.Rotation = rs
     end)
 
@@ -320,7 +334,7 @@ local function notifyCenter(text, color, dur)
     local f = Instance.new("Frame")
     f.AnchorPoint = Vector2.new(0.5, 0.5)
     f.Position = UDim2.fromScale(0.5, 0.30)
-    f.Size = UDim2.fromOffset(280, 44)
+    f.Size = UDim2.fromOffset(320, 56)
     f.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
     f.BackgroundTransparency = 1
     f.BorderSizePixel = 0; f.Parent = NotifyHolder
@@ -332,6 +346,7 @@ local function notifyCenter(text, color, dur)
     lbl.Text = text; lbl.TextColor3 = color; lbl.TextScaled = true
     lbl.Font = FONT_TITLE; lbl.TextTransparency = 1; lbl.Parent = f
 
+    f.Size = UDim2.fromOffset(280, 44)
     TS:Create(f, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
         BackgroundTransparency = 0.12, Size = UDim2.fromOffset(360, 62)
     }):Play()
@@ -433,12 +448,15 @@ Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 12)
 local sideStroke = Instance.new("UIStroke", Sidebar)
 sideStroke.Color = Color3.fromRGB(50,50,80); sideStroke.Thickness = 1; sideStroke.Transparency = 0.5
 
+-- ============================================================
+-- Content container (holds tab scrolling frames)
+-- ============================================================
 local Content = Instance.new("Frame")
 Content.Name = "Content"
 Content.Position = UDim2.fromOffset(162, 54)
 Content.Size = UDim2.new(1, -174, 1, -66)
 Content.BackgroundTransparency = 1
-Content.ClipsDescendants = true
+Content.ClipsDescendants = true   -- ⚠️ clip children so nothing spills out
 Content.Parent = Main
 
 -- ============================================================
@@ -450,8 +468,7 @@ local function regLbl(l, k, baseSize)
     l.Text = t(k)
 end
 local function refreshLang()
-    for i = 1, #LocalizedLabels do
-        local e = LocalizedLabels[i]
+    for _, e in ipairs(LocalizedLabels) do
         e.lbl.Text = t(e.key)
         if e.baseSize then
             e.lbl.TextSize = (LANG == "th") and (e.baseSize + TH_OFFSET) or e.baseSize
@@ -462,10 +479,8 @@ local function refreshLang()
 end
 
 -- ============================================================
--- UI Primitives (with single slider input handler)
+-- UI Primitives
 -- ============================================================
-local SliderDrag = { active = nil }
-
 local function newLabel(p, pos, size, text, font, ts, al)
     local l = Instance.new("TextLabel")
     l.BackgroundTransparency = 1; l.Position = pos; l.Size = size
@@ -557,7 +572,8 @@ local function newButton(p, text, height, cb, layoutOrder)
     ripple.BorderSizePixel = 0
     ripple.Size = UDim2.fromOffset(0, 0)
     ripple.Position = UDim2.fromScale(0.5, 0.5)
-    ripple.ZIndex = 0; ripple.Parent = b
+    ripple.ZIndex = 0
+    ripple.Parent = b
     Instance.new("UICorner", ripple).CornerRadius = UDim.new(1, 0)
 
     b.MouseEnter:Connect(function()
@@ -605,7 +621,8 @@ local function newToggle(p, labelKey, initial, cb, layoutOrder, height)
     glow.Size = UDim2.fromScale(1, 1)
     glow.BackgroundColor3 = Themes[Config.Theme].base
     glow.BackgroundTransparency = 1
-    glow.BorderSizePixel = 0; glow.ZIndex = 0; glow.Parent = w
+    glow.BorderSizePixel = 0
+    glow.ZIndex = 0; glow.Parent = w
     Instance.new("UICorner", glow).CornerRadius = UDim.new(0, 10)
     regAccent(glow, "BackgroundColor3")
 
@@ -638,9 +655,8 @@ local function newToggle(p, labelKey, initial, cb, layoutOrder, height)
 
         if pulse then
             glow.BackgroundTransparency = 0.7
-            TS:Create(glow, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                BackgroundTransparency = 1
-            }):Play()
+            local t2 = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            TS:Create(glow, t2, { BackgroundTransparency = 1 }):Play()
             TS:Create(knob, TweenInfo.new(0.15, Enum.EasingStyle.Back), {
                 Size = UDim2.fromOffset(24, 24)
             }):Play()
@@ -722,26 +738,23 @@ local function newSlider(p, labelKey, mn, mx, init, cb, layoutOrder, height, dec
     end
     setF((init - mn) / (mx - mn))
 
-    -- Single global handler via SliderDrag
+    local drag = false
     local function chg(i)
-        if SliderDrag.active ~= bar then return end
+        if not drag then return end
         local ap = bar.AbsolutePosition
         local asz = bar.AbsoluteSize
-        if asz.X <= 0 then return end
         setF((i.Position.X - ap.X) / asz.X)
     end
-
     bar.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1
         or i.UserInputType == Enum.UserInputType.Touch then
-            SliderDrag.active = bar
-            chg(i)
+            drag = true; chg(i)
             TS:Create(knob, TweenInfo.new(0.12, Enum.EasingStyle.Back), {
                 Size = UDim2.fromOffset(22, 22)
             }):Play()
             i.Changed:Connect(function()
                 if i.UserInputState == Enum.UserInputState.End then
-                    if SliderDrag.active == bar then SliderDrag.active = nil end
+                    drag = false
                     TS:Create(knob, TweenInfo.new(0.18, Enum.EasingStyle.Back), {
                         Size = UDim2.fromOffset(16, 16)
                     }):Play()
@@ -749,21 +762,12 @@ local function newSlider(p, labelKey, mn, mx, init, cb, layoutOrder, height, dec
             end)
         end
     end)
-    -- Store chg on bar for global handler
-    bar:SetAttribute("VL_SliderId", true)
-    SliderDrag[bar] = chg
+    UIS.InputChanged:Connect(function(i)
+        if drag and (i.UserInputType == Enum.UserInputType.MouseMovement
+        or i.UserInputType == Enum.UserInputType.Touch) then chg(i) end
+    end)
     return { set = function(x) setF((x - mn) / (mx - mn)) end, get = function() return val end }
 end
-
--- Single global InputChanged for all sliders
-UIS.InputChanged:Connect(function(i)
-    if not SliderDrag.active then return end
-    if i.UserInputType == Enum.UserInputType.MouseMovement
-    or i.UserInputType == Enum.UserInputType.Touch then
-        local chg = SliderDrag[SliderDrag.active]
-        if chg then chg(i) end
-    end
-end)
 
 local function newDropdown(p, labelKey, opts, init, cb, layoutOrder, height)
     height = height or 44
@@ -872,7 +876,7 @@ local function newDropdown(p, labelKey, opts, init, cb, layoutOrder, height)
 end
 
 -- ============================================================
--- Tabs
+-- Tabs (now use ScrollingFrame so sections don't spill)
 -- ============================================================
 local TabButtons, TabFrames = {}, {}
 local ActiveTab = "corner"
@@ -915,6 +919,7 @@ local function makeTab(key, ord)
     end)
     TabButtons[key] = b
 
+    -- ⚠️ ScrollingFrame per tab
     local f = Instance.new("ScrollingFrame")
     f.Size = UDim2.fromScale(1, 1)
     f.BackgroundTransparency = 1
@@ -954,7 +959,6 @@ local CourtData = {
     LeftTarget=nil, RightTarget=nil, OuterParts={}, MySign=1, LongAxis="Z",
 }
 local SafeCache = { pos=nil, time=0 }
-local WallCheckCache = {}  -- [plr] = {blocked, time}
 
 -- ============================================================
 -- TAB 1
@@ -994,7 +998,6 @@ do
     end, 1)
     newToggle(actSec, "smart_lock", Config.SmartLockEnabled, function(v)
         Config.SmartLockEnabled = v; saveCfg()
-        WallCheckCache = {}
     end, 2)
 end
 
@@ -1135,6 +1138,7 @@ do
     regLbl(resetBtn, "set_reset", fs(14))
 end
 
+-- Credit — sizes fit within section
 do
     local creditFrame = Instance.new("Frame")
     creditFrame.Size = UDim2.new(1, 0, 0, 110)
@@ -1152,7 +1156,8 @@ do
     creditLbl.BackgroundTransparency = 1
     creditLbl.Position = UDim2.new(0, 0, 0, 10)
     creditLbl.Size = UDim2.new(1, 0, 0, 38)
-    creditLbl.Font = FONT_TITLE; creditLbl.TextSize = fs(22)
+    creditLbl.Font = FONT_TITLE
+    creditLbl.TextSize = fs(22)
     creditLbl.TextColor3 = Color3.fromRGB(255, 230, 255)
     creditLbl.Text = t("credit")
     creditLbl.TextXAlignment = Enum.TextXAlignment.Center
@@ -1164,7 +1169,8 @@ do
     verLbl.BackgroundTransparency = 1
     verLbl.Position = UDim2.new(0, 0, 0, 54)
     verLbl.Size = UDim2.new(1, 0, 0, 22)
-    verLbl.Font = FONT_BODY; verLbl.TextSize = fs(14)
+    verLbl.Font = FONT_BODY
+    verLbl.TextSize = fs(14)
     verLbl.TextColor3 = Color3.fromRGB(190, 180, 220)
     verLbl.Text = t("version")
     verLbl.TextXAlignment = Enum.TextXAlignment.Center
@@ -1175,7 +1181,8 @@ do
     founderLbl.BackgroundTransparency = 1
     founderLbl.Position = UDim2.new(0, 0, 0, 80)
     founderLbl.Size = UDim2.new(1, 0, 0, 20)
-    founderLbl.Font = FONT_BODY; founderLbl.TextSize = fs(12)
+    founderLbl.Font = FONT_BODY
+    founderLbl.TextSize = fs(12)
     founderLbl.TextColor3 = Color3.fromRGB(160, 150, 190)
     founderLbl.Text = "(" .. t("founder") .. ")"
     founderLbl.TextXAlignment = Enum.TextXAlignment.Center
@@ -1213,9 +1220,12 @@ UIS.InputChanged:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseMovement
     or i.UserInputType == Enum.UserInputType.Touch then
         local d = i.Position - dragStart
-        Main.Position = UDim2.new(
+        local targetPos = UDim2.new(
             startPos.X.Scale, startPos.X.Offset + d.X,
             startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        TS:Create(Main, TweenInfo.new(0.06, Enum.EasingStyle.Quad), {
+            Position = targetPos
+        }):Play()
     end
 end)
 
@@ -1284,7 +1294,6 @@ MiniIcon.MouseLeave:Connect(function()
     TS:Create(miniStroke, TweenInfo.new(0.2), { Transparency = 0.15 }):Play()
 end)
 
--- Pulse ring — throttled
 task.spawn(function()
     while true do
         if MiniIcon.Visible then
@@ -1369,21 +1378,21 @@ UIS.InputChanged:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseMovement
     or i.UserInputType == Enum.UserInputType.Touch then
         local d = i.Position - miniStart
-        MiniIcon.Position = UDim2.new(
+        local targetPos = UDim2.new(
             miniStartPos.X.Scale, miniStartPos.X.Offset + d.X,
             miniStartPos.Y.Scale, miniStartPos.Y.Offset + d.Y)
+        TS:Create(MiniIcon, TweenInfo.new(0.06, Enum.EasingStyle.Quad), {
+            Position = targetPos
+        }):Play()
     end
 end)
 
--- RGB loop — throttled to 0.08s, skips if not RGB, uses applyAccent cache
 local hue = 0
-local lastRgbTime = 0
 task.spawn(function()
-    while task.wait(0.08) do
+    while task.wait(0.05) do
         if Themes[Config.Theme].rgb then
-            hue = (hue + 0.008) % 1
+            hue = (hue + 0.005) % 1
             local c = Color3.fromHSV(hue, 0.65, 1)
-            lastAccent = nil  -- force update
             applyAccent(c)
             MiniIcon.BackgroundColor3 = Color3.fromHSV(hue, 0.55, 0.35)
         end
@@ -1395,16 +1404,14 @@ SubTitle.Text = STR[LANG].sub
 MiniIcon.BackgroundColor3 = Color3.fromRGB(30, 20, 55)
 
 -- ============================================================
--- COURT LOGIC (with cached raycast + court cache)
+-- COURT LOGIC
 -- ============================================================
-local courtCache = nil
 local function findCourt()
-    if courtCache and courtCache.Parent then return courtCache end
     local map = Workspace:FindFirstChild("Map")
-    if map and map:FindFirstChild("Court") then courtCache = map.Court; return courtCache end
-    local c = Workspace:FindFirstChild("Court"); if c then courtCache = c; return courtCache end
+    if map and map:FindFirstChild("Court") then return map.Court end
+    local c = Workspace:FindFirstChild("Court"); if c then return c end
     for _, d in ipairs(Workspace:GetChildren()) do
-        if string.find(string.lower(d.Name), "court", 1, true) then courtCache = d; return d end
+        if string.find(string.lower(d.Name), "court", 1, true) then return d end
     end
 end
 local function findOuterCourt()
@@ -1425,8 +1432,7 @@ local function getBounds(parts)
     if #parts == 0 then return nil end
     local mn = Vector3.new(math.huge, math.huge, math.huge)
     local mx = Vector3.new(-math.huge, -math.huge, -math.huge)
-    for i = 1, #parts do
-        local p = parts[i]
+    for _, p in ipairs(parts) do
         local pos, h = p.Position, p.Size * 0.5
         mn = Vector3.new(math.min(mn.X, pos.X-h.X), math.min(mn.Y, pos.Y-h.Y), math.min(mn.Z, pos.Z-h.Z))
         mx = Vector3.new(math.max(mx.X, pos.X+h.X), math.max(mx.Y, pos.Y+h.Y), math.max(mx.Z, pos.Z+h.Z))
@@ -1463,10 +1469,8 @@ local function computeTargets(court)
     return { left=L, right=R, center=center, minV=mn, maxV=mx, longAxis=axis, mySign=mySign, parts=#parts }
 end
 local function isOnOuterCourt(pos)
-    local op = CourtData.OuterParts
-    if #op == 0 then return false end
-    for i = 1, #op do
-        local p = op[i]
+    if #CourtData.OuterParts == 0 then return false end
+    for _, p in ipairs(CourtData.OuterParts) do
         local lp = p.CFrame:PointToObjectSpace(pos)
         local h = p.Size * 0.5
         if math.abs(lp.X) <= h.X + 2 and math.abs(lp.Z) <= h.Z + 2 then return true end
@@ -1511,8 +1515,7 @@ local function computeSafeTarget()
                     score = -(Vector3.new(p.X,0,p.Z) - Vector3.new(center.X,0,center.Z)).Magnitude
                 else
                     score = math.huge
-                    for k = 1, #enemies do
-                        local e = enemies[k]
+                    for _, e in ipairs(enemies) do
                         local d = (Vector3.new(e.X,0,e.Z) - Vector3.new(p.X,0,p.Z)).Magnitude
                         if d < score then score = d end
                     end
@@ -1541,18 +1544,6 @@ local function isPathBlocked(o, tp)
     return false
 end
 
--- Cached wall check (0.15s throttle)
-local function cachedBlocked(myPos, target)
-    local now = tick()
-    -- use target as cache key (2 corners)
-    local key = target == CourtData.LeftTarget and "L" or "R"
-    local c = WallCheckCache[key]
-    if c and (now - c.time) < 0.15 then return c.blocked end
-    local blocked = isPathBlocked(myPos, target)
-    WallCheckCache[key] = { blocked = blocked, time = now }
-    return blocked
-end
-
 autoCheckCourt = function()
     local court = findCourt()
     if not court then return false, "ไม่พบ Court" end
@@ -1573,7 +1564,6 @@ autoCheckCourt = function()
     VLeft.Color = Color3.fromRGB(255,255,255)
     VRight.Color = Color3.fromRGB(255,255,255)
     VTarget.Position = Vector3.new(0,-500,0)
-    WallCheckCache = {}
     return true
 end
 
@@ -1583,19 +1573,13 @@ local function getFacingTarget()
     if not L or not R then return nil, false end
     local myChar = LP.Character
     local cam = getCam()
-    local myPos
-    if myChar then
-        local hrp = myChar:FindFirstChild("HumanoidRootPart")
-        myPos = hrp and hrp.Position or (cam and cam.CFrame.Position)
-    else
-        myPos = cam and cam.CFrame.Position
-    end
+    local myPos = (myChar and myChar:FindFirstChild("HumanoidRootPart"))
+        and myChar.HumanoidRootPart.Position or (cam and cam.CFrame.Position)
     if not myPos then return nil, false end
     local look = cam and cam.CFrame.LookVector or Vector3.new(0,0,-1)
-
     if Config.SmartLockEnabled and isOnOuterCourt(myPos) then
         local now = tick()
-        if not SafeCache.pos or (now - SafeCache.time) > 0.2 then
+        if not SafeCache.pos or (now - SafeCache.time) > 0.15 then
             SafeCache.pos = computeSafeTarget() or SafeCache.pos
             SafeCache.time = now
         end
@@ -1604,18 +1588,14 @@ local function getFacingTarget()
             return SafeCache.pos, true
         end
     else
-        -- only move VSafe if it's not already at hidden position
-        if VSafe.Position.Y ~= -500 then
-            VSafe.Position = Vector3.new(0,-500,0)
-        end
+        VSafe.Position = Vector3.new(0,-500,0)
     end
-
     local dL = look:Dot((L - myPos).Unit)
     local dR = look:Dot((R - myPos).Unit)
     local target = (dL >= dR) and L or R
     if Config.SmartLockEnabled then
-        local lB = cachedBlocked(myPos, L)
-        local rB = cachedBlocked(myPos, R)
+        local lB = isPathBlocked(myPos, L)
+        local rB = isPathBlocked(myPos, R)
         if lB and not rB then return R, false end
         if rB and not lB then return L, false end
     end
@@ -1635,7 +1615,6 @@ end
 
 updateHitboxes = function(scale)
     scale = math.clamp(scale, 0, 20)
-    local targetSize = Vector3.new(2, 2, 2) * scale
     for _, model in ipairs(Workspace:GetChildren()) do
         if model:IsA("Model") and model.Name:match("^CLIENT_BALL_%d+$") then
             local ball = model:FindFirstChild("Ball.001")
@@ -1645,7 +1624,7 @@ updateHitboxes = function(scale)
                     ball = Instance.new("Part")
                     ball.Name = "Ball.001"
                     ball.Shape = Enum.PartType.Ball
-                    ball.Size = targetSize
+                    ball.Size = Vector3.new(2, 2, 2) * scale
                     ball.CFrame = basePart.CFrame
                     ball.Anchored = true
                     ball.CanCollide = false
@@ -1655,7 +1634,7 @@ updateHitboxes = function(scale)
                     ball.Parent = model
                 end
             else
-                ball.Size = targetSize
+                ball.Size = Vector3.new(2, 2, 2) * scale
             end
         end
     end
@@ -1678,7 +1657,7 @@ Workspace.ChildAdded:Connect(function(child)
 end)
 
 -- ============================================================
--- ESP (throttled sync)
+-- ESP — Always enemy, auto-sync every 0.4s
 -- ============================================================
 local EspFolder = Workspace:FindFirstChild("VL_EspLines") or Instance.new("Folder")
 EspFolder.Name = "VL_EspLines"; EspFolder.Parent = Workspace
@@ -1706,7 +1685,7 @@ local function buildEspFor(plr)
     local root = ch:FindFirstChild("HumanoidRootPart")
     if not head or not root then return end
 
-    removeEspFor(plr)
+    removeEspFor(plr)  -- clean before build
 
     local aA = Instance.new("Attachment", head); aA.Name = "VL_EspA"
     local tp = Instance.new("Part")
@@ -1737,39 +1716,42 @@ stopEsp = function()
     for plr in pairs(EspLines) do removeEspFor(plr) end
 end
 
--- Sync loop: 0.5s intervals
+-- Sync loop: keep lines only for current enemies with valid characters
 task.spawn(function()
-    while task.wait(0.5) do
+    while task.wait(0.4) do
         if not Config.EspEnabled then continue end
 
+        -- build lines for any enemy missing
         for _, plr in ipairs(Players:GetPlayers()) do
             if isEnemyOfMe(plr) then
                 local ch = plr.Character
-                if ch then
-                    local head = ch:FindFirstChild("Head")
-                    local root = ch:FindFirstChild("HumanoidRootPart")
-                    if head and root then
-                        local e = EspLines[plr]
-                        if not e or not e.head or e.head.Parent ~= head then
-                            buildEspFor(plr)
-                        end
-                    else
-                        if EspLines[plr] then removeEspFor(plr) end
+                if ch and ch:FindFirstChild("Head") and ch:FindFirstChild("HumanoidRootPart") then
+                    local e = EspLines[plr]
+                    local needRebuild = (not e)
+                        or (not e.head or not e.head.Parent)
+                        or (e.head.Parent ~= ch.Head)  -- respawned = head replaced
+                    if needRebuild then
+                        buildEspFor(plr)
                     end
                 else
                     if EspLines[plr] then removeEspFor(plr) end
                 end
             else
+                -- not enemy anymore -> remove
                 if EspLines[plr] then removeEspFor(plr) end
             end
         end
 
+        -- remove lines for players who left
         for plr in pairs(EspLines) do
-            if not plr.Parent then removeEspFor(plr) end
+            if not plr.Parent then
+                removeEspFor(plr)
+            end
         end
     end
 end)
 
+-- CharacterAdded hook (fresh build on respawn)
 Players.PlayerAdded:Connect(function(plr)
     if plr == LP then return end
     plr.CharacterAdded:Connect(function()
@@ -1779,7 +1761,7 @@ Players.PlayerAdded:Connect(function(plr)
         end
     end)
 end)
-
+-- Existing players
 for _, plr in ipairs(Players:GetPlayers()) do
     if plr ~= LP then
         plr.CharacterAdded:Connect(function()
@@ -1793,46 +1775,21 @@ end
 Players.PlayerRemoving:Connect(removeEspFor)
 
 -- ============================================================
--- Main render loop — SPLIT into light (every frame) and heavy (throttled)
+-- Main loop
 -- ============================================================
--- Light: ESP beam position only (needs smooth update)
-RS.Heartbeat:Connect(function()
+RS.RenderStepped:Connect(function()
     if Config.EspEnabled then
         for plr, e in pairs(EspLines) do
-            local head, root = e.head, e.root
-            if head and head.Parent and root and root.Parent then
-                e.targetPart.CFrame = CFrame.new(head.Position + (root.CFrame.LookVector * Config.EspDistance))
+            if not e.head or not e.head.Parent or not e.root or not e.root.Parent then
+                removeEspFor(plr)
+            else
+                e.targetPart.Position = e.head.Position + (e.root.CFrame.LookVector * Config.EspDistance)
             end
         end
     end
-end)
-
--- Heavy: visuals + auto corner — throttle to 0.05s (20Hz is enough)
-local lastHeavyTick = 0
-local lastJumpingState = false
-
-RS.Heartbeat:Connect(function(dt)
-    local now = tick()
-    if now - lastHeavyTick < 0.05 then return end
-    lastHeavyTick = now
 
     if not CourtData.Valid then return end
-
-    -- check if we need AutoCorner / Visual update
-    local ch = LP.Character
-    if not ch then return end
-    local hum = ch:FindFirstChildOfClass("Humanoid")
-    local root = ch:FindFirstChild("HumanoidRootPart")
-    if not hum or not root then return end
-
-    local st = hum:GetState()
-    local jumping = (st == Enum.HumanoidStateType.Jumping)
-        or (st == Enum.HumanoidStateType.Freefall)
-        or (root.AssemblyLinearVelocity.Y > 0.5)
-
-    -- visual update: throttle harder (0.1s) unless jumping
     local target, safeMode = getFacingTarget()
-
     if target then
         VTarget.Position = target
         if safeMode then
@@ -1849,16 +1806,20 @@ RS.Heartbeat:Connect(function(dt)
             VRight.Color = Color3.fromRGB(255,0,0)
         end
     end
-
     if not Config.AutoCornerEnabled or not target then return end
+    local ch = LP.Character; if not ch then return end
+    local root = ch:FindFirstChild("HumanoidRootPart")
+    local hum = ch:FindFirstChildOfClass("Humanoid")
+    if not root or not hum then return end
+    local st = hum:GetState()
+    local jumping = (st == Enum.HumanoidStateType.Jumping)
+        or (st == Enum.HumanoidStateType.Freefall)
+        or (root.AssemblyLinearVelocity.Y > 0.5)
     if jumping then
         root.CFrame = CFrame.new(root.Position, Vector3.new(target.X, root.Position.Y, target.Z))
     end
 end)
 
--- ============================================================
--- Viewport scale refresh
--- ============================================================
 local function refreshScale()
     local s = autoScale()
     if MainScale then MainScale.Scale = s end
@@ -1867,7 +1828,7 @@ local function refreshScale()
 end
 task.spawn(function()
     local cam = getCam()
-    while task.wait(1.5) do
+    while task.wait(1) do
         local c = getCam()
         if c and c ~= cam then cam = c; refreshScale() end
     end
@@ -1890,4 +1851,4 @@ showLoadingScreen(function()
     TS:Create(blur, TweenInfo.new(0.5), { Size = 14 }):Play()
 end)
 
-print("[VL UI v3.9 By Ark] Loaded | Lang:", LANG, "| Theme:", Config.Theme, "| FS:", HAS_FS)
+print("[VL UI v3.8 By Ark] Loaded | Lang:", LANG, "| Theme:", Config.Theme, "| FS:", HAS_FS)
