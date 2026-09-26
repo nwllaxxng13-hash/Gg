@@ -1,7 +1,9 @@
 -- ============================================================
--- Volleyball Legends — Big UI v3.9.1 · By Ark
--- Fix: Loading screen no longer hides Main · Failsafe
+-- Volleyball Legends - Big UI v3.9.2 - By Ark
+-- Fix: ASCII comments + top-level error trap
 -- ============================================================
+local ok_init, init_err = pcall(function()
+
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local UIS = game:GetService("UserInputService")
@@ -89,6 +91,7 @@ local function checkBan()
     end
     return ban
 end
+
 local function loadSuggestions() return loadJSON(SUGGESTIONS_FILE, {}) end
 local function saveSuggestions(list) return saveJSON(SUGGESTIONS_FILE, list) end
 local function loadBans() return loadJSON(BANS_FILE, {}) end
@@ -110,13 +113,10 @@ end
 
 local function addSuggestion(text)
     local list = loadSuggestions()
-    local entry = {
-        from = LP.Name, display = LP.DisplayName,
-        text = text, time = os.time(),
-    }
+    local entry = { from = LP.Name, display = LP.DisplayName, text = text, time = os.time() }
     table.insert(list, entry)
     saveSuggestions(list)
-    postWebhook({ content = string.format("**Suggestion** from `%s (%s)`:\n%s", LP.Name, LP.DisplayName, text) })
+    postWebhook({ content = string.format("Suggestion from %s (%s):\n%s", LP.Name, LP.DisplayName, text) })
     return entry
 end
 
@@ -130,7 +130,7 @@ local function addBan(targetName, minutes, reason)
         reason = reason or "",
     }
     saveBans(bans)
-    postWebhook({ content = string.format("**BAN** `%s` for **%d minutes** by `%s`", targetName, minutes, LP.Name) })
+    postWebhook({ content = string.format("BAN %s for %d minutes by %s", targetName, minutes, LP.Name) })
 end
 
 local function removeBan(targetName)
@@ -153,7 +153,7 @@ if banInfo then
     banGui.Name = "VL_BanScreen"
     banGui.ResetOnSpawn = false
     banGui.IgnoreGuiInset = true
-    banGui.DisplayOrder = 2147483647
+    banGui.DisplayOrder = 99999
     banGui.Parent = PlayerGui
 
     local bf = Instance.new("Frame")
@@ -183,24 +183,14 @@ if banInfo then
     sub.Text = reason
     sub.Parent = bf
 
-    local sub2 = Instance.new("TextLabel")
-    sub2.BackgroundTransparency = 1
-    sub2.Position = UDim2.fromScale(0.5, 0.58)
-    sub2.AnchorPoint = Vector2.new(0.5, 0.5)
-    sub2.Size = UDim2.fromOffset(600, 30)
-    sub2.Font = FONT_BODY; sub2.TextSize = 14
-    sub2.TextColor3 = Color3.fromRGB(160, 130, 160)
-    sub2.Text = "Contact Ark to appeal"
-    sub2.Parent = bf
-
     return
 end
 
 -- ============================================================
--- i18n
+-- i18n (ASCII keys, Thai values kept as-is for display)
 -- ============================================================
 local STR = {
-    th = { title="Volleyball Legends", sub="v3.9 · By Ark",
+    th = { title="Volleyball Legends", sub="v3.9.2 - By Ark",
         tab_corner="มุมตบ", tab_hitbox="บอล", tab_esp="ESP", tab_settings="ตั้งค่า",
         tab_suggest="เสนออัพเดต", tab_admin="แอดมิน",
         sec_court="สนาม", sec_actions="การทำงาน",
@@ -218,7 +208,7 @@ local STR = {
         set_save="บันทึก", set_load="โหลด", set_reset="รีเซ็ต",
         saved="บันทึกแล้ว", loaded="โหลดแล้ว", reset_done="รีเซ็ตแล้ว",
         no_fs="Executor ไม่รองรับ savefile", set_scale="ขนาด UI",
-        credit="สร้างโดย Ark", version="เวอร์ชัน 3.9",
+        credit="สร้างโดย Ark", version="เวอร์ชัน 3.9.2",
         hello="สวัสดี", founder="ผู้ก่อตั้งและ CEO",
         suggest_ph="พิมพ์ข้อเสนอแนะของคุณ...", suggest_send="ส่งข้อเสนอแนะ",
         suggest_sent="ส่งข้อเสนอแนะแล้ว ขอบคุณ!",
@@ -231,7 +221,7 @@ local STR = {
         ban_none="ยังไม่มีผู้ถูกแบน", ban_unban="ปลดแบน",
         ban_removed="ปลดแบน %s แล้ว", ban_remaining="เหลือ %d นาที",
     },
-    en = { title="Volleyball Legends", sub="v3.9 · By Ark",
+    en = { title="Volleyball Legends", sub="v3.9.2 - By Ark",
         tab_corner="Auto Corner", tab_hitbox="Hitbox", tab_esp="ESP Line", tab_settings="Settings",
         tab_suggest="Suggestions", tab_admin="Admin",
         sec_court="Court", sec_actions="Actions",
@@ -249,7 +239,7 @@ local STR = {
         set_save="Save", set_load="Load", set_reset="Reset",
         saved="Saved", loaded="Loaded", reset_done="Reset done",
         no_fs="Executor has no file API", set_scale="UI Scale",
-        credit="Created by Ark", version="Version 3.9",
+        credit="Created by Ark", version="Version 3.9.2",
         hello="Hello", founder="Ceo And Founder",
         suggest_ph="Type your suggestion...", suggest_send="Send Suggestion",
         suggest_sent="Suggestion sent, thanks!",
@@ -321,7 +311,7 @@ local blur = Instance.new("BlurEffect")
 blur.Name = "VL_Blur"; blur.Size = 0; blur.Parent = Lighting
 
 -- ============================================================
--- GUI root (always to PlayerGui)
+-- GUI root
 -- ============================================================
 local GUI = Instance.new("ScreenGui")
 GUI.Name = "VL_MainGUI"
@@ -331,7 +321,7 @@ GUI.DisplayOrder = 9999
 GUI.Parent = PlayerGui
 
 -- ============================================================
--- Loading Screen (parented to PlayerGui correctly)
+-- Loading screen
 -- ============================================================
 local function showLoadingScreen(onDone)
     local loader = Instance.new("ScreenGui")
@@ -339,7 +329,7 @@ local function showLoadingScreen(onDone)
     loader.ResetOnSpawn = false
     loader.IgnoreGuiInset = true
     loader.DisplayOrder = 99999
-    loader.Parent = PlayerGui   -- ⚠️ FIX: parent to PlayerGui, not GUI
+    loader.Parent = PlayerGui
 
     local bg = Instance.new("Frame")
     bg.Size = UDim2.fromScale(1, 1)
@@ -459,7 +449,7 @@ local function showLoadingScreen(onDone)
 end
 
 -- ============================================================
--- Notify + Modal
+-- Notify
 -- ============================================================
 local NotifyHolder = Instance.new("Frame")
 NotifyHolder.Name = "NotifyHolder"; NotifyHolder.BackgroundTransparency = 1
@@ -672,7 +662,7 @@ MinimizeBtn.Size = UDim2.fromOffset(28, 28)
 MinimizeBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 62)
 MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeBtn.Font = FONT_BOLD
-MinimizeBtn.TextSize = 16; MinimizeBtn.Text = "—"
+MinimizeBtn.TextSize = 16; MinimizeBtn.Text = "-"
 MinimizeBtn.BorderSizePixel = 0; MinimizeBtn.Parent = TBar
 Instance.new("UICorner", MinimizeBtn).CornerRadius = UDim.new(1, 0)
 
@@ -1251,7 +1241,6 @@ local function makeTab(key, ord)
     return f
 end
 
--- Forward declares
 local autoCheckCourt
 local updateHitboxes, removeHitboxes
 local startEsp, stopEsp
@@ -1264,7 +1253,7 @@ local CourtData = {
 local SafeCache = { pos=nil, time=0 }
 
 -- ============================================================
--- TAB 1
+-- TAB 1: Auto Corner
 -- ============================================================
 local tab1 = makeTab("tab_corner", 1)
 local StatusLabel
@@ -1312,7 +1301,7 @@ StatusLabel.TextColor3 = Color3.fromRGB(185,185,205)
 StatusLabel.LayoutOrder = 3
 
 -- ============================================================
--- TAB 2
+-- TAB 2: Hitbox
 -- ============================================================
 local tab2 = makeTab("tab_hitbox", 2)
 local hitboxToggle, hitboxSlider
@@ -1337,7 +1326,7 @@ do
 end
 
 -- ============================================================
--- TAB 3
+-- TAB 3: ESP
 -- ============================================================
 local tab3 = makeTab("tab_esp", 3)
 
@@ -1354,7 +1343,7 @@ do
 end
 
 -- ============================================================
--- TAB 4
+-- TAB 4: Settings
 -- ============================================================
 local tab4 = makeTab("tab_settings", 4)
 local themeDD, langDD, uiScaleSlider
@@ -1575,7 +1564,7 @@ if IS_ADMIN then
     local _, targetInput = newTextbox(punishSec, t("punish_target"), 1, 40, false)
     local _, timeInput = newTextbox(punishSec, t("punish_time"), 2, 40, false)
 
-    local refreshBans  -- forward decl
+    local refreshBans
 
     newButton(punishSec, t("punish_btn"), 42, function()
         local name = targetInput.Text and targetInput.Text:gsub("^%s+", ""):gsub("%s+$", "") or ""
@@ -1586,7 +1575,7 @@ if IS_ADMIN then
         end
         showConfirm(
             t("punish_confirm"),
-            string.format("Ban \"%s\" for %d minute%s ?", name, mins, mins == 1 and "" or "s"),
+            string.format("Ban %s for %d minutes ?", name, mins),
             function()
                 addBan(name, math.floor(mins))
                 notifyCenter(t("punish_done", name, math.floor(mins)), Color3.fromRGB(255,140,80), 2)
@@ -1918,7 +1907,7 @@ local function getBounds(parts)
 end
 local function computeTargets(court)
     local parts = collectParts(court)
-    if #parts == 0 then return nil, "Court ไม่มี BasePart" end
+    if #parts == 0 then return nil, "Court has no BasePart" end
     local mn, mx, center = getBounds(parts)
     local myPos = (LP.Character and LP.Character:FindFirstChild("HumanoidRootPart"))
         and LP.Character.HumanoidRootPart.Position or (getCam() and getCam().CFrame.Position) or center
@@ -2021,7 +2010,7 @@ end
 
 autoCheckCourt = function()
     local court = findCourt()
-    if not court then return false, "ไม่พบ Court" end
+    if not court then return false, "Court not found" end
     local res, err = computeTargets(court)
     if not res then return false, err end
     local outer = findOuterCourt()
@@ -2187,23 +2176,24 @@ end
 
 task.spawn(function()
     while task.wait(0.4) do
-        if not Config.EspEnabled then continue end
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if isEnemyOfMe(plr) then
-                local ch = plr.Character
-                if ch and ch:FindFirstChild("Head") and ch:FindFirstChild("HumanoidRootPart") then
-                    local e = EspLines[plr]
-                    local needRebuild = (not e) or (not e.head or not e.head.Parent) or (e.head.Parent ~= ch.Head)
-                    if needRebuild then buildEspFor(plr) end
+        if Config.EspEnabled then
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if isEnemyOfMe(plr) then
+                    local ch = plr.Character
+                    if ch and ch:FindFirstChild("Head") and ch:FindFirstChild("HumanoidRootPart") then
+                        local e = EspLines[plr]
+                        local needRebuild = (not e) or (not e.head or not e.head.Parent) or (e.head.Parent ~= ch.Head)
+                        if needRebuild then buildEspFor(plr) end
+                    else
+                        if EspLines[plr] then removeEspFor(plr) end
+                    end
                 else
                     if EspLines[plr] then removeEspFor(plr) end
                 end
-            else
-                if EspLines[plr] then removeEspFor(plr) end
             end
-        end
-        for plr in pairs(EspLines) do
-            if not plr.Parent then removeEspFor(plr) end
+            for plr in pairs(EspLines) do
+                if not plr.Parent then removeEspFor(plr) end
+            end
         end
     end
 end)
@@ -2286,13 +2276,12 @@ end)
 refreshScale()
 
 -- ============================================================
--- SHOW MAIN UI (failsafe + loading)
+-- SHOW MAIN UI
 -- ============================================================
 if Config.HitboxEnabled then updateHitboxes(Config.HitboxScale) end
 if Config.EspEnabled then startEsp() end
 switchTab("corner")
 
--- ⚠️ FAILSAFE: show Main after 3s regardless of loader state
 local mainShown = false
 local function revealMain()
     if mainShown then return end
@@ -2311,10 +2300,16 @@ task.spawn(function()
         warn("[VL-UI] Loader failed:", err)
         revealMain()
     end
-    -- failsafe: if loader failed to fire callback within 3.2s, reveal anyway
     task.wait(3.2)
     revealMain()
 end)
 
-print(string.format("[VL UI v3.9.1 By Ark] Loaded | Admin:%s | Lang:%s | Theme:%s | FS:%s",
-    tostring(IS_ADMIN), LANG, Config.Theme, tostring(HAS_FS)))
+print(string.format("[VL UI v3.9.2 By Ark] Loaded | Admin:%s | Lang:%s | FS:%s",
+    tostring(IS_ADMIN), LANG, tostring(HAS_FS)))
+
+end)  -- end pcall
+
+if not ok_init then
+    warn("[VL-UI v3.9.2] Top-level error:", init_err)
+    warn(debug.traceback())
+end
