@@ -1,6 +1,6 @@
 -- ============================================================
--- Ark Hub v4.5 - Multi-Game Hub - By Ark
--- Games: Volleyball Legends + 99 Nights + Flag Football
+-- Ark Hub v4.7 - Multi-Game Hub - By Ark
+-- Games: Volleyball Legends + 99 Nights + Flag Football + Combat Warriors
 -- ============================================================
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -11,6 +11,7 @@ local Lighting = game:GetService("Lighting")
 local Http = game:GetService("HttpService")
 local VIM = game:GetService("VirtualInputManager")
 local StarterGui = game:GetService("StarterGui")
+local CoreGui = game:GetService("CoreGui")
 
 local LP = Players.LocalPlayer
 local PG = LP:WaitForChild("PlayerGui")
@@ -31,7 +32,109 @@ local Config = {
     Game = nil, LastSeenSug = 0,
     Theme = "RGB", Lang = "en", Scale = 1.0,
     PosX = 0.5, PosY = 0.5, MiniX = 0.15, MiniY = 0.15,
+    VL = {}, NF = {}, FF = {}, CW = {},
 }
+
+-- ============================================================
+-- State Tables
+-- ============================================================
+local VLState = {
+    AutoCorner = false, SmartLock = false,
+    Hitbox = false, HitboxScale = 5.0,
+    Esp = false, EspDist = 50,
+    Court = {Valid=false, Center=Vector3.zero, MinV=Vector3.zero, MaxV=Vector3.zero, LT=nil, RT=nil, OP={}, Sign=1, Axis="Z"},
+    SafeCache = {pos=nil, time=0},
+}
+local NFState = {
+    GodMode = false, AutoDays = false, FramBunny = false, SemiGod = false,
+    SpeedOn = false, SpeedVal = 70,
+    KillAura = false, KillDist = 70,
+    TreeAura = false, TreeDist = 100,
+    FuelESP = false, MetalESP = false, FoodESP = false,
+    FullBright = false,
+    Brings = {}, AntiWolf = false, FullBrightConn = nil,
+    BringTarget = "Me", SpeedBring = false,
+}
+local FFState = {
+    Reach = 15, Thickness = 20, YOffset = 2,
+    MagsEnabled = false, BubbleEnabled = false, BubbleRadius = 15,
+    TargetingEnabled = true, TeammateOnly = true, CameraLockEnabled = false,
+    TargetRange = 250, ThrowPower = 85, LeadMultiplier = 1.0,
+    AssistMode = "Precision", ShowTrajectory = true, ShowDebug = true,
+    TrajectoryColor = "Green",
+    FakeArms = {}, CurrentTarget = nil, ManualTarget = nil,
+    IsThrowing = false, TrajectoryLines = {}, CatchMarker = nil,
+    VisualBubble = nil, DebugText = nil, DebugUI = nil,
+    UpdateThrottle = 0,
+}
+local CWState = {
+    AimbotEnabled = false,
+    AimRadius = 150,
+    ShowFovCircle = true,
+    AimSmoothing = 0.25,
+    AimPart = "Head",
+    HoldingAim = false,
+    AdvancedESP = false,
+    EspShowHP = true,
+    EspShowDist = true,
+    TeamCheck = false,
+    HitboxEnabled = false,
+    HitboxSize = 18,
+    HitboxTransparency = 0.5,
+    SpeedEnabled = false,
+    SpeedValue = 16,
+    JumpEnabled = false,
+    JumpPower = 50,
+    -- Runtime
+    EspLabels = {},
+    FovCircle = nil,
+    EspGui = nil,
+}
+
+local VL_KEYS = { AutoCorner=true, SmartLock=true, Hitbox=true, HitboxScale=true, Esp=true, EspDist=true }
+local NF_KEYS = { GodMode=true, AutoDays=true, FramBunny=true, SemiGod=true, SpeedOn=true, SpeedVal=true,
+    KillAura=true, KillDist=true, TreeAura=true, TreeDist=true, FuelESP=true, MetalESP=true, FoodESP=true,
+    FullBright=true, AntiWolf=true, BringTarget=true, SpeedBring=true }
+local FF_KEYS = { Reach=true, Thickness=true, YOffset=true, MagsEnabled=true, BubbleEnabled=true, BubbleRadius=true,
+    TargetingEnabled=true, TeammateOnly=true, CameraLockEnabled=true, TargetRange=true, ThrowPower=true,
+    LeadMultiplier=true, AssistMode=true, ShowTrajectory=true, ShowDebug=true, TrajectoryColor=true }
+local CW_KEYS = { AimbotEnabled=true, AimRadius=true, ShowFovCircle=true, AimSmoothing=true, AimPart=true,
+    AdvancedESP=true, EspShowHP=true, EspShowDist=true, TeamCheck=true,
+    HitboxEnabled=true, HitboxSize=true, HitboxTransparency=true,
+    SpeedEnabled=true, SpeedValue=true, JumpEnabled=true, JumpPower=true }
+
+local function syncStatesToCfg()
+    Config.VL = {}; for k in pairs(VL_KEYS) do if VLState[k] ~= nil then Config.VL[k] = VLState[k] end end
+    Config.NF = {}; for k in pairs(NF_KEYS) do if NFState[k] ~= nil then Config.NF[k] = NFState[k] end end
+    Config.FF = {}; for k in pairs(FF_KEYS) do if FFState[k] ~= nil then Config.FF[k] = FFState[k] end end
+    Config.CW = {}; for k in pairs(CW_KEYS) do if CWState[k] ~= nil then Config.CW[k] = CWState[k] end end
+end
+local function loadStatesFromCfg()
+    if type(Config.VL) == "table" then for k, v in pairs(Config.VL) do if VL_KEYS[k] then VLState[k] = v end end end
+    if type(Config.NF) == "table" then for k, v in pairs(Config.NF) do if NF_KEYS[k] then NFState[k] = v end end end
+    if type(Config.FF) == "table" then for k, v in pairs(Config.FF) do if FF_KEYS[k] then FFState[k] = v end end end
+    if type(Config.CW) == "table" then for k, v in pairs(Config.CW) do if CW_KEYS[k] then CWState[k] = v end end end
+end
+
+local savePending = false
+local saveScheduled = false
+local function saveCfgNow()
+    if not HAS_FS then return false end
+    syncStatesToCfg()
+    local ok, enc = pcall(function() return Http:JSONEncode(Config) end)
+    if ok and enc then return pcall(writefile, CONFIG_FILE, enc) end
+    return false
+end
+local function saveCfg() return saveCfgNow() end
+local function saveCfgDebounced()
+    savePending = true
+    if saveScheduled then return end
+    saveScheduled = true
+    task.delay(0.5, function()
+        saveScheduled = false
+        if savePending then savePending = false; saveCfgNow() end
+    end)
+end
 
 local function loadCfg()
     if not HAS_FS then return end
@@ -42,13 +145,8 @@ local function loadCfg()
         for k, v in pairs(d) do if Config[k] ~= nil then Config[k] = v end end
     end
 end
-local function saveCfg()
-    if not HAS_FS then return false end
-    local ok, enc = pcall(function() return Http:JSONEncode(Config) end)
-    if ok and enc then pcall(writefile, CONFIG_FILE, enc); return true end
-    return false
-end
 loadCfg()
+loadStatesFromCfg()
 
 local function loadJSON(p, d)
     if not HAS_FS then return d end
@@ -107,14 +205,16 @@ if banInfo and banInfo.expiresAt and os.time() < banInfo.expiresAt then
 end
 
 local STR = {
-    en = { title="Ark Hub", sub="v4.5 - By Ark", select_game="Select Game",
+    en = { title="Ark Hub", sub="v4.7 - By Ark", select_game="Select Game",
         vl_name="Volleyball Legends", vl_desc="Auto Corner, Hitbox, ESP",
         nf_name="99 Nights in the Forest", nf_desc="Bring, Aura, ESP, Combat",
         ff_name="Flag Football", ff_desc="Mags Receiver + QB Aimbot",
+        cw_name="Combat Warriors", cw_desc="Aimbot, ESP, Hitbox, Speed",
         tab_vl_corner="Auto Corner", tab_vl_hitbox="Hitbox", tab_vl_esp="ESP",
         tab_nf_main="Main", tab_nf_bring="Bring", tab_nf_player="Player",
         tab_nf_combat="Combat", tab_nf_esp="ESP", tab_nf_misc="Misc", tab_nf_mobs="Mobs",
         tab_ff_receiver="Receiver", tab_ff_qb="Quarterback", tab_ff_visuals="Visuals",
+        tab_cw_main="Aimbot", tab_cw_esp="ESP", tab_cw_player="Player",
         tab_settings="Settings", tab_suggest="Suggestions", tab_admin="Admin",
         sec_court="Court", sec_actions="Actions", sec_ball="Ball", sec_esp="ESP Line",
         sec_appear="Appearance", sec_config="Config", sec_suggest="Send Suggestion",
@@ -126,6 +226,7 @@ local STR = {
         sec_bring_option="Bring Option", sec_bring_misc="Misc Bring",
         sec_mags="Mags Settings", sec_targeting="Targeting", sec_throw="Throw Settings",
         sec_ball_render="Ball Rendering", sec_qb_visuals="QB Visuals",
+        sec_aim="Aimbot", sec_esp_cw="ESP", sec_hitbox_cw="Hitbox Expander", sec_move="Movement",
         auto_check="Check Court", recheck="Re-Check Court", scanning="Scanning...",
         status_idle="Court: NOT CHECKED", status_ok="OK | Outer: %d", status_err="Error: %s",
         hitbox_enable="Enable", hitbox_scale="Hitbox Scale", hitbox_clear="Clear Hitboxes",
@@ -163,15 +264,25 @@ local STR = {
         qb_assist="Assist Mode", qb_power="Throw Power", qb_lead="Lead Multiplier",
         v_bubble="Show Ball Radius Bubble", v_bubble_size="Bubble Size",
         v_arc="Show Trajectory Arc", v_arc_color="Arc Color", v_debug="Show Debug Stats",
+        -- CW
+        cw_aimbot="Aimbot", cw_aim_radius="Aim FOV Size", cw_show_fov="Show FOV Circle",
+        cw_smoothing="Aim Smoothing", cw_aim_part="Aim Part", cw_team_check="Team Check",
+        cw_esp_enable="Enable ESP", cw_esp_hp="Show Health", cw_esp_dist="Show Distance",
+        cw_hitbox="Hitbox Expander", cw_hitbox_size="Hitbox Size",
+        cw_hitbox_trans="Hitbox Transparency",
+        cw_speed="Speed Enabled", cw_speed_val="Walk Speed",
+        cw_jump="Jump Enabled", cw_jump_val="Jump Power",
     },
-    th = { title="Ark Hub", sub="v4.5 - By Ark", select_game="เลือกเกม",
+    th = { title="Ark Hub", sub="v4.7 - By Ark", select_game="เลือกเกม",
         vl_name="Volleyball Legends", vl_desc="ออโต้หันมุม, Hitbox, ESP",
         nf_name="99 Nights in the Forest", nf_desc="Bring, Aura, ESP, Combat",
         ff_name="Flag Football", ff_desc="Mags + QB Aimbot",
+        cw_name="Combat Warriors", cw_desc="Aimbot, ESP, Hitbox, Speed",
         tab_vl_corner="มุมตบ", tab_vl_hitbox="บอล", tab_vl_esp="ESP",
         tab_nf_main="หลัก", tab_nf_bring="Bring", tab_nf_player="ตัวละคร",
         tab_nf_combat="ต่อสู้", tab_nf_esp="ESP", tab_nf_misc="อื่นๆ", tab_nf_mobs="ศัตรู",
         tab_ff_receiver="รับบอล", tab_ff_qb="QB", tab_ff_visuals="ภาพ",
+        tab_cw_main="Aimbot", tab_cw_esp="ESP", tab_cw_player="ตัวละคร",
         tab_settings="ตั้งค่า", tab_suggest="เสนออัพเดต", tab_admin="แอดมิน",
         sec_court="สนาม", sec_actions="การทำงาน", sec_ball="ลูกบอล", sec_esp="เส้น ESP",
         sec_appear="ธีม & ภาษา", sec_config="ตั้งค่า", sec_suggest="ส่งข้อเสนอแนะ",
@@ -183,6 +294,7 @@ local STR = {
         sec_bring_option="ตั้งค่า Bring", sec_bring_misc="Bring อื่นๆ",
         sec_mags="ตั้งค่า Mags", sec_targeting="Targeting", sec_throw="ตั้งค่า Throw",
         sec_ball_render="แสดงลูกบอล", sec_qb_visuals="QB Visuals",
+        sec_aim="Aimbot", sec_esp_cw="ESP", sec_hitbox_cw="ขยาย Hitbox", sec_move="การเคลื่อนที่",
         auto_check="ตรวจสนาม", recheck="ตรวจซ้ำ", scanning="กำลังสแกน...",
         status_idle="ยังไม่ตรวจสนาม", status_ok="พร้อมใช้ | Outer: %d", status_err="ผิดพลาด: %s",
         hitbox_enable="เปิดใช้", hitbox_scale="ขนาด Hitbox", hitbox_clear="ลบ Hitbox",
@@ -220,6 +332,14 @@ local STR = {
         qb_assist="โหมด Assist", qb_power="พลัง Throw", qb_lead="Lead Multiplier",
         v_bubble="แสดงวงบอล", v_bubble_size="ขนาดวง",
         v_arc="แสดงเส้นวิถี", v_arc_color="สีเส้น", v_debug="แสดง Debug",
+        -- CW
+        cw_aimbot="Aimbot", cw_aim_radius="ขนาด Aim FOV", cw_show_fov="แสดง FOV Circle",
+        cw_smoothing="Aim Smoothing", cw_aim_part="จุดเล็ง", cw_team_check="เช็คทีม",
+        cw_esp_enable="เปิดใช้ ESP", cw_esp_hp="แสดงเลือด", cw_esp_dist="แสดงระยะ",
+        cw_hitbox="ขยาย Hitbox", cw_hitbox_size="ขนาด Hitbox",
+        cw_hitbox_trans="ความโปร่งใส Hitbox",
+        cw_speed="เปิดใช้ Speed", cw_speed_val="ความเร็วเดิน",
+        cw_jump="เปิดใช้ Jump", cw_jump_val="พลังกระโดด",
     }
 }
 local LANG = Config.Lang or "en"
@@ -236,11 +356,17 @@ local Themes = {
     Green = { base = Color3.fromRGB(50,210,90) }, Purple = { base = Color3.fromRGB(170,90,230) },
     Crimson = { base = Color3.fromRGB(210,40,70) }, Orange = { base = Color3.fromRGB(250,140,40) },
     Pink = { base = Color3.fromRGB(240,90,170) }, White = { base = Color3.fromRGB(235,235,235) },
-    Ocean = { base = Color3.fromRGB(0,150,200) },
+    Ocean = { base = Color3.fromRGB(0,150,200) }, Cyber = { base = Color3.fromRGB(0,255,170) },
 }
 local Accent = {}
 local function regA(i, p) table.insert(Accent, { i=i, p=p }) end
 local function applyA(c) for _, e in ipairs(Accent) do pcall(function() e.i[e.p] = c end) end end
+
+local FF_ColorMap = {
+    Green = Color3.fromRGB(0,255,128), Red = Color3.fromRGB(255,50,50),
+    Blue = Color3.fromRGB(50,150,255), Yellow = Color3.fromRGB(255,220,50),
+    Cyan = Color3.fromRGB(0,220,255), Magenta = Color3.fromRGB(255,80,220),
+}
 
 local blur = Instance.new("BlurEffect")
 blur.Name = "ArkBlur"; blur.Size = 0; blur.Parent = Lighting
@@ -413,6 +539,7 @@ local function newToggle(p, labelKey, init, cb, ord, h)
     bt.MouseButton1Click:Connect(function()
         st = not st; rf(true, true)
         if cb then local ok, e = pcall(cb, st) if not ok then warn("[Ark] TGL:",e) end end
+        saveCfgDebounced()
     end)
     regA(tr, "BackgroundColor3")
     return { set = function(v) st = v; rf(false,false) end, get = function() return st end }
@@ -444,18 +571,19 @@ local function newSlider(p, labelKey, mn, mx, init, cb, ord, h, dec)
     local ks = Instance.new("UIStroke", kn); ks.Color = Themes[Config.Theme].base; ks.Thickness = 2
     regA(ks, "Color")
     local val = init
-    local function sF(f)
+    local function sF(f, isDragging)
         f = math.clamp(f, 0, 1); val = mn + (mx-mn)*f
         fl.Size = UDim2.fromScale(f,1); kn.Position = UDim2.fromScale(f,.5)
         v.Text = string.format("%."..dec.."f", val)
         if cb then local ok, e = pcall(cb, val) if not ok then warn("[Ark] SLD:",e) end end
+        if isDragging then saveCfgDebounced() end
     end
     sF((init-mn)/(mx-mn))
     local dr = false
     local function ch(i)
         if not dr then return end
         local ap = bar.AbsolutePosition; local as = bar.AbsoluteSize
-        sF((i.Position.X-ap.X)/as.X)
+        sF((i.Position.X-ap.X)/as.X, true)
     end
     bar.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
@@ -465,6 +593,7 @@ local function newSlider(p, labelKey, mn, mx, init, cb, ord, h, dec)
                 if i.UserInputState == Enum.UserInputState.End then
                     dr = false
                     TS:Create(kn, TweenInfo.new(.18, Enum.EasingStyle.Back), { Size = UDim2.fromOffset(16,16) }):Play()
+                    saveCfgDebounced()
                 end
             end)
         end
@@ -518,6 +647,7 @@ local function newDropdown(p, labelKey, opts, init, cb, ord, h)
             ob.MouseButton1Click:Connect(function()
                 sel.Text = gD(o); cL()
                 if cb then local ok, e = pcall(cb, gV(o)) if not ok then warn("[Ark] DDN:",e) end end
+                saveCfgDebounced()
             end)
         end
     end)
@@ -590,7 +720,6 @@ local function showConfirm(title, body, onYes)
     dim.MouseButton1Click:Connect(function() close(nil) end)
 end
 
--- Loading Screen
 local function showLoading(onDone)
     local l = Instance.new("ScreenGui", PG); l.Name = "ArkLoader"
     l.IgnoreGuiInset = true; l.DisplayOrder = 99999
@@ -653,9 +782,6 @@ local function showLoading(onDone)
     end)
 end
 
--- ============================================================
--- Game Select - INSTANT FADE ON CLICK
--- ============================================================
 local function showGameSelect(onSelect)
     local l = Instance.new("ScreenGui", PG); l.Name = "ArkGameSelect"
     l.IgnoreGuiInset = true; l.DisplayOrder = 99998
@@ -671,7 +797,7 @@ local function showGameSelect(onSelect)
 
     local container = Instance.new("Frame", bg)
     container.AnchorPoint = Vector2.new(.5,.5); container.Position = UDim2.fromScale(.5,.5)
-    container.Size = UDim2.fromOffset(340, 320); container.BackgroundTransparency = 1
+    container.Size = UDim2.fromOffset(340, 400); container.BackgroundTransparency = 1
 
     local title = newLabel(container, UDim2.new(0,0,0,0), UDim2.new(1,0,0,36),
         t("select_game"), FONT_TITLE, 24, Enum.TextXAlignment.Center)
@@ -718,25 +844,21 @@ local function showGameSelect(onSelect)
             clicked = true
             Config.Game = gameId; saveCfg()
 
-            -- Instant fade everything
             local fadeTween = TweenInfo.new(.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
             TS:Create(bg, fadeTween, { BackgroundTransparency = 1 }):Play()
             TS:Create(container, fadeTween, { BackgroundTransparency = 1 }):Play()
             TS:Create(title, fadeTween, { TextTransparency = 1 }):Play()
             for _, b in ipairs(buttons) do
-                TS:Create(b, fadeTween, { BackgroundTransparency = 1 }):Play()
+                TS:Create(b, fadeTween, { BackgroundTransparency = 1, TextTransparency = 1 }):Play()
             end
 
-            -- Boot immediately (don't wait)
             if onSelect then onSelect(gameId) end
 
-            -- Destroy screen after fade
             task.delay(.25, function()
                 if l then l:Destroy() end
             end)
         end)
         table.insert(buttons, btn)
-        -- Track sublabels for fade
         table.insert(buttons, nm)
         table.insert(buttons, ds)
         return btn
@@ -745,6 +867,7 @@ local function showGameSelect(onSelect)
     makeGameBtn("vl_name", "vl_desc", 1, "VL")
     makeGameBtn("nf_name", "nf_desc", 2, "NF")
     makeGameBtn("ff_name", "ff_desc", 3, "FF")
+    makeGameBtn("cw_name", "cw_desc", 4, "CW")
 
     TS:Create(bg, TweenInfo.new(.4), { BackgroundTransparency = .05 }):Play()
     TS:Create(title, TweenInfo.new(.6), { TextTransparency = 0 }):Play()
@@ -969,27 +1092,26 @@ local function buildMainFrame()
     MiniIcon.BackgroundColor3 = Color3.fromRGB(30,20,55)
 end
 
--- Shared Tabs
 local function buildSharedTabs()
     local tabS = makeTab("tab_settings", 100)
     local themeDD, langDD, scaleSlider
     do
         local sec = newSection(tabS, "sec_appear", 1)
         themeDD = newDropdown(sec, "set_theme",
-            {"RGB","Red","Cyan","Green","Purple","Crimson","Orange","Pink","White","Ocean"},
+            {"RGB","Red","Cyan","Green","Purple","Crimson","Orange","Pink","White","Ocean","Cyber"},
             Config.Theme, function(v)
-                Config.Theme = v; saveCfg()
+                Config.Theme = v
                 applyA(Themes[v].base); applyA2Tabs()
             end, 1, 46)
         langDD = newDropdown(sec, "set_lang",
             { {value="en", display="English"}, {value="th", display="Thai"} },
             LANG, function(v)
-                LANG = v; Config.Lang = v; saveCfg()
+                LANG = v; Config.Lang = v
                 refreshLangAll()
                 for k, btn in pairs(TabButtons) do btn.Text = "   "..t(k) end
             end, 2, 46)
         scaleSlider = newSlider(sec, "set_scale", 0.5, 1.5, Config.Scale, function(v)
-            Config.Scale = v; saveCfg()
+            Config.Scale = v
             MainScale.Scale = v; NotifyScale.Scale = v; MiniScale.Scale = v
         end, 3, 60, 2)
     end
@@ -1001,7 +1123,7 @@ local function buildSharedTabs()
         end, 1)
         sv.Size = UDim2.new(.49,0,0,42); sv.Position = UDim2.fromScale(0,0)
         local ld = newButton(row, t("set_load"), 42, function()
-            loadCfg(); LANG = Config.Lang or "en"
+            loadCfg(); loadStatesFromCfg(); LANG = Config.Lang or "en"
             themeDD.set(Config.Theme); langDD.set(LANG); scaleSlider.set(Config.Scale)
             applyA(Themes[Config.Theme].base); applyA2Tabs()
             MainScale.Scale = Config.Scale; NotifyScale.Scale = Config.Scale; MiniScale.Scale = Config.Scale
@@ -1010,7 +1132,9 @@ local function buildSharedTabs()
         end, 2)
         ld.Size = UDim2.new(.49,0,0,42); ld.Position = UDim2.fromScale(.51,0)
         newButton(sec, t("set_reset"), 42, function()
-            Config.Theme = "RGB"; Config.Lang = "en"; Config.Scale = 1.0; saveCfg()
+            Config.Theme = "RGB"; Config.Lang = "en"; Config.Scale = 1.0
+            Config.VL = {}; Config.NF = {}; Config.FF = {}; Config.CW = {}
+            saveCfg()
             MainScale.Scale = autoScale(); NotifyScale.Scale = autoScale(); MiniScale.Scale = autoScale()
             applyA(Themes.RGB.base); applyA2Tabs()
             notify(t("reset_done"), Color3.fromRGB(255,200,80), 1.2)
@@ -1166,24 +1290,272 @@ local function buildSharedTabs()
 end
 
 -- ============================================================
--- FLAG FOOTBALL MODULE (unchanged)
+-- COMBAT WARRIORS MODULE
 -- ============================================================
-local FFState = {
-    Reach = 15, Thickness = 20, YOffset = 2,
-    MagsEnabled = false, BubbleEnabled = false, BubbleRadius = 15,
-    TargetingEnabled = true, TeammateOnly = true, CameraLockEnabled = false,
-    TargetRange = 250, ThrowPower = 85, LeadMultiplier = 1.0,
-    AssistMode = "Precision", ShowTrajectory = true, ShowDebug = true,
-    TrajectoryColor = Color3.fromRGB(0, 255, 128),
-    FakeArms = {},
-    CurrentTarget = nil, ManualTarget = nil,
-    IsThrowing = false,
-    TrajectoryLines = {}, CatchMarker = nil,
-    VisualBubble = nil,
-    DebugText = nil, DebugUI = nil,
-    UpdateThrottle = 0,
-}
+local function buildCW()
+    local Camera = getCam()
 
+    -- FOV Circle
+    local FovContainer = PG:FindFirstChild("FovContainer") or Instance.new("ScreenGui", PG)
+    FovContainer.Name = "FovContainer"; FovContainer.ResetOnSpawn = false
+    local FovCircle = FovContainer:FindFirstChild("FovCircle") or Instance.new("Frame", FovContainer)
+    FovCircle.Name = "FovCircle"; FovCircle.BackgroundTransparency = 1
+    FovCircle.AnchorPoint = Vector2.new(0.5, 0.5); FovCircle.Visible = false
+    FovCircle.ZIndex = 5
+    local Corner = FovCircle:FindFirstChild("UICorner") or Instance.new("UICorner", FovCircle)
+    Corner.CornerRadius = UDim.new(1, 0)
+    local Stroke = FovCircle:FindFirstChild("UIStroke") or Instance.new("UIStroke", FovCircle)
+    Stroke.Thickness = 1.5; Stroke.Color = Color3.fromRGB(0, 255, 170); Stroke.Transparency = 0.4
+    CWState.FovCircle = FovCircle
+
+    -- ESP Gui
+    local EspGui = CoreGui:FindFirstChild("Ark_CW_ESP")
+    if not EspGui then
+        EspGui = Instance.new("ScreenGui")
+        EspGui.Name = "Ark_CW_ESP"
+        EspGui.ResetOnSpawn = false
+        EspGui.DisplayOrder = 9996
+        pcall(function() EspGui.Parent = CoreGui end)
+        if not EspGui.Parent then EspGui.Parent = PG end
+    end
+    CWState.EspGui = EspGui
+
+    local function drawESPFor(plr)
+        if plr == LP then return end
+        if CWState.EspLabels[plr] then return end
+        local label = Instance.new("TextLabel", EspGui)
+        label.BackgroundTransparency = 1
+        label.TextSize = 12
+        label.Font = Enum.Font.Code
+        label.TextStrokeTransparency = 0.2
+        label.TextColor3 = Color3.fromRGB(255, 60, 60)
+        label.Visible = false
+        CWState.EspLabels[plr] = label
+    end
+
+    local function clearESP()
+        for plr, label in pairs(CWState.EspLabels) do
+            if label then label:Destroy() end
+        end
+        CWState.EspLabels = {}
+    end
+
+    local function startESPForAll()
+        for _, plr in ipairs(Players:GetPlayers()) do drawESPFor(plr) end
+    end
+
+    -- Team check helper
+    local function isSameTeam(plr)
+        if not CWState.TeamCheck then return false end
+        return plr.Team ~= nil and plr.Team == LP.Team
+    end
+
+    -- Nearest target
+    local function getClosestPlayer()
+        local closest, shortest = nil, math.huge
+        local mouseLoc = UIS:GetMouseLocation()
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LP and not isSameTeam(plr) and plr.Character then
+                local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health > 0 then
+                    local part = plr.Character:FindFirstChild(CWState.AimPart) or plr.Character:FindFirstChild("HumanoidRootPart")
+                    if part then
+                        local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                        if onScreen then
+                            local dist = (Vector2.new(pos.X, pos.Y) - mouseLoc).Magnitude
+                            if dist < shortest and dist < CWState.AimRadius then
+                                shortest = dist
+                                closest = plr
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        return closest
+    end
+
+    -- Input handling for aim key (default: MouseButton2)
+    UIS.InputBegan:Connect(function(i, processed)
+        if processed then return end
+        if i.UserInputType == Enum.UserInputType.MouseButton2 and CWState.AimbotEnabled then
+            CWState.HoldingAim = true
+        end
+    end)
+    UIS.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton2 then
+            CWState.HoldingAim = false
+        end
+    end)
+
+    -- Main loop: aim + FOV + ESP + hitbox + speed
+    RS.RenderStepped:Connect(function(dt)
+        -- FOV Circle
+        if CWState.AimbotEnabled and CWState.ShowFovCircle then
+            local mouseLoc = UIS:GetMouseLocation()
+            FovCircle.Position = UDim2.new(0, mouseLoc.X, 0, mouseLoc.Y)
+            FovCircle.Size = UDim2.new(0, CWState.AimRadius * 2, 0, CWState.AimRadius * 2)
+            FovCircle.Visible = true
+        else
+            FovCircle.Visible = false
+        end
+
+        -- Aim lock
+        if CWState.AimbotEnabled and CWState.HoldingAim then
+            local target = getClosestPlayer()
+            if target and target.Character then
+                local part = target.Character:FindFirstChild(CWState.AimPart) or target.Character:FindFirstChild("Head")
+                if part then
+                    local targetCF = CFrame.new(Camera.CFrame.Position, part.Position)
+                    Camera.CFrame = Camera.CFrame:Lerp(targetCF, math.clamp(1 - CWState.AimSmoothing, 0.01, 1))
+                end
+            end
+        end
+
+        -- ESP update
+        if CWState.AdvancedESP then
+            for plr, label in pairs(CWState.EspLabels) do
+                if plr.Parent then
+                    local char = plr.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    local hum = char and char:FindFirstChildOfClass("Humanoid")
+                    if hrp and hum and hum.Health > 0 and not isSameTeam(plr) then
+                        local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+                        if onScreen then
+                            local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
+                            label.Position = UDim2.new(0, pos.X - 100, 0, pos.Y - 40)
+                            label.Size = UDim2.new(0, 200, 0, 15)
+                            local parts = { string.upper(plr.Name) }
+                            if CWState.EspShowDist then table.insert(parts, string.format("[%dm]", math.floor(dist))) end
+                            if CWState.EspShowHP then table.insert(parts, string.format("HP: %d", math.floor(hum.Health))) end
+                            label.Text = table.concat(parts, " - ")
+                            label.TextColor3 = hum.Health > 50 and Color3.fromRGB(255, 60, 60) or Color3.fromRGB(255, 255, 0)
+                            label.Visible = true
+                        else
+                            label.Visible = false
+                        end
+                    else
+                        label.Visible = false
+                    end
+                else
+                    label:Destroy()
+                    CWState.EspLabels[plr] = nil
+                end
+            end
+        else
+            for plr, label in pairs(CWState.EspLabels) do
+                if label then label.Visible = false end
+            end
+        end
+    end)
+
+    -- Hitbox loop (separate, less frequent)
+    task.spawn(function()
+        while task.wait(0.4) do
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LP and p.Character and p.Character:FindFirstChild("Head") then
+                    local head = p.Character.Head
+                    if CWState.HitboxEnabled and not isSameTeam(p) then
+                        head.Size = Vector3.new(CWState.HitboxSize, CWState.HitboxSize, CWState.HitboxSize)
+                        head.Transparency = CWState.HitboxTransparency
+                        head.Color = Color3.fromRGB(0, 255, 170)
+                        head.CanCollide = false
+                    else
+                        head.Size = Vector3.new(1.2, 1.2, 1.2)
+                        head.Transparency = 0
+                        head.CanCollide = true
+                    end
+                end
+            end
+        end
+    end)
+
+    -- Speed/Jump apply
+    task.spawn(function()
+        while task.wait(0.3) do
+            local ch = LP.Character
+            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+            if hum then
+                if CWState.SpeedEnabled then hum.WalkSpeed = CWState.SpeedValue else hum.WalkSpeed = 16 end
+                if CWState.JumpEnabled then
+                    pcall(function() hum.UseJumpPower = true end)
+                    hum.JumpPower = CWState.JumpPower
+                else
+                    pcall(function() hum.UseJumpPower = true end)
+                    hum.JumpPower = 50
+                end
+            end
+        end
+    end)
+
+    -- Player added/removed
+    Players.PlayerAdded:Connect(function(plr)
+        if CWState.AdvancedESP then drawESPFor(plr) end
+    end)
+    Players.PlayerRemoving:Connect(function(plr)
+        if CWState.EspLabels[plr] then CWState.EspLabels[plr]:Destroy(); CWState.EspLabels[plr] = nil end
+    end)
+    LP.CharacterAdded:Connect(function()
+        task.wait(1)
+        if CWState.AdvancedESP then startESPForAll() end
+    end)
+
+    -- ============ Tabs ============
+    local tabAim = makeTab("tab_cw_main", 1)
+    local tabE = makeTab("tab_cw_esp", 2)
+    local tabP = makeTab("tab_cw_player", 3)
+
+    -- Aimbot Tab
+    do
+        local sec = newSection(tabAim, "sec_aim", 1)
+        newToggle(sec, "cw_aimbot", CWState.AimbotEnabled, function(v) CWState.AimbotEnabled = v end, 1, 46)
+        newToggle(sec, "cw_show_fov", CWState.ShowFovCircle, function(v) CWState.ShowFovCircle = v end, 2, 46)
+        newSlider(sec, "cw_aim_radius", 50, 500, CWState.AimRadius, function(v) CWState.AimRadius = v end, 3, 60, 0)
+        newSlider(sec, "cw_smoothing", 0, 1, CWState.AimSmoothing, function(v) CWState.AimSmoothing = v end, 4, 60, 2)
+        newDropdown(sec, "cw_aim_part",
+            { {value="Head", display="Head"}, {value="HumanoidRootPart", display="Torso"} },
+            CWState.AimPart, function(v) CWState.AimPart = v end, 5, 46)
+        newToggle(sec, "cw_team_check", CWState.TeamCheck, function(v)
+            CWState.TeamCheck = v
+        end, 6, 46)
+    end
+
+    -- ESP Tab
+    do
+        local sec = newSection(tabE, "sec_esp_cw", 1)
+        newToggle(sec, "cw_esp_enable", CWState.AdvancedESP, function(v)
+            CWState.AdvancedESP = v
+            if v then
+                startESPForAll()
+            else
+                for _, label in pairs(CWState.EspLabels) do
+                    if label then label.Visible = false end
+                end
+            end
+        end, 1, 46)
+        newToggle(sec, "cw_esp_hp", CWState.EspShowHP, function(v) CWState.EspShowHP = v end, 2, 46)
+        newToggle(sec, "cw_esp_dist", CWState.EspShowDist, function(v) CWState.EspShowDist = v end, 3, 46)
+    end
+
+    -- Player Tab (Hitbox, Speed, Jump)
+    do
+        local sec = newSection(tabP, "sec_hitbox_cw", 1)
+        newToggle(sec, "cw_hitbox", CWState.HitboxEnabled, function(v) CWState.HitboxEnabled = v end, 1, 46)
+        newSlider(sec, "cw_hitbox_size", 2, 30, CWState.HitboxSize, function(v) CWState.HitboxSize = v end, 2, 60, 0)
+        newSlider(sec, "cw_hitbox_trans", 0, 1, CWState.HitboxTransparency, function(v) CWState.HitboxTransparency = v end, 3, 60, 2)
+    end
+    do
+        local sec = newSection(tabP, "sec_move", 2)
+        newToggle(sec, "cw_speed", CWState.SpeedEnabled, function(v) CWState.SpeedEnabled = v end, 1, 46)
+        newSlider(sec, "cw_speed_val", 16, 200, CWState.SpeedValue, function(v) CWState.SpeedValue = v end, 2, 60, 0)
+        newToggle(sec, "cw_jump", CWState.JumpEnabled, function(v) CWState.JumpEnabled = v end, 3, 46)
+        newSlider(sec, "cw_jump_val", 50, 300, CWState.JumpPower, function(v) CWState.JumpPower = v end, 4, 60, 0)
+    end
+end
+
+-- ============================================================
+-- FLAG FOOTBALL MODULE
+-- ============================================================
 local function buildFF()
     local Gravity = Workspace.Gravity
     local Camera = getCam()
@@ -1225,7 +1597,7 @@ local function buildFF()
         local line = Instance.new("Part", trajFolder)
         line.Anchored = true; line.CanCollide = false
         line.Material = Enum.Material.Neon
-        line.Color = FFState.TrajectoryColor
+        line.Color = FF_ColorMap[FFState.TrajectoryColor] or Color3.fromRGB(0,255,128)
         line.Transparency = 1
         line.CanQuery = false; line.CanTouch = false; line.CastShadow = false
         table.insert(FFState.TrajectoryLines, line)
@@ -1487,21 +1859,13 @@ local function buildFF()
             FFState.DebugText.Visible = v
         end, 2, 46)
         local colorOpts = {
-            {value="Green", display="Green"},
-            {value="Red", display="Red"},
-            {value="Blue", display="Blue"},
-            {value="Yellow", display="Yellow"},
-            {value="Cyan", display="Cyan"},
-            {value="Magenta", display="Magenta"},
+            {value="Green", display="Green"}, {value="Red", display="Red"},
+            {value="Blue", display="Blue"}, {value="Yellow", display="Yellow"},
+            {value="Cyan", display="Cyan"}, {value="Magenta", display="Magenta"},
         }
-        local colorMap = {
-            Green = Color3.fromRGB(0,255,128), Red = Color3.fromRGB(255,50,50),
-            Blue = Color3.fromRGB(50,150,255), Yellow = Color3.fromRGB(255,220,50),
-            Cyan = Color3.fromRGB(0,220,255), Magenta = Color3.fromRGB(255,80,220),
-        }
-        newDropdown(sec, "v_arc_color", colorOpts, "Green", function(v)
-            local c = colorMap[v] or Color3.fromRGB(0,255,128)
-            FFState.TrajectoryColor = c
+        newDropdown(sec, "v_arc_color", colorOpts, FFState.TrajectoryColor, function(v)
+            local c = FF_ColorMap[v] or Color3.fromRGB(0,255,128)
+            FFState.TrajectoryColor = v
             for _, p in ipairs(FFState.TrajectoryLines) do p.Color = c end
         end, 3, 46)
     end
@@ -1643,16 +2007,6 @@ end
 -- ============================================================
 -- 99 NIGHTS MODULE
 -- ============================================================
-local NFState = {
-    GodMode = false, AutoDays = false, FramBunny = false, SemiGod = false,
-    SpeedOn = false, SpeedVal = 70,
-    KillAura = false, KillDist = 70,
-    TreeAura = false, TreeDist = 100,
-    FuelESP = false, MetalESP = false, FoodESP = false,
-    FullBright = false,
-    Brings = {}, AntiWolf = false, FullBrightConn = nil,
-    BringTarget = "Me", SpeedBring = false,
-}
 local NF_BRING_TARGETS = {
     fuel = { ["Log"]=true, ["Coal"]=true, ["Oil Barrel"]=true, ["Fuel Canister"]=true, ["Cultist"]=true, ["Bear Corpse"]=true, ["Alpha Wolf Corpse"]=true, ["Wolf Corpse"]=true, ["Crossbow Cultist"]=true },
     metal = { ["Bolt"]=true, ["Sheet Metal"]=true, ["UFO Junk"]=true, ["UFO Component"]=true, ["Broken Fan"]=true, ["Broken Radio"]=true, ["Broken Microwave"]=true, ["Tyre"]=true, ["Metal Chair"]=true, ["Old Car Engine"]=true, ["Cultist Experiment"]=true, ["Washing Machine"]=true, ["Cultist Prototype"]=true, ["UFO Scrap"]=true },
@@ -2121,14 +2475,6 @@ end
 -- ============================================================
 -- VL MODULE
 -- ============================================================
-local VLState = {
-    AutoCorner = false, SmartLock = false,
-    Hitbox = false, HitboxScale = 5.0,
-    Esp = false, EspDist = 50,
-    Court = {Valid=false, Center=Vector3.zero, MinV=Vector3.zero, MaxV=Vector3.zero, LT=nil, RT=nil, OP={}, Sign=1, Axis="Z"},
-    SafeCache = {pos=nil, time=0},
-}
-
 local function buildVL()
     local VF = Workspace:FindFirstChild("CornerVisuals") or Instance.new("Folder", Workspace)
     VF.Name = "CornerVisuals"
@@ -2444,9 +2790,12 @@ local function boot(gameType)
     elseif gameType == "NF" then
         build99NIF()
         switchTab("tab_nf_main")
-    else
+    elseif gameType == "FF" then
         buildFF()
         switchTab("tab_ff_receiver")
+    else
+        buildCW()
+        switchTab("tab_cw_main")
     end
     mainShown = true
     Main.Visible = true; MainScale.Scale = 0
@@ -2464,7 +2813,7 @@ local function boot(gameType)
             end
         end
     end)
-    print(string.format("[Ark Hub v4.5] Loaded | Game:%s | Admin:%s | Lang:%s",
+    print(string.format("[Ark Hub v4.7] Loaded | Game:%s | Admin:%s | Lang:%s",
         gameType, tostring(IS_ADMIN), LANG))
 end
 
@@ -2474,4 +2823,4 @@ showLoading(function()
     end)
 end)
 
-print("[Ark Hub v4.5] Script executed | Admin:", IS_ADMIN, "| Last Game:", Config.Game or "?")
+print("[Ark Hub v4.7] Script executed | Admin:", IS_ADMIN, "| Last Game:", Config.Game or "?")
