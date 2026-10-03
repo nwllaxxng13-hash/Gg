@@ -1,6 +1,6 @@
 -- ============================================================
--- Ark Hub v4.7 - Multi-Game Hub - By Ark
--- Games: Volleyball Legends + 99 Nights + Flag Football + Combat Warriors
+-- Ark Hub v4.9.3 - Multi-Game Hub - By Ark
+-- VL OC find all parts fix + Prison Life module
 -- ============================================================
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -11,7 +11,6 @@ local Lighting = game:GetService("Lighting")
 local Http = game:GetService("HttpService")
 local VIM = game:GetService("VirtualInputManager")
 local StarterGui = game:GetService("StarterGui")
-local CoreGui = game:GetService("CoreGui")
 
 local LP = Players.LocalPlayer
 local PG = LP:WaitForChild("PlayerGui")
@@ -32,12 +31,9 @@ local Config = {
     Game = nil, LastSeenSug = 0,
     Theme = "RGB", Lang = "en", Scale = 1.0,
     PosX = 0.5, PosY = 0.5, MiniX = 0.15, MiniY = 0.15,
-    VL = {}, NF = {}, FF = {}, CW = {},
+    VL = {}, NF = {}, FF = {}, PL = {},
 }
 
--- ============================================================
--- State Tables
--- ============================================================
 local VLState = {
     AutoCorner = false, SmartLock = false,
     Hitbox = false, HitboxScale = 5.0,
@@ -62,77 +58,112 @@ local FFState = {
     TargetRange = 250, ThrowPower = 85, LeadMultiplier = 1.0,
     AssistMode = "Precision", ShowTrajectory = true, ShowDebug = true,
     TrajectoryColor = "Green",
-    FakeArms = {}, CurrentTarget = nil, ManualTarget = nil,
-    IsThrowing = false, TrajectoryLines = {}, CatchMarker = nil,
-    VisualBubble = nil, DebugText = nil, DebugUI = nil,
+    FakeArms = {},
+    CurrentTarget = nil, ManualTarget = nil,
+    IsThrowing = false,
+    TrajectoryLines = {}, CatchMarker = nil,
+    VisualBubble = nil,
+    DebugText = nil, DebugUI = nil,
     UpdateThrottle = 0,
 }
-local CWState = {
-    AimbotEnabled = false,
-    AimRadius = 150,
-    ShowFovCircle = true,
-    AimSmoothing = 0.25,
-    AimPart = "Head",
-    HoldingAim = false,
-    AdvancedESP = false,
-    EspShowHP = true,
-    EspShowDist = true,
-    TeamCheck = false,
-    HitboxEnabled = false,
-    HitboxSize = 18,
-    HitboxTransparency = 0.5,
-    SpeedEnabled = false,
-    SpeedValue = 16,
-    JumpEnabled = false,
-    JumpPower = 50,
-    -- Runtime
-    EspLabels = {},
-    FovCircle = nil,
-    EspGui = nil,
+local PLState = {
+    SilentAim = false, FOVSize = 150, ShowFOV = true,
+    TeamCheck = true, WallCheck = false, LockPart = "Head",
+    TargetPriority = "FOV", CloseRangeFix = true,
+    EspEnabled = false, EspTeamCheck = true,
+    EspShowName = true, EspShowHp = true, EspShowDist = true, EspBox = true,
+    GodMode = false, AntiArrest = false,
+    SpeedOn = false, SpeedVal = 50,
+    FlyOn = false, FlySpeed = 80, Noclip = false,
 }
 
-local VL_KEYS = { AutoCorner=true, SmartLock=true, Hitbox=true, HitboxScale=true, Esp=true, EspDist=true }
-local NF_KEYS = { GodMode=true, AutoDays=true, FramBunny=true, SemiGod=true, SpeedOn=true, SpeedVal=true,
-    KillAura=true, KillDist=true, TreeAura=true, TreeDist=true, FuelESP=true, MetalESP=true, FoodESP=true,
-    FullBright=true, AntiWolf=true, BringTarget=true, SpeedBring=true }
-local FF_KEYS = { Reach=true, Thickness=true, YOffset=true, MagsEnabled=true, BubbleEnabled=true, BubbleRadius=true,
-    TargetingEnabled=true, TeammateOnly=true, CameraLockEnabled=true, TargetRange=true, ThrowPower=true,
-    LeadMultiplier=true, AssistMode=true, ShowTrajectory=true, ShowDebug=true, TrajectoryColor=true }
-local CW_KEYS = { AimbotEnabled=true, AimRadius=true, ShowFovCircle=true, AimSmoothing=true, AimPart=true,
-    AdvancedESP=true, EspShowHP=true, EspShowDist=true, TeamCheck=true,
-    HitboxEnabled=true, HitboxSize=true, HitboxTransparency=true,
-    SpeedEnabled=true, SpeedValue=true, JumpEnabled=true, JumpPower=true }
+local VL_KEYS = {
+    AutoCorner=true, SmartLock=true, Hitbox=true, HitboxScale=true,
+    Esp=true, EspDist=true,
+}
+local NF_KEYS = {
+    GodMode=true, AutoDays=true, FramBunny=true, SemiGod=true,
+    SpeedOn=true, SpeedVal=true, KillAura=true, KillDist=true,
+    TreeAura=true, TreeDist=true, FuelESP=true, MetalESP=true, FoodESP=true,
+    FullBright=true, AntiWolf=true, BringTarget=true, SpeedBring=true,
+}
+local FF_KEYS = {
+    Reach=true, Thickness=true, YOffset=true,
+    MagsEnabled=true, BubbleEnabled=true, BubbleRadius=true,
+    TargetingEnabled=true, TeammateOnly=true, CameraLockEnabled=true,
+    TargetRange=true, ThrowPower=true, LeadMultiplier=true,
+    AssistMode=true, ShowTrajectory=true, ShowDebug=true,
+    TrajectoryColor=true,
+}
+local PL_KEYS = {
+    SilentAim=true, FOVSize=true, ShowFOV=true, TeamCheck=true, WallCheck=true,
+    LockPart=true, TargetPriority=true, CloseRangeFix=true,
+    EspEnabled=true, EspTeamCheck=true, EspShowName=true, EspShowHp=true,
+    EspShowDist=true, EspBox=true,
+    GodMode=true, AntiArrest=true, SpeedOn=true, SpeedVal=true,
+    FlyOn=true, FlySpeed=true, Noclip=true,
+}
 
 local function syncStatesToCfg()
-    Config.VL = {}; for k in pairs(VL_KEYS) do if VLState[k] ~= nil then Config.VL[k] = VLState[k] end end
-    Config.NF = {}; for k in pairs(NF_KEYS) do if NFState[k] ~= nil then Config.NF[k] = NFState[k] end end
-    Config.FF = {}; for k in pairs(FF_KEYS) do if FFState[k] ~= nil then Config.FF[k] = FFState[k] end end
-    Config.CW = {}; for k in pairs(CW_KEYS) do if CWState[k] ~= nil then Config.CW[k] = CWState[k] end end
+    Config.VL = {}
+    for k in pairs(VL_KEYS) do if VLState[k] ~= nil then Config.VL[k] = VLState[k] end end
+    Config.NF = {}
+    for k in pairs(NF_KEYS) do if NFState[k] ~= nil then Config.NF[k] = NFState[k] end end
+    Config.FF = {}
+    for k in pairs(FF_KEYS) do if FFState[k] ~= nil then Config.FF[k] = FFState[k] end end
+    Config.PL = {}
+    for k in pairs(PL_KEYS) do if PLState[k] ~= nil then Config.PL[k] = PLState[k] end end
 end
+
 local function loadStatesFromCfg()
-    if type(Config.VL) == "table" then for k, v in pairs(Config.VL) do if VL_KEYS[k] then VLState[k] = v end end end
-    if type(Config.NF) == "table" then for k, v in pairs(Config.NF) do if NF_KEYS[k] then NFState[k] = v end end end
-    if type(Config.FF) == "table" then for k, v in pairs(Config.FF) do if FF_KEYS[k] then FFState[k] = v end end end
-    if type(Config.CW) == "table" then for k, v in pairs(Config.CW) do if CW_KEYS[k] then CWState[k] = v end end end
+    if type(Config.VL) == "table" then
+        for k, v in pairs(Config.VL) do
+            if VL_KEYS[k] then VLState[k] = v end
+        end
+    end
+    if type(Config.NF) == "table" then
+        for k, v in pairs(Config.NF) do
+            if NF_KEYS[k] then NFState[k] = v end
+        end
+    end
+    if type(Config.FF) == "table" then
+        for k, v in pairs(Config.FF) do
+            if FF_KEYS[k] then FFState[k] = v end
+        end
+    end
+    if type(Config.PL) == "table" then
+        for k, v in pairs(Config.PL) do
+            if PL_KEYS[k] then PLState[k] = v end
+        end
+    end
 end
 
 local savePending = false
 local saveScheduled = false
+
 local function saveCfgNow()
     if not HAS_FS then return false end
     syncStatesToCfg()
     local ok, enc = pcall(function() return Http:JSONEncode(Config) end)
-    if ok and enc then return pcall(writefile, CONFIG_FILE, enc) end
+    if ok and enc then
+        local ok2 = pcall(writefile, CONFIG_FILE, enc)
+        return ok2
+    end
     return false
 end
+
 local function saveCfg() return saveCfgNow() end
+
 local function saveCfgDebounced()
     savePending = true
     if saveScheduled then return end
     saveScheduled = true
     task.delay(0.5, function()
         saveScheduled = false
-        if savePending then savePending = false; saveCfgNow() end
+        if savePending then
+            savePending = false
+            saveCfgNow()
+        end
     end)
 end
 
@@ -205,16 +236,17 @@ if banInfo and banInfo.expiresAt and os.time() < banInfo.expiresAt then
 end
 
 local STR = {
-    en = { title="Ark Hub", sub="v4.7 - By Ark", select_game="Select Game",
+    en = { title="Ark Hub", sub="v4.9.3 - By Ark", select_game="Select Game",
         vl_name="Volleyball Legends", vl_desc="Auto Corner, Hitbox, ESP",
         nf_name="99 Nights in the Forest", nf_desc="Bring, Aura, ESP, Combat",
         ff_name="Flag Football", ff_desc="Mags Receiver + QB Aimbot",
-        cw_name="Combat Warriors", cw_desc="Aimbot, ESP, Hitbox, Speed",
+        pl_name="Prison Life", pl_desc="Silent Aim, ESP, God, TP, Give Guns",
         tab_vl_corner="Auto Corner", tab_vl_hitbox="Hitbox", tab_vl_esp="ESP",
         tab_nf_main="Main", tab_nf_bring="Bring", tab_nf_player="Player",
         tab_nf_combat="Combat", tab_nf_esp="ESP", tab_nf_misc="Misc", tab_nf_mobs="Mobs",
         tab_ff_receiver="Receiver", tab_ff_qb="Quarterback", tab_ff_visuals="Visuals",
-        tab_cw_main="Aimbot", tab_cw_esp="ESP", tab_cw_player="Player",
+        tab_pl_aim="Silent Aim", tab_pl_esp="ESP", tab_pl_player="Player",
+        tab_pl_teleport="Teleport", tab_pl_weapons="Weapons", tab_pl_misc="Misc",
         tab_settings="Settings", tab_suggest="Suggestions", tab_admin="Admin",
         sec_court="Court", sec_actions="Actions", sec_ball="Ball", sec_esp="ESP Line",
         sec_appear="Appearance", sec_config="Config", sec_suggest="Send Suggestion",
@@ -226,7 +258,9 @@ local STR = {
         sec_bring_option="Bring Option", sec_bring_misc="Misc Bring",
         sec_mags="Mags Settings", sec_targeting="Targeting", sec_throw="Throw Settings",
         sec_ball_render="Ball Rendering", sec_qb_visuals="QB Visuals",
-        sec_aim="Aimbot", sec_esp_cw="ESP", sec_hitbox_cw="Hitbox Expander", sec_move="Movement",
+        sec_aim_main="Aim", sec_aim_safety="Safety", sec_esp_main="ESP", sec_esp_info="Info",
+        sec_pl_god="God & Protect", sec_pl_speed="Speed", sec_pl_fly="Fly & Noclip",
+        sec_pl_tp="Locations", sec_pl_give="Give Weapons", sec_pl_actions="Actions",
         auto_check="Check Court", recheck="Re-Check Court", scanning="Scanning...",
         status_idle="Court: NOT CHECKED", status_ok="OK | Outer: %d", status_err="Error: %s",
         hitbox_enable="Enable", hitbox_scale="Hitbox Scale", hitbox_clear="Clear Hitboxes",
@@ -264,25 +298,33 @@ local STR = {
         qb_assist="Assist Mode", qb_power="Throw Power", qb_lead="Lead Multiplier",
         v_bubble="Show Ball Radius Bubble", v_bubble_size="Bubble Size",
         v_arc="Show Trajectory Arc", v_arc_color="Arc Color", v_debug="Show Debug Stats",
-        -- CW
-        cw_aimbot="Aimbot", cw_aim_radius="Aim FOV Size", cw_show_fov="Show FOV Circle",
-        cw_smoothing="Aim Smoothing", cw_aim_part="Aim Part", cw_team_check="Team Check",
-        cw_esp_enable="Enable ESP", cw_esp_hp="Show Health", cw_esp_dist="Show Distance",
-        cw_hitbox="Hitbox Expander", cw_hitbox_size="Hitbox Size",
-        cw_hitbox_trans="Hitbox Transparency",
-        cw_speed="Speed Enabled", cw_speed_val="Walk Speed",
-        cw_jump="Jump Enabled", cw_jump_val="Jump Power",
+        pl_silent="Silent Aim", pl_fov="FOV Radius", pl_fov_show="Show FOV Circle",
+        pl_team_check="Team Check", pl_wall_check="Wall Check", pl_lockpart="Lock Part",
+        pl_priority="Target Priority", pl_close="Close-Range Fix",
+        pl_esp="Player ESP", pl_esp_team="Hide Teammates", pl_esp_name="Show Name",
+        pl_esp_hp="Show HP", pl_esp_dist="Show Distance", pl_esp_box="Box ESP",
+        pl_god="God Mode (Humanoid)", pl_anti="Anti-Arrest", pl_anti_cuff="Break Cuffs",
+        pl_speed_on="Speed Toggle", pl_speed_val="Walk Speed",
+        pl_fly_on="Fly Toggle", pl_fly_speed="Fly Speed", pl_noclip="Noclip",
+        pl_tp_yard="Teleport: Yard", pl_tp_cells="Teleport: Cells", pl_tp_guard="Teleport: Guard Room",
+        pl_tp_crim="Teleport: Criminal Base", pl_tp_armory="Teleport: Armory",
+        pl_tp_custom="Teleport: Player", pl_give_all="Give All Weapons",
+        pl_give_ak="Give AK-47", pl_give_m4="Give M4A1", pl_give_shotgun="Give Shotgun",
+        pl_give_pistol="Give Pistol", pl_give_keycard="Give Keycard",
+        pl_kill_all="Kill All Players", pl_arrest_all="Arrest All (Guard)",
+        pl_free_all="Free All Prisoners", pl_respawn="Respawn Character",
     },
-    th = { title="Ark Hub", sub="v4.7 - By Ark", select_game="เลือกเกม",
+    th = { title="Ark Hub", sub="v4.9.3 - By Ark", select_game="เลือกเกม",
         vl_name="Volleyball Legends", vl_desc="ออโต้หันมุม, Hitbox, ESP",
         nf_name="99 Nights in the Forest", nf_desc="Bring, Aura, ESP, Combat",
         ff_name="Flag Football", ff_desc="Mags + QB Aimbot",
-        cw_name="Combat Warriors", cw_desc="Aimbot, ESP, Hitbox, Speed",
+        pl_name="Prison Life", pl_desc="Silent Aim, ESP, God, วาป, ปืน",
         tab_vl_corner="มุมตบ", tab_vl_hitbox="บอล", tab_vl_esp="ESP",
         tab_nf_main="หลัก", tab_nf_bring="Bring", tab_nf_player="ตัวละคร",
         tab_nf_combat="ต่อสู้", tab_nf_esp="ESP", tab_nf_misc="อื่นๆ", tab_nf_mobs="ศัตรู",
         tab_ff_receiver="รับบอล", tab_ff_qb="QB", tab_ff_visuals="ภาพ",
-        tab_cw_main="Aimbot", tab_cw_esp="ESP", tab_cw_player="ตัวละคร",
+        tab_pl_aim="ล็อคเป้า", tab_pl_esp="มองทะลุ", tab_pl_player="ตัวละคร",
+        tab_pl_teleport="วาป", tab_pl_weapons="อาวุธ", tab_pl_misc="อื่นๆ",
         tab_settings="ตั้งค่า", tab_suggest="เสนออัพเดต", tab_admin="แอดมิน",
         sec_court="สนาม", sec_actions="การทำงาน", sec_ball="ลูกบอล", sec_esp="เส้น ESP",
         sec_appear="ธีม & ภาษา", sec_config="ตั้งค่า", sec_suggest="ส่งข้อเสนอแนะ",
@@ -294,7 +336,9 @@ local STR = {
         sec_bring_option="ตั้งค่า Bring", sec_bring_misc="Bring อื่นๆ",
         sec_mags="ตั้งค่า Mags", sec_targeting="Targeting", sec_throw="ตั้งค่า Throw",
         sec_ball_render="แสดงลูกบอล", sec_qb_visuals="QB Visuals",
-        sec_aim="Aimbot", sec_esp_cw="ESP", sec_hitbox_cw="ขยาย Hitbox", sec_move="การเคลื่อนที่",
+        sec_aim_main="การล็อค", sec_aim_safety="ความปลอดภัย", sec_esp_main="ESP", sec_esp_info="ข้อมูล",
+        sec_pl_god="อมตะ & ป้องกัน", sec_pl_speed="ความเร็ว", sec_pl_fly="บิน & ทะลุกำแพง",
+        sec_pl_tp="จุดวาป", sec_pl_give="แจกอาวุธ", sec_pl_actions="การกระทำ",
         auto_check="ตรวจสนาม", recheck="ตรวจซ้ำ", scanning="กำลังสแกน...",
         status_idle="ยังไม่ตรวจสนาม", status_ok="พร้อมใช้ | Outer: %d", status_err="ผิดพลาด: %s",
         hitbox_enable="เปิดใช้", hitbox_scale="ขนาด Hitbox", hitbox_clear="ลบ Hitbox",
@@ -332,14 +376,21 @@ local STR = {
         qb_assist="โหมด Assist", qb_power="พลัง Throw", qb_lead="Lead Multiplier",
         v_bubble="แสดงวงบอล", v_bubble_size="ขนาดวง",
         v_arc="แสดงเส้นวิถี", v_arc_color="สีเส้น", v_debug="แสดง Debug",
-        -- CW
-        cw_aimbot="Aimbot", cw_aim_radius="ขนาด Aim FOV", cw_show_fov="แสดง FOV Circle",
-        cw_smoothing="Aim Smoothing", cw_aim_part="จุดเล็ง", cw_team_check="เช็คทีม",
-        cw_esp_enable="เปิดใช้ ESP", cw_esp_hp="แสดงเลือด", cw_esp_dist="แสดงระยะ",
-        cw_hitbox="ขยาย Hitbox", cw_hitbox_size="ขนาด Hitbox",
-        cw_hitbox_trans="ความโปร่งใส Hitbox",
-        cw_speed="เปิดใช้ Speed", cw_speed_val="ความเร็วเดิน",
-        cw_jump="เปิดใช้ Jump", cw_jump_val="พลังกระโดด",
+        pl_silent="Silent Aim", pl_fov="รัศมี FOV", pl_fov_show="แสดงวงกลม",
+        pl_team_check="เช็คทีม", pl_wall_check="เช็คกำแพง", pl_lockpart="จุดล็อค",
+        pl_priority="ลำดับเป้า", pl_close="แก้ระยะใกล้",
+        pl_esp="ESP ผู้เล่น", pl_esp_team="ซ่อนเพื่อนร่วมทีม", pl_esp_name="แสดงชื่อ",
+        pl_esp_hp="แสดงเลือด", pl_esp_dist="แสดงระยะ", pl_esp_box="กล่อง ESP",
+        pl_god="อมตะ (Humanoid)", pl_anti="กันโดนจับ", pl_anti_cuff="ปลดกุญแจมือ",
+        pl_speed_on="เปิด Speed", pl_speed_val="ความเร็วเดิน",
+        pl_fly_on="เปิดบิน", pl_fly_speed="ความเร็วบิน", pl_noclip="ทะลุกำแพง",
+        pl_tp_yard="วาป: สนาม", pl_tp_cells="วาป: ห้องขัง", pl_tp_guard="วาป: ห้องยาม",
+        pl_tp_crim="วาป: ฐานอาชญากร", pl_tp_armory="วาป: คลังแสง",
+        pl_tp_custom="วาป: ผู้เล่น", pl_give_all="แจกอาวุธทั้งหมด",
+        pl_give_ak="แจก AK-47", pl_give_m4="แจก M4A1", pl_give_shotgun="แจก Shotgun",
+        pl_give_pistol="แจก Pistol", pl_give_keycard="แจก Keycard",
+        pl_kill_all="ฆ่าทุกคน", pl_arrest_all="จับทุกคน (ยาม)",
+        pl_free_all="ปล่อยนักโทษทั้งหมด", pl_respawn="เกิดใหม่",
     }
 }
 local LANG = Config.Lang or "en"
@@ -356,7 +407,7 @@ local Themes = {
     Green = { base = Color3.fromRGB(50,210,90) }, Purple = { base = Color3.fromRGB(170,90,230) },
     Crimson = { base = Color3.fromRGB(210,40,70) }, Orange = { base = Color3.fromRGB(250,140,40) },
     Pink = { base = Color3.fromRGB(240,90,170) }, White = { base = Color3.fromRGB(235,235,235) },
-    Ocean = { base = Color3.fromRGB(0,150,200) }, Cyber = { base = Color3.fromRGB(0,255,170) },
+    Ocean = { base = Color3.fromRGB(0,150,200) },
 }
 local Accent = {}
 local function regA(i, p) table.insert(Accent, { i=i, p=p }) end
@@ -414,9 +465,6 @@ local function notify(text, color, dur)
     end)
 end
 
--- ============================================================
--- UI Primitives
--- ============================================================
 local LocalizedLabels = {}
 local function regL(l, k, bs)
     table.insert(LocalizedLabels, { l=l, k=k, bs=bs or l.TextSize }); l.Text = t(k)
@@ -867,13 +915,12 @@ local function showGameSelect(onSelect)
     makeGameBtn("vl_name", "vl_desc", 1, "VL")
     makeGameBtn("nf_name", "nf_desc", 2, "NF")
     makeGameBtn("ff_name", "ff_desc", 3, "FF")
-    makeGameBtn("cw_name", "cw_desc", 4, "CW")
+    makeGameBtn("pl_name", "pl_desc", 4, "PL")
 
     TS:Create(bg, TweenInfo.new(.4), { BackgroundTransparency = .05 }):Play()
     TS:Create(title, TweenInfo.new(.6), { TextTransparency = 0 }):Play()
 end
 
--- Main Frame Builder
 local Main, MainScale, TBar, Sidebar, sideScroll, Content
 local TabButtons, TabFrames, TabBadges = {}, {}, {}
 local ActiveTab
@@ -1098,7 +1145,7 @@ local function buildSharedTabs()
     do
         local sec = newSection(tabS, "sec_appear", 1)
         themeDD = newDropdown(sec, "set_theme",
-            {"RGB","Red","Cyan","Green","Purple","Crimson","Orange","Pink","White","Ocean","Cyber"},
+            {"RGB","Red","Cyan","Green","Purple","Crimson","Orange","Pink","White","Ocean"},
             Config.Theme, function(v)
                 Config.Theme = v
                 applyA(Themes[v].base); applyA2Tabs()
@@ -1133,7 +1180,7 @@ local function buildSharedTabs()
         ld.Size = UDim2.new(.49,0,0,42); ld.Position = UDim2.fromScale(.51,0)
         newButton(sec, t("set_reset"), 42, function()
             Config.Theme = "RGB"; Config.Lang = "en"; Config.Scale = 1.0
-            Config.VL = {}; Config.NF = {}; Config.FF = {}; Config.CW = {}
+            Config.VL = {}; Config.NF = {}; Config.FF = {}; Config.PL = {}
             saveCfg()
             MainScale.Scale = autoScale(); NotifyScale.Scale = autoScale(); MiniScale.Scale = autoScale()
             applyA(Themes.RGB.base); applyA2Tabs()
@@ -1286,270 +1333,6 @@ local function buildSharedTabs()
                 end
             end
         end)
-    end
-end
-
--- ============================================================
--- COMBAT WARRIORS MODULE
--- ============================================================
-local function buildCW()
-    local Camera = getCam()
-
-    -- FOV Circle
-    local FovContainer = PG:FindFirstChild("FovContainer") or Instance.new("ScreenGui", PG)
-    FovContainer.Name = "FovContainer"; FovContainer.ResetOnSpawn = false
-    local FovCircle = FovContainer:FindFirstChild("FovCircle") or Instance.new("Frame", FovContainer)
-    FovCircle.Name = "FovCircle"; FovCircle.BackgroundTransparency = 1
-    FovCircle.AnchorPoint = Vector2.new(0.5, 0.5); FovCircle.Visible = false
-    FovCircle.ZIndex = 5
-    local Corner = FovCircle:FindFirstChild("UICorner") or Instance.new("UICorner", FovCircle)
-    Corner.CornerRadius = UDim.new(1, 0)
-    local Stroke = FovCircle:FindFirstChild("UIStroke") or Instance.new("UIStroke", FovCircle)
-    Stroke.Thickness = 1.5; Stroke.Color = Color3.fromRGB(0, 255, 170); Stroke.Transparency = 0.4
-    CWState.FovCircle = FovCircle
-
-    -- ESP Gui
-    local EspGui = CoreGui:FindFirstChild("Ark_CW_ESP")
-    if not EspGui then
-        EspGui = Instance.new("ScreenGui")
-        EspGui.Name = "Ark_CW_ESP"
-        EspGui.ResetOnSpawn = false
-        EspGui.DisplayOrder = 9996
-        pcall(function() EspGui.Parent = CoreGui end)
-        if not EspGui.Parent then EspGui.Parent = PG end
-    end
-    CWState.EspGui = EspGui
-
-    local function drawESPFor(plr)
-        if plr == LP then return end
-        if CWState.EspLabels[plr] then return end
-        local label = Instance.new("TextLabel", EspGui)
-        label.BackgroundTransparency = 1
-        label.TextSize = 12
-        label.Font = Enum.Font.Code
-        label.TextStrokeTransparency = 0.2
-        label.TextColor3 = Color3.fromRGB(255, 60, 60)
-        label.Visible = false
-        CWState.EspLabels[plr] = label
-    end
-
-    local function clearESP()
-        for plr, label in pairs(CWState.EspLabels) do
-            if label then label:Destroy() end
-        end
-        CWState.EspLabels = {}
-    end
-
-    local function startESPForAll()
-        for _, plr in ipairs(Players:GetPlayers()) do drawESPFor(plr) end
-    end
-
-    -- Team check helper
-    local function isSameTeam(plr)
-        if not CWState.TeamCheck then return false end
-        return plr.Team ~= nil and plr.Team == LP.Team
-    end
-
-    -- Nearest target
-    local function getClosestPlayer()
-        local closest, shortest = nil, math.huge
-        local mouseLoc = UIS:GetMouseLocation()
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LP and not isSameTeam(plr) and plr.Character then
-                local hum = plr.Character:FindFirstChildOfClass("Humanoid")
-                if hum and hum.Health > 0 then
-                    local part = plr.Character:FindFirstChild(CWState.AimPart) or plr.Character:FindFirstChild("HumanoidRootPart")
-                    if part then
-                        local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
-                        if onScreen then
-                            local dist = (Vector2.new(pos.X, pos.Y) - mouseLoc).Magnitude
-                            if dist < shortest and dist < CWState.AimRadius then
-                                shortest = dist
-                                closest = plr
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        return closest
-    end
-
-    -- Input handling for aim key (default: MouseButton2)
-    UIS.InputBegan:Connect(function(i, processed)
-        if processed then return end
-        if i.UserInputType == Enum.UserInputType.MouseButton2 and CWState.AimbotEnabled then
-            CWState.HoldingAim = true
-        end
-    end)
-    UIS.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton2 then
-            CWState.HoldingAim = false
-        end
-    end)
-
-    -- Main loop: aim + FOV + ESP + hitbox + speed
-    RS.RenderStepped:Connect(function(dt)
-        -- FOV Circle
-        if CWState.AimbotEnabled and CWState.ShowFovCircle then
-            local mouseLoc = UIS:GetMouseLocation()
-            FovCircle.Position = UDim2.new(0, mouseLoc.X, 0, mouseLoc.Y)
-            FovCircle.Size = UDim2.new(0, CWState.AimRadius * 2, 0, CWState.AimRadius * 2)
-            FovCircle.Visible = true
-        else
-            FovCircle.Visible = false
-        end
-
-        -- Aim lock
-        if CWState.AimbotEnabled and CWState.HoldingAim then
-            local target = getClosestPlayer()
-            if target and target.Character then
-                local part = target.Character:FindFirstChild(CWState.AimPart) or target.Character:FindFirstChild("Head")
-                if part then
-                    local targetCF = CFrame.new(Camera.CFrame.Position, part.Position)
-                    Camera.CFrame = Camera.CFrame:Lerp(targetCF, math.clamp(1 - CWState.AimSmoothing, 0.01, 1))
-                end
-            end
-        end
-
-        -- ESP update
-        if CWState.AdvancedESP then
-            for plr, label in pairs(CWState.EspLabels) do
-                if plr.Parent then
-                    local char = plr.Character
-                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                    local hum = char and char:FindFirstChildOfClass("Humanoid")
-                    if hrp and hum and hum.Health > 0 and not isSameTeam(plr) then
-                        local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
-                        if onScreen then
-                            local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
-                            label.Position = UDim2.new(0, pos.X - 100, 0, pos.Y - 40)
-                            label.Size = UDim2.new(0, 200, 0, 15)
-                            local parts = { string.upper(plr.Name) }
-                            if CWState.EspShowDist then table.insert(parts, string.format("[%dm]", math.floor(dist))) end
-                            if CWState.EspShowHP then table.insert(parts, string.format("HP: %d", math.floor(hum.Health))) end
-                            label.Text = table.concat(parts, " - ")
-                            label.TextColor3 = hum.Health > 50 and Color3.fromRGB(255, 60, 60) or Color3.fromRGB(255, 255, 0)
-                            label.Visible = true
-                        else
-                            label.Visible = false
-                        end
-                    else
-                        label.Visible = false
-                    end
-                else
-                    label:Destroy()
-                    CWState.EspLabels[plr] = nil
-                end
-            end
-        else
-            for plr, label in pairs(CWState.EspLabels) do
-                if label then label.Visible = false end
-            end
-        end
-    end)
-
-    -- Hitbox loop (separate, less frequent)
-    task.spawn(function()
-        while task.wait(0.4) do
-            for _, p in ipairs(Players:GetPlayers()) do
-                if p ~= LP and p.Character and p.Character:FindFirstChild("Head") then
-                    local head = p.Character.Head
-                    if CWState.HitboxEnabled and not isSameTeam(p) then
-                        head.Size = Vector3.new(CWState.HitboxSize, CWState.HitboxSize, CWState.HitboxSize)
-                        head.Transparency = CWState.HitboxTransparency
-                        head.Color = Color3.fromRGB(0, 255, 170)
-                        head.CanCollide = false
-                    else
-                        head.Size = Vector3.new(1.2, 1.2, 1.2)
-                        head.Transparency = 0
-                        head.CanCollide = true
-                    end
-                end
-            end
-        end
-    end)
-
-    -- Speed/Jump apply
-    task.spawn(function()
-        while task.wait(0.3) do
-            local ch = LP.Character
-            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-            if hum then
-                if CWState.SpeedEnabled then hum.WalkSpeed = CWState.SpeedValue else hum.WalkSpeed = 16 end
-                if CWState.JumpEnabled then
-                    pcall(function() hum.UseJumpPower = true end)
-                    hum.JumpPower = CWState.JumpPower
-                else
-                    pcall(function() hum.UseJumpPower = true end)
-                    hum.JumpPower = 50
-                end
-            end
-        end
-    end)
-
-    -- Player added/removed
-    Players.PlayerAdded:Connect(function(plr)
-        if CWState.AdvancedESP then drawESPFor(plr) end
-    end)
-    Players.PlayerRemoving:Connect(function(plr)
-        if CWState.EspLabels[plr] then CWState.EspLabels[plr]:Destroy(); CWState.EspLabels[plr] = nil end
-    end)
-    LP.CharacterAdded:Connect(function()
-        task.wait(1)
-        if CWState.AdvancedESP then startESPForAll() end
-    end)
-
-    -- ============ Tabs ============
-    local tabAim = makeTab("tab_cw_main", 1)
-    local tabE = makeTab("tab_cw_esp", 2)
-    local tabP = makeTab("tab_cw_player", 3)
-
-    -- Aimbot Tab
-    do
-        local sec = newSection(tabAim, "sec_aim", 1)
-        newToggle(sec, "cw_aimbot", CWState.AimbotEnabled, function(v) CWState.AimbotEnabled = v end, 1, 46)
-        newToggle(sec, "cw_show_fov", CWState.ShowFovCircle, function(v) CWState.ShowFovCircle = v end, 2, 46)
-        newSlider(sec, "cw_aim_radius", 50, 500, CWState.AimRadius, function(v) CWState.AimRadius = v end, 3, 60, 0)
-        newSlider(sec, "cw_smoothing", 0, 1, CWState.AimSmoothing, function(v) CWState.AimSmoothing = v end, 4, 60, 2)
-        newDropdown(sec, "cw_aim_part",
-            { {value="Head", display="Head"}, {value="HumanoidRootPart", display="Torso"} },
-            CWState.AimPart, function(v) CWState.AimPart = v end, 5, 46)
-        newToggle(sec, "cw_team_check", CWState.TeamCheck, function(v)
-            CWState.TeamCheck = v
-        end, 6, 46)
-    end
-
-    -- ESP Tab
-    do
-        local sec = newSection(tabE, "sec_esp_cw", 1)
-        newToggle(sec, "cw_esp_enable", CWState.AdvancedESP, function(v)
-            CWState.AdvancedESP = v
-            if v then
-                startESPForAll()
-            else
-                for _, label in pairs(CWState.EspLabels) do
-                    if label then label.Visible = false end
-                end
-            end
-        end, 1, 46)
-        newToggle(sec, "cw_esp_hp", CWState.EspShowHP, function(v) CWState.EspShowHP = v end, 2, 46)
-        newToggle(sec, "cw_esp_dist", CWState.EspShowDist, function(v) CWState.EspShowDist = v end, 3, 46)
-    end
-
-    -- Player Tab (Hitbox, Speed, Jump)
-    do
-        local sec = newSection(tabP, "sec_hitbox_cw", 1)
-        newToggle(sec, "cw_hitbox", CWState.HitboxEnabled, function(v) CWState.HitboxEnabled = v end, 1, 46)
-        newSlider(sec, "cw_hitbox_size", 2, 30, CWState.HitboxSize, function(v) CWState.HitboxSize = v end, 2, 60, 0)
-        newSlider(sec, "cw_hitbox_trans", 0, 1, CWState.HitboxTransparency, function(v) CWState.HitboxTransparency = v end, 3, 60, 2)
-    end
-    do
-        local sec = newSection(tabP, "sec_move", 2)
-        newToggle(sec, "cw_speed", CWState.SpeedEnabled, function(v) CWState.SpeedEnabled = v end, 1, 46)
-        newSlider(sec, "cw_speed_val", 16, 200, CWState.SpeedValue, function(v) CWState.SpeedValue = v end, 2, 60, 0)
-        newToggle(sec, "cw_jump", CWState.JumpEnabled, function(v) CWState.JumpEnabled = v end, 3, 46)
-        newSlider(sec, "cw_jump_val", 50, 300, CWState.JumpPower, function(v) CWState.JumpPower = v end, 4, 60, 0)
     end
 end
 
@@ -2475,6 +2258,23 @@ end
 -- ============================================================
 -- VL MODULE
 -- ============================================================
+local EXCLUDED_OC_SIZES = {
+    Vector3.new(111.99996948242188, 0.9999997615814209, 40.01884078979492),
+    Vector3.new(111.99996948242188, 0.9999997615814209, 39.98113250732422),
+}
+local SIZE_TOLERANCE = 0.01
+
+local function isExcludedOCSize(size)
+    for _, es in ipairs(EXCLUDED_OC_SIZES) do
+        if math.abs(size.X - es.X) <= SIZE_TOLERANCE
+        and math.abs(size.Y - es.Y) <= SIZE_TOLERANCE
+        and math.abs(size.Z - es.Z) <= SIZE_TOLERANCE then
+            return true
+        end
+    end
+    return false
+end
+
 local function buildVL()
     local VF = Workspace:FindFirstChild("CornerVisuals") or Instance.new("Folder", Workspace)
     VF.Name = "CornerVisuals"
@@ -2489,16 +2289,46 @@ local function buildVL()
     local tabH = makeTab("tab_vl_hitbox", 2)
     local tabE = makeTab("tab_vl_esp", 3)
 
+    local function findAllOC()
+        local m = Workspace:FindFirstChild("Map")
+        local found = {}
+        if not m then
+            warn("[Ark VL] workspace.Map not found!")
+            return found
+        end
+        for _, d in ipairs(m:GetDescendants()) do
+            if d:IsA("BasePart") and d.Name == "OuterCourt" then
+                table.insert(found, d)
+            end
+        end
+        return found
+    end
+
+    local function collectOCPartsFiltered(ocList)
+        local p = {}
+        if not ocList or #ocList == 0 then
+            warn("[Ark VL] No OuterCourt parts found under workspace.Map!")
+            return p
+        end
+        local totalFound, excludedCount = 0, 0
+        for _, part in ipairs(ocList) do
+            totalFound = totalFound + 1
+            if not isExcludedOCSize(part.Size) then
+                table.insert(p, part)
+            else
+                excludedCount = excludedCount + 1
+            end
+        end
+        print(string.format("[Ark VL] OuterCourt scan: %d total parts, %d excluded, %d usable", totalFound, excludedCount, #p))
+        return p
+    end
+
     local function findCourt()
         local m = Workspace:FindFirstChild("Map")
         if m and m:FindFirstChild("Court") then return m.Court end
         local c = Workspace:FindFirstChild("Court"); if c then return c end
     end
-    local function findOC()
-        local m = Workspace:FindFirstChild("Map")
-        if m and m:FindFirstChild("OuterCourt") then return m.OuterCourt end
-        return Workspace:FindFirstChild("OuterCourt")
-    end
+
     local function collectParts(c)
         local p = {}; if not c then return p end
         if c:IsA("BasePart") then table.insert(p, c) end
@@ -2514,6 +2344,7 @@ local function buildVL()
         end
         return mn, mx, (mn+mx)*.5
     end
+
     local function autoCheckCourt()
         local c = findCourt(); if not c then return false, "Court not found" end
         local ps = collectParts(c); if #ps == 0 then return false, "No BasePart" end
@@ -2542,11 +2373,24 @@ local function buildVL()
         VLState.Court.Center = ce
         VLState.Court.MinV = mn; VLState.Court.MaxV = mx
         VLState.Court.LT = L; VLState.Court.RT = R
-        VLState.Court.OP = collectParts(findOC())
+
+        local ocParts = collectOCPartsFiltered(findAllOC())
+        if #ocParts == 0 then
+            task.wait(0.3)
+            ocParts = collectOCPartsFiltered(findAllOC())
+        end
+        VLState.Court.OP = ocParts
+
         VLState.Court.Sign = sg; VLState.Court.Axis = ax
         VL.Position = L; VR.Position = R; VL.Color = Color3.new(1,1,1); VR.Color = Color3.new(1,1,1)
+
+        if #ocParts == 0 then
+            warn("[Ark VL] WARNING: OuterCourt parts list is EMPTY after filtering — Smart Lock will never trigger on-court detection!")
+        end
+
         return true
     end
+
     local function isOnOC(pos)
         for _, p in ipairs(VLState.Court.OP) do
             local lp = p.CFrame:PointToObjectSpace(pos); local h = p.Size*.5
@@ -2558,10 +2402,14 @@ local function buildVL()
         if not VLState.Court.Valid then return nil end
         local mn, mx, ce = VLState.Court.MinV, VLState.Court.MaxV, VLState.Court.Center
         local ax, sg = VLState.Court.Axis, VLState.Court.Sign
-        local os = -sg; local y = ce.Y
+        local os_ = -sg
+        local y = ce.Y
         local av = function(v) return ax=="X" and v.X or v.Z end
+        local INSET = 3
         local oM, oX
-        if os == 1 then oM = av(ce); oX = av(mx) else oM = av(mn); oX = av(ce) end
+        if os_ == 1 then oM = av(ce) + INSET; oX = av(mx) - INSET
+        else oM = av(mn) + INSET; oX = av(ce) - INSET end
+        if oM > oX then oM, oX = oX, oM end
         local en = {}
         for _, plr in ipairs(Players:GetPlayers()) do
             if plr ~= LP and plr.Character and not (LP.Team and plr.Team == LP.Team) then
@@ -2571,64 +2419,118 @@ local function buildVL()
             end
         end
         local best, bs = nil, -math.huge
-        for i = 1,5 do local ta = .25 + (i-1)/4*.55
-            for j = 1,5 do local tb = .1 + (j-1)/4*.8
-                local aC = oM + (oX-oM)*ta
+        local GRID = 7
+        for i = 1, GRID do
+            local ta = (i-1)/(GRID-1)
+            local aC = oM + (oX-oM)*ta
+            for j = 1, GRID do
+                local tb = 0.15 + (j-1)/(GRID-1)*0.7
                 local p
                 if ax == "X" then p = Vector3.new(aC, y, mn.Z + (mx.Z-mn.Z)*tb)
                 else p = Vector3.new(mn.X + (mx.X-mn.X)*tb, y, aC) end
-                if p.X >= mn.X and p.X <= mx.X and p.Z >= mn.Z and p.Z <= mx.Z then
+                if p.X >= mn.X+INSET and p.X <= mx.X-INSET
+                and p.Z >= mn.Z+INSET and p.Z <= mx.Z-INSET then
                     local sc
-                    if #en == 0 then sc = -(Vector3.new(p.X,0,p.Z)-Vector3.new(ce.X,0,ce.Z)).Magnitude
-                    else sc = math.huge for _, e in ipairs(en) do local d = (Vector3.new(e.X,0,e.Z)-Vector3.new(p.X,0,p.Z)).Magnitude if d < sc then sc = d end end end
+                    if #en == 0 then
+                        sc = -(Vector3.new(p.X,0,p.Z)-Vector3.new(ce.X,0,ce.Z)).Magnitude
+                    else
+                        sc = math.huge
+                        for _, e in ipairs(en) do
+                            local d = (Vector3.new(e.X,0,e.Z)-Vector3.new(p.X,0,p.Z)).Magnitude
+                            if d < sc then sc = d end
+                        end
+                    end
                     if sc > bs then bs = sc; best = p end
                 end
             end
         end
         return best
     end
-    local function isBlocked(o, tp)
-        local p = RaycastParams.new(); p.FilterType = Enum.RaycastFilterType.Exclude
-        local ig = {LP.Character, VF}
+
+    local cachedIgnoreList = {}
+    local ignoreListDirty = true
+
+    local function rebuildIgnoreList()
+        cachedIgnoreList = {LP.Character, VF}
         for _, plr in ipairs(Players:GetPlayers()) do
             if plr == LP or (LP.Team and plr.Team == LP.Team) then
-                if plr.Character then table.insert(ig, plr.Character) end
+                if plr.Character then table.insert(cachedIgnoreList, plr.Character) end
             end
         end
-        p.FilterDescendantsInstances = ig
-        local r = Workspace:Raycast(o, tp-o, p)
+        ignoreListDirty = false
+    end
+
+    Players.PlayerAdded:Connect(function() ignoreListDirty = true end)
+    Players.PlayerRemoving:Connect(function() ignoreListDirty = true end)
+    LP.CharacterAdded:Connect(function() ignoreListDirty = true end)
+
+    local raycastParamsCache = RaycastParams.new()
+    raycastParamsCache.FilterType = Enum.RaycastFilterType.Exclude
+
+    local function isBlocked(o, tp)
+        if ignoreListDirty then rebuildIgnoreList() end
+        raycastParamsCache.FilterDescendantsInstances = cachedIgnoreList
+        local r = Workspace:Raycast(o, tp-o, raycastParamsCache)
         if r and r.Instance then
             local c = r.Instance:FindFirstAncestorOfClass("Model")
             if c and Players:GetPlayerFromCharacter(c) then return true end
         end
         return false
     end
+
+    local function isPlayerJumping(hum, hrp)
+        if not hum or not hrp then return false end
+        local st = hum:GetState()
+        return (st == Enum.HumanoidStateType.Jumping)
+            or (st == Enum.HumanoidStateType.Freefall)
+            or (hrp.AssemblyLinearVelocity.Y > 0.5)
+    end
+
     local function getFacingTarget()
         if not VLState.Court.Valid then return nil, false end
         local L, R = VLState.Court.LT, VLState.Court.RT
         if not L or not R then return nil, false end
         local ch = LP.Character; local cam = getCam()
-        local mp = (ch and ch:FindFirstChild("HumanoidRootPart")) and ch.HumanoidRootPart.Position or (cam and cam.CFrame.Position)
+        local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+        local mp = hrp and hrp.Position or (cam and cam.CFrame.Position)
         if not mp then return nil, false end
         local lk = cam and cam.CFrame.LookVector or Vector3.new(0,0,-1)
-        if VLState.SmartLock and isOnOC(mp) then
-            local n = tick()
-            if not VLState.SafeCache.pos or (n - VLState.SafeCache.time) > .15 then
-                VLState.SafeCache.pos = computeSafe() or VLState.SafeCache.pos
-                VLState.SafeCache.time = n
-            end
-            if VLState.SafeCache.pos then VS.Position = VLState.SafeCache.pos; return VLState.SafeCache.pos, true end
-        else VS.Position = Vector3.new(0,-500,0) end
+
         local dL = lk:Dot((L-mp).Unit)
         local dR = lk:Dot((R-mp).Unit)
-        local tg = (dL >= dR) and L or R
-        if VLState.SmartLock then
-            local lB = isBlocked(mp, L); local rB = isBlocked(mp, R)
-            if lB and not rB then return R, false end
-            if rB and not lB then return L, false end
+        local normalTarget = (dL >= dR) and L or R
+
+        if not VLState.SmartLock then
+            VS.Position = Vector3.new(0,-500,0)
+            return normalTarget, false
         end
-        return tg, false
+
+        local onOC = isOnOC(mp)
+
+        if not onOC then
+            VS.Position = Vector3.new(0,-500,0)
+            return normalTarget, false
+        end
+
+        local n = tick()
+        if not VLState.SafeCache.pos or (n - VLState.SafeCache.time) > 0.1 then
+            local safe = computeSafe()
+            if safe then
+                VLState.SafeCache.pos = safe
+                VLState.SafeCache.time = n
+            end
+        end
+        if VLState.SafeCache.pos then
+            VS.Position = VLState.SafeCache.pos
+            return VLState.SafeCache.pos, true
+        end
+
+        local lB = isBlocked(mp, L); local rB = isBlocked(mp, R)
+        if lB and not rB then return R, false end
+        if rB and not lB then return L, false end
+        return normalTarget, false
     end
+
     local StatusLabel
     do
         local sec = newSection(tabC, "sec_court", 1)
@@ -2651,7 +2553,14 @@ local function buildVL()
     do
         local sec = newSection(tabC, "sec_actions", 2)
         newToggle(sec, "auto_corner", VLState.AutoCorner, function(v) VLState.AutoCorner = v end, 1)
-        newToggle(sec, "smart_lock", VLState.SmartLock, function(v) VLState.SmartLock = v end, 2)
+        newToggle(sec, "smart_lock", VLState.SmartLock, function(v)
+            VLState.SmartLock = v
+            if not v then
+                VLState.SafeCache.pos = nil
+                VS.Position = Vector3.new(0,-500,0)
+            end
+            print(string.format("[Ark VL] Smart Lock toggled: %s | OC parts loaded: %d", tostring(v), #VLState.Court.OP))
+        end, 2)
     end
     local statusFrame = Instance.new("Frame", tabC)
     statusFrame.Size = UDim2.new(1,0,0,60); statusFrame.LayoutOrder = 3
@@ -2772,10 +2681,620 @@ local function buildVL()
         local ch = LP.Character; if not ch then return end
         local r = ch:FindFirstChild("HumanoidRootPart"); local h = ch:FindFirstChildOfClass("Humanoid")
         if not r or not h then return end
-        local st = h:GetState()
-        local jp = (st == Enum.HumanoidStateType.Jumping) or (st == Enum.HumanoidStateType.Freefall) or (r.AssemblyLinearVelocity.Y > .5)
-        if jp then r.CFrame = CFrame.new(r.Position, Vector3.new(tg.X, r.Position.Y, tg.Z)) end
+        if isPlayerJumping(h, r) then
+            r.CFrame = CFrame.new(r.Position, Vector3.new(tg.X, r.Position.Y, tg.Z))
+        end
     end)
+end
+
+-- ============================================================
+-- PRISON LIFE MODULE
+-- ============================================================
+local function buildPrisonLife()
+    local Camera = getCam()
+    local RSvc = game:GetService("ReplicatedStorage")
+    local WSvc = Workspace
+
+    local function getHRP()
+        local ch = LP.Character
+        return ch and ch:FindFirstChild("HumanoidRootPart") or nil
+    end
+    local function getHum()
+        local ch = LP.Character
+        return ch and ch:FindFirstChildOfClass("Humanoid") or nil
+    end
+    local function getMyTeamName()
+        return LP.Team and LP.Team.Name or "Neutral"
+    end
+    local function isEnemy(plr)
+        if plr == LP then return false end
+        if PLState.TeamCheck then
+            local a = getMyTeamName()
+            local b = plr.Team and plr.Team.Name or "Neutral"
+            if a == b then return false end
+        end
+        return true
+    end
+
+    local SelectedTarget = nil
+    local CurrentHL, CurrentTag
+
+    local function ClearAimVisuals()
+        if CurrentHL then CurrentHL:Destroy(); CurrentHL = nil end
+        if CurrentTag then CurrentTag:Destroy(); CurrentTag = nil end
+    end
+    local function AddAimVisuals(target)
+        if not target or not target.Parent then return end
+        local Char = target.Parent
+        if not CurrentHL then
+            CurrentHL = Instance.new("Highlight")
+            CurrentHL.FillColor = Color3.fromRGB(255, 30, 30)
+            CurrentHL.OutlineColor = Color3.fromRGB(255,255,255)
+            CurrentHL.FillTransparency = 0.55
+            CurrentHL.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            CurrentHL.Parent = PG
+        end
+        if CurrentHL.Adornee ~= Char then CurrentHL.Adornee = Char end
+        if not CurrentTag then
+            local bb = Instance.new("BillboardGui")
+            bb.Adornee = target
+            bb.Size = UDim2.new(0, 200, 0, 40)
+            bb.StudsOffset = Vector3.new(0, 2.5, 0)
+            bb.AlwaysOnTop = true
+            bb.Parent = PG
+            local lbl = Instance.new("TextLabel", bb)
+            lbl.Size = UDim2.fromScale(1,1)
+            lbl.BackgroundTransparency = 1
+            lbl.Text = ">>> LOCKED <<<"
+            lbl.TextColor3 = Color3.fromRGB(255, 40, 40)
+            lbl.Font = Enum.Font.GothamBlack
+            lbl.TextSize = 14
+            lbl.TextStrokeTransparency = 0
+            lbl.TextStrokeColor3 = Color3.fromRGB(0,0,0)
+            CurrentTag = bb
+        end
+        if CurrentTag.Adornee ~= target then CurrentTag.Adornee = target end
+    end
+
+    local function isVisible(targetPart)
+        if not PLState.WallCheck then return true end
+        local origin = Camera.CFrame.Position
+        local dir = targetPart.Position - origin
+        local rp = RaycastParams.new()
+        rp.FilterDescendantsInstances = { LP.Character, Camera }
+        rp.FilterType = Enum.RaycastFilterType.Exclude
+        local r = WSvc:Raycast(origin, dir, rp)
+        return (r == nil or r.Instance:IsDescendantOf(targetPart.Parent))
+    end
+
+    local function GetTarget()
+        local best, bestScore = nil, math.huge
+        local Center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+        local myHRP = getHRP()
+        if not myHRP then return nil end
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LP and plr.Character and isEnemy(plr) then
+                local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+                local tp = plr.Character:FindFirstChild(PLState.LockPart)
+                    or plr.Character:FindFirstChild("Head")
+                local root = plr.Character:FindFirstChild("HumanoidRootPart")
+                if hum and hum.Health > 0 and tp and root then
+                    local sp, on = Camera:WorldToViewportPoint(tp.Position)
+                    if on then
+                        local fovDist = (Vector2.new(sp.X, sp.Y) - Center).Magnitude
+                        if fovDist <= PLState.FOVSize then
+                            local worldDist = (root.Position - myHRP.Position).Magnitude
+                            local score = (PLState.TargetPriority == "Distance") and worldDist or fovDist
+                            local passWall = isVisible(tp)
+                            local isClose = worldDist < 10
+                            if (PLState.CloseRangeFix and isClose) or passWall then
+                                if score < bestScore then
+                                    best = tp; bestScore = score
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        return best
+    end
+
+    local EspStates = {}
+
+    local function espClear(plr)
+        local s = EspStates[plr]
+        if not s then return end
+        for _, v in pairs(s) do
+            if typeof(v) == "Instance" then v:Destroy() end
+        end
+        EspStates[plr] = nil
+    end
+
+    local function espBuild(plr)
+        local ch = plr.Character
+        if not ch then return end
+        local hrp = ch:FindFirstChild("HumanoidRootPart")
+        local hum = ch:FindFirstChildOfClass("Humanoid")
+        if not hrp or not hum then return end
+
+        local st = {}
+        st.hl = Instance.new("Highlight")
+        st.hl.Adornee = ch
+        st.hl.FillColor = (plr.Team and plr.Team.TeamColor.Color) or Color3.fromRGB(255,255,255)
+        st.hl.FillTransparency = 0.7
+        st.hl.OutlineColor = Color3.fromRGB(255,255,255)
+        st.hl.OutlineTransparency = 0.1
+        st.hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        st.hl.Parent = PG
+
+        st.bb = Instance.new("BillboardGui")
+        st.bb.Adornee = hrp
+        st.bb.Size = UDim2.new(0, 180, 0, 62)
+        st.bb.StudsOffset = Vector3.new(0, 3, 0)
+        st.bb.AlwaysOnTop = true
+        st.bb.Parent = PG
+
+        local function mk(y, sz)
+            local l = Instance.new("TextLabel", st.bb)
+            l.Size = UDim2.new(1, 0, 0, sz)
+            l.Position = UDim2.new(0, 0, 0, y)
+            l.BackgroundTransparency = 1
+            l.Font = Enum.Font.GothamBold
+            l.TextSize = 14
+            l.TextStrokeTransparency = 0
+            l.TextStrokeColor3 = Color3.fromRGB(0,0,0)
+            l.TextColor3 = Color3.fromRGB(255,255,255)
+            return l
+        end
+        st.name = mk(0, 18)
+        st.hp   = mk(18, 16)
+        st.dist = mk(34, 16)
+
+        st.box = Instance.new("SelectionBox")
+        st.box.Adornee = ch
+        st.box.LineThickness = 0.05
+        st.box.Color3 = (plr.Team and plr.Team.TeamColor.Color) or Color3.fromRGB(255,255,255)
+        st.box.SurfaceTransparency = 1
+        st.box.Parent = PG
+
+        EspStates[plr] = st
+    end
+
+    local function espUpdate(plr)
+        local st = EspStates[plr]
+        if not st then return end
+        local ch = plr.Character
+        if not ch then espClear(plr); return end
+        local hum = ch:FindFirstChildOfClass("Humanoid")
+        local hrp = ch:FindFirstChild("HumanoidRootPart")
+        if not hum or not hrp or hum.Health <= 0 then espClear(plr); return end
+
+        if st.name then st.name.Text = plr.Name; st.name.Visible = PLState.EspShowName end
+        if st.hp then
+            st.hp.Text = string.format("HP: %d/%d", math.floor(hum.Health), math.floor(hum.MaxHealth))
+            st.hp.TextColor3 = Color3.fromRGB(255, 100, 100)
+            st.hp.Visible = PLState.EspShowHp
+        end
+        if st.dist then
+            local myHRP = getHRP()
+            if myHRP then
+                st.dist.Text = string.format("%d studs", math.floor((hrp.Position - myHRP.Position).Magnitude))
+            end
+            st.dist.TextColor3 = Color3.fromRGB(180, 220, 255)
+            st.dist.Visible = PLState.EspShowDist
+        end
+        if st.box then
+            st.box.Adornee = PLState.EspBox and ch or nil
+        end
+    end
+
+    local function espTick()
+        if not PLState.EspEnabled then
+            for plr in pairs(EspStates) do espClear(plr) end
+            return
+        end
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LP then
+                if PLState.EspTeamCheck and not isEnemy(plr) then
+                    espClear(plr)
+                else
+                    local ch = plr.Character
+                    if ch and ch:FindFirstChildOfClass("Humanoid") and not EspStates[plr] then
+                        espBuild(plr)
+                    end
+                    if EspStates[plr] then espUpdate(plr) end
+                end
+            end
+        end
+    end
+
+    task.spawn(function()
+        while task.wait(0.15) do espTick() end
+    end)
+
+    Players.PlayerRemoving:Connect(espClear)
+
+    task.spawn(function()
+        while task.wait(0.2) do
+            if PLState.GodMode then
+                local hum = getHum()
+                if hum then
+                    hum.MaxHealth = math.huge
+                    hum.Health = math.huge
+                    hum.BreakJointsOnDeath = false
+                end
+            end
+        end
+    end)
+
+    LP.CharacterAdded:Connect(function(ch)
+        if PLState.AntiArrest then
+            task.wait(0.5)
+            for _, n in ipairs({"Handcuffs","Cuffs","Restraint"}) do
+                local c = ch:FindFirstChild(n)
+                if c then c:Destroy() end
+            end
+        end
+    end)
+    task.spawn(function()
+        while task.wait(0.4) do
+            if PLState.AntiArrest then
+                local ch = LP.Character
+                if ch then
+                    for _, n in ipairs({"Handcuffs","Cuffs","Restraint"}) do
+                        local c = ch:FindFirstChild(n)
+                        if c then pcall(function() c:Destroy() end) end
+                    end
+                end
+            end
+        end
+    end)
+
+    task.spawn(function()
+        while task.wait(0.15) do
+            local hum = getHum()
+            if hum then
+                if PLState.SpeedOn then
+                    hum.WalkSpeed = PLState.SpeedVal
+                end
+            end
+        end
+    end)
+
+    local flyBV, flyBG
+    local function stopFly()
+        if flyBV then flyBV:Destroy(); flyBV = nil end
+        if flyBG then flyBG:Destroy(); flyBG = nil end
+        local hrp = getHRP()
+        if hrp then
+            for _, v in ipairs(hrp:GetChildren()) do
+                if v:IsA("BodyVelocity") then v:Destroy() end
+                if v:IsA("BodyGyro") then v:Destroy() end
+            end
+        end
+    end
+    local function startFly()
+        stopFly()
+        local hrp = getHRP(); if not hrp then return end
+        flyBV = Instance.new("BodyVelocity", hrp)
+        flyBV.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        flyBV.Velocity = Vector3.zero
+        flyBG = Instance.new("BodyGyro", hrp)
+        flyBG.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        flyBG.P = 20000
+    end
+    RS.RenderStepped:Connect(function()
+        if not PLState.FlyOn then
+            if flyBV then stopFly() end
+            return
+        end
+        local hrp = getHRP(); if not hrp then return end
+        if not flyBV then startFly() end
+        if flyBV and flyBG then
+            local cam = getCam()
+            local move = Vector3.zero
+            local f = cam.CFrame.LookVector
+            local r = cam.CFrame.RightVector
+            if UIS:IsKeyDown(Enum.KeyCode.W) then move = move + f end
+            if UIS:IsKeyDown(Enum.KeyCode.S) then move = move - f end
+            if UIS:IsKeyDown(Enum.KeyCode.A) then move = move - r end
+            if UIS:IsKeyDown(Enum.KeyCode.D) then move = move + r end
+            if UIS:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0,1,0) end
+            if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then move = move - Vector3.new(0,1,0) end
+            flyBV.Velocity = move * PLState.FlySpeed
+            flyBG.CFrame = cam.CFrame
+        end
+    end)
+
+    RS.Stepped:Connect(function()
+        if not PLState.Noclip then return end
+        local ch = LP.Character
+        if not ch then return end
+        for _, p in ipairs(ch:GetDescendants()) do
+            if p:IsA("BasePart") and p.CanCollide then p.CanCollide = false end
+        end
+    end)
+
+    local function tpTo(pos)
+        local hrp = getHRP()
+        if hrp then hrp.CFrame = CFrame.new(pos) end
+    end
+    local Locations = {
+        Yard         = Vector3.new(-27, 2, 45),
+        Cells        = Vector3.new(-30, 2, -80),
+        GuardRoom    = Vector3.new(112, 22, -123),
+        CriminalBase = Vector3.new(247, 2, -444),
+        Armory       = Vector3.new(126, 22, -135),
+    }
+
+    local function giveWeapon(name)
+        local bp = LP:FindFirstChild("Backpack")
+        if not bp then
+            notify("No backpack — respawn first", Color3.fromRGB(255,80,80), 1.6)
+            return
+        end
+        local serverTools =
+            WSvc:FindFirstChild("Tools")
+            or RSvc:FindFirstChild("Tools")
+            or (RSvc:FindFirstChild("Assets") and RSvc.Assets:FindFirstChild("Tools"))
+        if not serverTools then
+            notify("Tools folder not found", Color3.fromRGB(255,80,80), 1.6)
+            return
+        end
+        for _, tl in ipairs(serverTools:GetChildren()) do
+            if string.find(string.lower(tl.Name), string.lower(name)) then
+                local clone = tl:Clone()
+                clone.Parent = bp
+                notify("Gave " .. clone.Name, Color3.fromRGB(80,255,120), 1.2)
+                return
+            end
+        end
+        notify("Weapon not found: " .. name, Color3.fromRGB(255,80,80), 1.6)
+    end
+
+    local function killAll()
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LP and isEnemy(plr) and plr.Character then
+                local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+                if hum then hum.Health = 0 end
+            end
+        end
+    end
+    local function arrestAll()
+        local re = RSvc:FindFirstChild("Remotes") or RSvc:FindFirstChild("RemoteEvents")
+        if not re then return end
+        local arrest = re:FindFirstChild("Arrest")
+            or re:FindFirstChild("arrest")
+            or re:FindFirstChild("RequestArrest")
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LP and plr.Character then
+                if arrest then pcall(function() arrest:FireServer(plr.Character) end) end
+            end
+        end
+    end
+    local function freeAll()
+        local re = RSvc:FindFirstChild("Remotes") or RSvc:FindFirstChild("RemoteEvents")
+        if not re then return end
+        local free = re:FindFirstChild("Free") or re:FindFirstChild("Uncuff") or re:FindFirstChild("Unarrest")
+        if not free then return end
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LP and plr.Character then
+                pcall(function() free:FireServer(plr.Character) end)
+            end
+        end
+    end
+
+    local tabA  = makeTab("tab_pl_aim", 1)
+    local tabE  = makeTab("tab_pl_esp", 2)
+    local tabP  = makeTab("tab_pl_player", 3)
+    local tabT  = makeTab("tab_pl_teleport", 4)
+    local tabW  = makeTab("tab_pl_weapons", 5)
+    local tabMi = makeTab("tab_pl_misc", 6)
+
+    do
+        local sec = newSection(tabA, "sec_aim_main", 1)
+        newToggle(sec, "pl_silent", PLState.SilentAim, function(v)
+            PLState.SilentAim = v
+            if not v then ClearAimVisuals() end
+        end, 1, 46)
+        newDropdown(sec, "pl_lockpart", {"Head","HumanoidRootPart","Torso","UpperTorso"},
+            PLState.LockPart, function(v) PLState.LockPart = v end, 2, 46)
+        newDropdown(sec, "pl_priority", {"FOV","Distance"},
+            PLState.TargetPriority, function(v) PLState.TargetPriority = v end, 3, 46)
+        newSlider(sec, "pl_fov", 50, 800, PLState.FOVSize, function(v)
+            PLState.FOVSize = v
+        end, 4, 60, 0)
+        newToggle(sec, "pl_fov_show", PLState.ShowFOV, function(v)
+            PLState.ShowFOV = v
+        end, 5, 46)
+    end
+    do
+        local sec = newSection(tabA, "sec_aim_safety", 2)
+        newToggle(sec, "pl_team_check", PLState.TeamCheck, function(v) PLState.TeamCheck = v end, 1, 46)
+        newToggle(sec, "pl_wall_check", PLState.WallCheck, function(v) PLState.WallCheck = v end, 2, 46)
+        newToggle(sec, "pl_close", PLState.CloseRangeFix, function(v) PLState.CloseRangeFix = v end, 3, 46)
+    end
+
+    do
+        local sec = newSection(tabE, "sec_esp_main", 1)
+        newToggle(sec, "pl_esp", PLState.EspEnabled, function(v) PLState.EspEnabled = v end, 1, 46)
+        newToggle(sec, "pl_esp_team", PLState.EspTeamCheck, function(v) PLState.EspTeamCheck = v end, 2, 46)
+        newToggle(sec, "pl_esp_box", PLState.EspBox, function(v) PLState.EspBox = v end, 3, 46)
+    end
+    do
+        local sec = newSection(tabE, "sec_esp_info", 2)
+        newToggle(sec, "pl_esp_name", PLState.EspShowName, function(v) PLState.EspShowName = v end, 1, 46)
+        newToggle(sec, "pl_esp_hp",   PLState.EspShowHp,   function(v) PLState.EspShowHp = v end, 2, 46)
+        newToggle(sec, "pl_esp_dist", PLState.EspShowDist, function(v) PLState.EspShowDist = v end, 3, 46)
+    end
+
+    do
+        local sec = newSection(tabP, "sec_pl_god", 1)
+        newToggle(sec, "pl_god", PLState.GodMode, function(v) PLState.GodMode = v end, 1, 46)
+        newToggle(sec, "pl_anti", PLState.AntiArrest, function(v) PLState.AntiArrest = v end, 2, 46)
+        newButton(sec, t("pl_anti_cuff"), 42, function()
+            local ch = LP.Character
+            if not ch then return end
+            for _, n in ipairs({"Handcuffs","Cuffs","Restraint"}) do
+                local c = ch:FindFirstChild(n)
+                if c then c:Destroy() end
+            end
+            notify(t("pl_anti_cuff"), Color3.fromRGB(80,255,120), 1.4)
+        end, 3)
+    end
+    do
+        local sec = newSection(tabP, "sec_pl_speed", 2)
+        newSlider(sec, "pl_speed_val", 16, 500, PLState.SpeedVal, function(v) PLState.SpeedVal = v end, 1, 60, 0)
+        newToggle(sec, "pl_speed_on", PLState.SpeedOn, function(v)
+            PLState.SpeedOn = v
+            local hum = getHum()
+            if hum and not v then hum.WalkSpeed = 16 end
+        end, 2, 46)
+    end
+    do
+        local sec = newSection(tabP, "sec_pl_fly", 3)
+        newToggle(sec, "pl_fly_on", PLState.FlyOn, function(v)
+            PLState.FlyOn = v
+            if not v then stopFly() end
+        end, 1, 46)
+        newSlider(sec, "pl_fly_speed", 20, 500, PLState.FlySpeed, function(v) PLState.FlySpeed = v end, 2, 60, 0)
+        newToggle(sec, "pl_noclip", PLState.Noclip, function(v) PLState.Noclip = v end, 3, 46)
+    end
+
+    do
+        local sec = newSection(tabT, "sec_pl_tp", 1)
+        local i = 1
+        for name, pos in pairs(Locations) do
+            newButton(sec, name, 40, function()
+                tpTo(pos)
+                notify("TP: " .. name, Color3.fromRGB(80,200,255), 1.2)
+            end, i)
+            i = i + 1
+        end
+        newButton(sec, t("pl_tp_custom"), 40, function()
+            local closest, dist = nil, math.huge
+            local myHRP = getHRP()
+            if not myHRP then return end
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LP and plr.Character then
+                    local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local d = (hrp.Position - myHRP.Position).Magnitude
+                        if d < dist then dist = d; closest = hrp end
+                    end
+                end
+            end
+            if closest then
+                myHRP.CFrame = closest.CFrame + Vector3.new(0, 3, 3)
+            end
+        end, i)
+    end
+
+    do
+        local sec = newSection(tabW, "sec_pl_give", 1)
+        newButton(sec, t("pl_give_all"), 42, function()
+            for _, n in ipairs({"AK-47","M4A1","Shotgun","Pistol","Revolver","SMG","Sniper"}) do
+                giveWeapon(n)
+            end
+        end, 1)
+        newButton(sec, t("pl_give_ak"),      42, function() giveWeapon("AK")     end, 2)
+        newButton(sec, t("pl_give_m4"),      42, function() giveWeapon("M4")     end, 3)
+        newButton(sec, t("pl_give_shotgun"), 42, function() giveWeapon("Shotgun")end, 4)
+        newButton(sec, t("pl_give_pistol"),  42, function() giveWeapon("Pistol") end, 5)
+        newButton(sec, t("pl_give_keycard"), 42, function() giveWeapon("Keycard")end, 6)
+    end
+
+    do
+        local sec = newSection(tabMi, "sec_pl_actions", 1)
+        newButton(sec, t("pl_kill_all"),   42, killAll,   1)
+        newButton(sec, t("pl_arrest_all"), 42, arrestAll, 2)
+        newButton(sec, t("pl_free_all"),   42, freeAll,   3)
+        newButton(sec, t("pl_respawn"),    42, function()
+            local hum = getHum()
+            if hum then hum.Health = 0 end
+        end, 4)
+    end
+
+    local fovGui = Instance.new("ScreenGui")
+    fovGui.Name = "Ark_PL_FOV"
+    fovGui.ResetOnSpawn = false
+    fovGui.IgnoreGuiInset = true
+    fovGui.Parent = PG
+
+    local fovFrame = Instance.new("Frame")
+    fovFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    fovFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    fovFrame.BackgroundTransparency = 1
+    fovFrame.BorderSizePixel = 0
+    fovFrame.Parent = fovGui
+    local fovStroke = Instance.new("UIStroke", fovFrame)
+    fovStroke.Color = Color3.fromRGB(255,255,255)
+    fovStroke.Thickness = 1.5
+    fovStroke.Transparency = 0.4
+    local fovCorner = Instance.new("UICorner", fovFrame)
+    fovCorner.CornerRadius = UDim.new(1, 0)
+
+    RS.RenderStepped:Connect(function()
+        SelectedTarget = GetTarget()
+        local s = PLState.FOVSize * 2
+        fovFrame.Size = UDim2.new(0, s, 0, s)
+        fovFrame.Visible = PLState.ShowFOV and PLState.SilentAim
+        if SelectedTarget and PLState.SilentAim then
+            fovStroke.Color = Color3.fromRGB(255, 50, 50)
+            fovStroke.Thickness = 2
+            AddAimVisuals(SelectedTarget)
+        else
+            fovStroke.Color = Color3.fromRGB(255, 255, 255)
+            fovStroke.Thickness = 1.5
+            ClearAimVisuals()
+        end
+    end)
+
+    local mt = getrawmetatable(game)
+    local oldNamecall = mt.__namecall
+    setreadonly(mt, false)
+    mt.__namecall = newcclosure(function(self, ...)
+        local args = {...}
+        local method = getnamecallmethod()
+
+        if PLState.SilentAim and SelectedTarget and SelectedTarget.Parent and not checkcaller() then
+            if method == "Raycast" then
+                local origin = args[1]
+                if typeof(origin) == "Vector3" and typeof(args[2]) == "Vector3" then
+                    local dir = SelectedTarget.Position - origin
+                    args[2] = dir.Unit * args[2].Magnitude
+                    return oldNamecall(self, unpack(args))
+                end
+            elseif method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" then
+                local ray = args[1]
+                if typeof(ray) == "Ray" then
+                    local newRay = Ray.new(ray.Origin, (SelectedTarget.Position - ray.Origin).Unit * ray.Direction.Magnitude)
+                    args[1] = newRay
+                    return oldNamecall(self, unpack(args))
+                end
+            end
+
+            if method == "FireServer" then
+                local n = string.lower(self.Name or "")
+                if string.find(n, "shoot") or string.find(n, "fire") or string.find(n, "bullet") or string.find(n, "attack") or string.find(n, "hit") then
+                    for i, v in pairs(args) do
+                        if typeof(v) == "Vector3" then
+                            local d = (v - Camera.CFrame.Position).Magnitude
+                            if d > 2 then args[i] = SelectedTarget.Position end
+                        elseif typeof(v) == "CFrame" then
+                            args[i] = CFrame.new(SelectedTarget.Position)
+                        end
+                    end
+                end
+            end
+        end
+
+        return oldNamecall(self, unpack(args))
+    end)
+    setreadonly(mt, true)
+
+    notify("Prison Life loaded", Color3.fromRGB(80,255,120), 1.6)
 end
 
 -- ============================================================
@@ -2793,9 +3312,9 @@ local function boot(gameType)
     elseif gameType == "FF" then
         buildFF()
         switchTab("tab_ff_receiver")
-    else
-        buildCW()
-        switchTab("tab_cw_main")
+    elseif gameType == "PL" then
+        buildPrisonLife()
+        switchTab("tab_pl_aim")
     end
     mainShown = true
     Main.Visible = true; MainScale.Scale = 0
@@ -2813,7 +3332,7 @@ local function boot(gameType)
             end
         end
     end)
-    print(string.format("[Ark Hub v4.7] Loaded | Game:%s | Admin:%s | Lang:%s",
+    print(string.format("[Ark Hub v4.9.3] Loaded | Game:%s | Admin:%s | Lang:%s",
         gameType, tostring(IS_ADMIN), LANG))
 end
 
@@ -2823,4 +3342,4 @@ showLoading(function()
     end)
 end)
 
-print("[Ark Hub v4.7] Script executed | Admin:", IS_ADMIN, "| Last Game:", Config.Game or "?")
+print("[Ark Hub v4.9.3] Script executed | Admin:", IS_ADMIN, "| Last Game:", Config.Game or "?")
