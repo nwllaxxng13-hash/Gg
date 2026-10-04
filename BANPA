@@ -1,0 +1,163 @@
+-- Delta Executor Mobile GUI - Draggable, Optimized & Visible
+-- Environment: Luau (Roblox)
+
+local CoreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+-- Prevent duplicate UI and memory leaks
+if CoreGui:FindFirstChild("DeltaCopierGui") then
+    CoreGui.DeltaCopierGui:Destroy()
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "DeltaCopierGui"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.DisplayOrder = 999999
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+if syn and syn.protect_gui then
+    syn.protect_gui(ScreenGui)
+    ScreenGui.Parent = CoreGui
+elseif gethui then
+    ScreenGui.Parent = gethui()
+else
+    ScreenGui.Parent = CoreGui
+end
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 320, 0, 180)
+MainFrame.Position = UDim2.new(0.5, -160, 0.5, -90)
+MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = MainFrame
+
+local Title = Instance.new("TextLabel")
+Title.Name = "DragBar"
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.BackgroundTransparency = 1
+Title.Text = "Delta Script Copier (Drag Here)"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 15
+Title.Font = Enum.Font.SourceSansBold
+Title.Parent = MainFrame
+
+-- Smooth Mobile/PC Draggable Implementation
+local dragging, dragInput, dragStart, startPos
+
+Title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+Title.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        MainFrame.Position = UDim2.new(
+            startPos.X.Scale, 
+            startPos.X.Offset + delta.X, 
+            startPos.Y.Scale, 
+            startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+local TextBox = Instance.new("TextBox")
+TextBox.Size = UDim2.new(0.9, 0, 0, 40)
+TextBox.Position = UDim2.new(0.05, 0, 0, 50)
+TextBox.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+TextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+TextBox.PlaceholderText = "Enter path (e.g., game.ReplicatedStorage.Module)"
+TextBox.Text = ""
+TextBox.TextSize = 14
+TextBox.Font = Enum.Font.SourceSans
+TextBox.ClearTextOnFocus = false
+TextBox.Parent = MainFrame
+
+local BoxCorner = Instance.new("UICorner")
+BoxCorner.CornerRadius = UDim.new(0, 6)
+BoxCorner.Parent = TextBox
+
+local CopyButton = Instance.new("TextButton")
+CopyButton.Size = UDim2.new(0.9, 0, 0, 40)
+CopyButton.Position = UDim2.new(0.05, 0, 0, 110)
+CopyButton.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+CopyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CopyButton.Text = "Start Copy"
+CopyButton.TextSize = 15
+CopyButton.Font = Enum.Font.SourceSansBold
+CopyButton.Parent = MainFrame
+
+local BtnCorner = Instance.new("UICorner")
+BtnCorner.CornerRadius = UDim.new(0, 6)
+BtnCorner.Parent = CopyButton
+
+local function resolvePath(pathStr)
+    pathStr = pathStr:gsub("^%s+", ""):gsub("%s+$", "")
+    local obj = game
+    for part in string.gmatch(pathStr, "[^%s%.]+") do
+        if part ~= "game" then
+            if obj then
+                obj = obj:FindFirstChild(part)
+            else
+                return nil
+            end
+        end
+    end
+    return obj
+end
+
+CopyButton.MouseButton1Click:Connect(function()
+    local pathText = TextBox.Text
+    local target = resolvePath(pathText)
+    
+    if target then
+        if target:IsA("ModuleScript") or target:IsA("LocalScript") or target:IsA("Script") then
+            local success, sourceCode = pcall(function()
+                return target.Source
+            end)
+            
+            if success and sourceCode and sourceCode ~= "" then
+                if setclipboard then
+                    setclipboard(sourceCode)
+                    CopyButton.Text = "Copied to Clipboard!"
+                else
+                    CopyButton.Text = "setclipboard not supported!"
+                end
+            else
+                CopyButton.Text = "Source empty or restricted!"
+            end
+        else
+            CopyButton.Text = "Not a Script/Module!"
+        end
+    else
+        CopyButton.Text = "Path not found!"
+    end
+    
+    task.delay(2, function()
+        CopyButton.Text = "Start Copy"
+    end)
+end)
